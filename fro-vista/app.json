@@ -7,6 +7,9 @@
     "userInterfaceStyle": "light",
     "assetBundlePatterns": [
       "**/*"
+    ],
+    "plugins": [
+      "@react-native-community/datetimepicker"
     ]
   }
 }

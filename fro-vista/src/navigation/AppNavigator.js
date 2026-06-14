@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import BuscarCitaScreen from '../screens/BuscarCitaScreen';
 
 // Importamos las pantallas que acabamos de crear
 import LoginScreen from '../screens/LoginScreen';
@@ -29,6 +30,12 @@ export default function AppNavigator() {
           component={RegisterScreen} 
           options={{ title: 'Crear Cuenta' }}
         />
+        <Stack.Screen
+          name="BuscarCita"
+          component={BuscarCitaScreen}
+          options={{ title: 'Buscar Cita Medica'}}
+        />
+
       </Stack.Navigator>
     </NavigationContainer>
   );

@@ -60,6 +60,11 @@ CREATE TABLE Bitacora_Auditoria (
     FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id) 
 );
 
+CREATE TABLE Comuna (
+    comuna_id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(50) NOT NULL UNIQUE
+);
+
 CREATE TABLE Sede (
     sede_id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(100) NOT NULL UNIQUE,
@@ -96,6 +101,12 @@ CREATE TABLE Sede_Horario(
     FOREIGN KEY (sede_id) REFERENCES Sede(sede_id)
 );
 
+CREATE TABLE Especialidad (
+    especialidad_id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL UNIQUE,
+    descripcion TEXT NOT NULL
+);
+
 CREATE TABLE Profesional (
     profesional_id INT PRIMARY KEY AUTO_INCREMENT,
     num_registro_salud VARCHAR(30) NOT NULL UNIQUE,
@@ -116,12 +127,6 @@ CREATE TABLE Profesional_Autorizado (
     FOREIGN KEY (administrador_id) References Usuario(usuario_id)
 );
 
-CREATE TABLE Especialidad (
-    especialidad_id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(100) NOT NULL UNIQUE,
-    descripcion TEXT NOT NULL
-);
-
 CREATE TABLE Profesional_Disponibilidad (
     profesional_id INT NOT NULL,
     dia_semana TINYINT NOT NULL,
@@ -131,11 +136,12 @@ CREATE TABLE Profesional_Disponibilidad (
     FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id)
 );
 
-CREATE TABLE Comuna (
-    comuna_id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(50) NOT NULL UNIQUE
+CREATE TABLE Contacto_Emergencia (
+    contacto_emergencia_id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre VARCHAR(100) NOT NULL,
+    telefono VARCHAR(20) NOT NULL,
+    parentesco VARCHAR(50) NOT NULL
 );
-
 
 CREATE TABLE Paciente (
     paciente_id INT PRIMARY KEY AUTO_INCREMENT,
@@ -149,24 +155,6 @@ CREATE TABLE Paciente (
     FOREIGN KEY (contacto_emergencia_id) REFERENCES Contacto_Emergencia(contacto_emergencia_id),
     FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id),
     FOREIGN KEY (comuna_id) REFERENCES Comuna(comuna_id)
-);
-
-CREATE TABLE Contacto_Emergencia (
-    contacto_emergencia_id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre VARCHAR(100) NOT NULL,
-    telefono VARCHAR(20) NOT NULL,
-    parentesco VARCHAR(50) NOT NULL
-);
-
-CREATE TABLE Lista_Espera (
-    lista_espera_id INT PRIMARY KEY AUTO_INCREMENT,
-    momento_inscripcion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    posicion INT NOT NULL,
-    notificado BOOLEAN DEFAULT FALSE,
-    paciente_id INT NOT NULL,
-    cita_id INT NOT NULL,
-    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
-    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
 );
 
 CREATE TABLE Disclaimer (
@@ -333,6 +321,17 @@ CREATE TABLE Cita(
     FOREIGN KEY (sede_id) REFERENCES Sede(sede_id)
 );
 
+CREATE TABLE Lista_Espera (
+    lista_espera_id INT PRIMARY KEY AUTO_INCREMENT,
+    momento_inscripcion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    posicion INT NOT NULL,
+    notificado BOOLEAN DEFAULT FALSE,
+    paciente_id INT NOT NULL,
+    cita_id INT NOT NULL,
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
+);
+
 CREATE TABLE Evaluacion_Satisfaccion(
     evaluacion_satisfaccion_id INT PRIMARY KEY AUTO_INCREMENT,
     puntuacion TINYINT NOT NULL,
@@ -354,6 +353,14 @@ CREATE TABLE Transaccion(
     FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
 );
 
+CREATE TABLE Financiador(
+    financiador_id INT PRIMARY KEY AUTO_INCREMENT,
+    nombre_institucion VARCHAR(100) NOT NULL UNIQUE,
+    rut_institucion VARCHAR(12) NOT NULL UNIQUE,
+    convenio_activo BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+
 CREATE TABLE Bono(
     bono_id INT PRIMARY KEY AUTO_INCREMENT,
     folio VARCHAR(50) UNIQUE,
@@ -365,13 +372,6 @@ CREATE TABLE Bono(
     financiador_id INT NOT NULL,
     FOREIGN KEY (cita_id) REFERENCES Cita(cita_id),
     FOREIGN KEY (financiador_id) REFERENCES Financiador(financiador_id)
-);
-
-CREATE TABLE Financiador(
-    financiador_id INT PRIMARY KEY AUTO_INCREMENT,
-    nombre_institucion VARCHAR(100) NOT NULL UNIQUE,
-    rut_institucion VARCHAR(12) NOT NULL UNIQUE,
-    convenio_activo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
 CREATE TABLE Parametro_Global(

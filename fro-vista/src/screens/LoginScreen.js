@@ -9,6 +9,12 @@ export default function LoginScreen({ navigation }) {
         title="¿No tienes cuenta? Regístrate aquí" 
         onPress={() => navigation.navigate('Register')} 
       />
+      
+      <View style={{ marginTop: 15}} />
+      <Button
+        title="Probar CU14 - Buscar Cita"
+        onPress={() => navigation.navigate('BuscarCita')}
+      />
     </View>
   );
 }
