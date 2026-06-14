@@ -6,6 +6,7 @@ const app = express();
 const authRoutes = require('./routes/authRoutes');
 // Middlewares globales obligatorios
 const citaRoutes = require('./routes/citaRoutes')
+const profesionalRoutes = require("./routes/profesionalRoutes");
 
 app.use(cors()); // Permite que la aplicación móvil hable con el controlador
 app.use(express.json()); // Habilita la lectura de payloads en formato JSON
@@ -17,5 +18,6 @@ app.get('/api/health', (req, res) => {
 
 app.use('/api/auth', authRoutes);
 app.use('/api/citas', citaRoutes);
+app.use("/api/profesionales", profesionalRoutes);
 
 module.exports = app;

@@ -10,4 +10,21 @@ const apiClient = axios.create({
   },
 });
 
+export const getPacientesProfesional = async (profesionalId, buscar = "") => {
+  const response = await apiClient.get(
+    `/profesionales/${profesionalId}/pacientes`,
+    {
+      params: { buscar },
+    }
+  );
+
+  return response.data;
+};
+export const getHistorialPaciente = async (pacienteId) => {
+  const response = await apiClient.get(
+    `/profesionales/pacientes/${pacienteId}/historial`
+  );
+
+  return response.data;
+};
 export default apiClient;

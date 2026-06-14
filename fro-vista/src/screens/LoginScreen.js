@@ -12,7 +12,7 @@ export default function LoginScreen({ navigation }) {
       
       <View style={{ marginTop: 15}} />
       <Button
-        title="Probar CU14 - Buscar Cita"
+        title="Buscar Cita"
         onPress={() => navigation.navigate('BuscarCita')}
       />
     </View>
