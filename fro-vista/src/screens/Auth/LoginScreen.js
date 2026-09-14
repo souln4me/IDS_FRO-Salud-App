@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext } from 'react';
-import { AuthContext } from '../context/AuthContext';
+import { AuthContext } from '../../context/AuthContext';
 import { 
   StyleSheet, 
   Text, 
@@ -9,10 +9,15 @@ import {
   ActivityIndicator,
   Alert 
 } from 'react-native';
-import { validateRut } from '../utils/validators'; 
+import { validateRut } from '../../utils/validators'; 
 
 // Importamos el cliente centralizado de Axios
-import apiClient from '../api/client'; 
+import apiClient from '../../api/client';
+import { Platform } from 'react-native';
+import VistaConTeclado from '../../components/VistaConTeclado';
+import LogoFro from '../../components/LogoFro';
+import { obtenerDispositivoId, nombreDispositivo } from '../../utils/dispositivo';
+import { colores, espacio, radio, sombra, tipografia, piezas } from '../../theme';
 
 export default function LoginScreen({ navigation }) {
   // --- ESTADOS LOCALES ---
@@ -47,6 +52,11 @@ export default function LoginScreen({ navigation }) {
 
     try {
       const response = await apiClient.post('/auth/login', {
+        // CU08: el nombre del dispositivo aparece en "Sesiones activas", y el
+        // identificador evita que reingresar desde este mismo teléfono sume
+        // una sesión nueva en vez de reemplazar la anterior.
+        dispositivo: nombreDispositivo(),
+        dispositivo_id: await obtenerDispositivoId(),
         rut: rut,
         contrasena: password
       });
@@ -81,10 +91,10 @@ export default function LoginScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.container}>
+    <VistaConTeclado style={styles.fondo} contentContainerStyle={styles.container}>
       <View style={styles.headerContainer}>
-        <Text style={styles.title}>FRO Salud</Text>
-        <Text style={styles.subtitle}>Portal de Acceso Seguro</Text>
+        <LogoFro tamano="lg" conNombre />
+        <Text style={styles.subtitle}>Portal de acceso seguro</Text>
       </View>
 
       <View style={styles.formContainer}>
@@ -93,7 +103,7 @@ export default function LoginScreen({ navigation }) {
         <TextInput
           style={[styles.input, rutError ? styles.inputError : null]}
           placeholder="12.345.678-K"
-          placeholderTextColor="#888888" 
+          placeholderTextColor={colores.textoTenue} 
           value={rut}
           onChangeText={setRut}
           autoCapitalize="none"
@@ -105,7 +115,7 @@ export default function LoginScreen({ navigation }) {
         <TextInput
           style={styles.input}
           placeholder="••••••••"
-          placeholderTextColor="#888888" 
+          placeholderTextColor={colores.textoTenue} 
           secureTextEntry={true} 
           value={password}
           onChangeText={setPassword}
@@ -117,7 +127,7 @@ export default function LoginScreen({ navigation }) {
 
         <View style={styles.buttonContainer}>
           {isLoading ? (
-            <ActivityIndicator size="large" color="#0052cc" />
+            <ActivityIndicator size="large" color={colores.primario} />
           ) : (
             <TouchableOpacity 
               style={[styles.loginButton, !isFormValid ? styles.loginButtonDisabled : null]} 
@@ -132,6 +142,16 @@ export default function LoginScreen({ navigation }) {
         </View>
       </View>
 
+      <TouchableOpacity
+        style={styles.registerLink}
+        onPress={() => navigation.navigate('RecuperarContrasena')}
+        disabled={isLoading}
+      >
+        <Text style={styles.registerLinkText}>
+          <Text style={styles.registerLinkHighlight}>¿Olvidaste tu contraseña?</Text>
+        </Text>
+      </TouchableOpacity>
+
       <TouchableOpacity 
         style={styles.registerLink} 
         onPress={() => navigation.navigate('Register')}
@@ -141,27 +161,37 @@ export default function LoginScreen({ navigation }) {
           ¿No tienes cuenta? <Text style={styles.registerLinkHighlight}>Regístrate aquí</Text>
         </Text>
       </TouchableOpacity>
-    </View>
+    </VistaConTeclado>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f4f6f8', justifyContent: 'center', padding: 20 },
-  headerContainer: { alignItems: 'center', marginBottom: 40 },
-  title: { fontSize: 36, fontWeight: 'bold', color: '#0052cc', marginBottom: 5 },
-  subtitle: { fontSize: 15, color: '#555555' },
-  formContainer: { backgroundColor: '#ffffff', padding: 22, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  label: { color: '#333333', fontSize: 12, marginBottom: 6, fontWeight: '600' },
-  input: { backgroundColor: '#fafafa', color: '#000000', borderRadius: 6, paddingHorizontal: 12, paddingVertical: 12, fontSize: 14, marginBottom: 16, borderWidth: 1, borderColor: '#cccccc' },
-  inputError: { borderColor: '#d32f2f', backgroundColor: '#fff0f0' },
-  errorText: { color: '#d32f2f', fontSize: 11, marginTop: -12, marginBottom: 12 },
-  errorTextGeneral: { color: '#d32f2f', fontSize: 13, textAlign: 'center', marginBottom: 15, fontWeight: '500' },
-  buttonContainer: { height: 50, justifyContent: 'center', marginTop: 10 },
-  loginButton: { backgroundColor: '#0052cc', paddingVertical: 14, borderRadius: 6, alignItems: 'center' },
-  loginButtonDisabled: { backgroundColor: '#e0e0e0' },
-  loginButtonText: { color: '#ffffff', fontWeight: 'bold', fontSize: 14, letterSpacing: 1 },
-  loginButtonTextDisabled: { color: '#999999' },
-  registerLink: { marginTop: 30, alignItems: 'center' },
-  registerLinkText: { color: '#666666', fontSize: 14 },
-  registerLinkHighlight: { color: '#0052cc', fontWeight: 'bold' }
+  fondo: { flex: 1, backgroundColor: colores.superficie },
+  container: { flexGrow: 1, justifyContent: 'center', padding: espacio.xl },
+  headerContainer: { alignItems: 'center', marginBottom: espacio.xxxl },
+  subtitle: { ...tipografia.meta, color: colores.textoSuave, marginTop: espacio.md },
+
+  formContainer: {
+    backgroundColor: colores.superficie,
+    padding: espacio.xl,
+    borderRadius: radio.xl,
+    borderWidth: 1,
+    borderColor: colores.bordeSuave,
+    ...sombra.media,
+  },
+  label: { ...piezas.etiqueta },
+  input: { ...piezas.campo, marginBottom: espacio.base },
+  inputError: { ...piezas.campoError },
+  errorText: { ...tipografia.meta, color: colores.error, marginTop: -espacio.md, marginBottom: espacio.md },
+  errorTextGeneral: { ...tipografia.meta, color: colores.error, textAlign: 'center', marginBottom: espacio.base },
+
+  buttonContainer: { height: 52, justifyContent: 'center', marginTop: espacio.sm },
+  loginButton: { ...piezas.botonPrimario },
+  loginButtonDisabled: { backgroundColor: colores.neutro[200], ...sombra.ninguna, elevation: 0 },
+  loginButtonText: { ...tipografia.cuerpoFuerte, color: colores.textoInverso, letterSpacing: 0.8 },
+  loginButtonTextDisabled: { color: colores.textoDeshabilitado },
+
+  registerLink: { marginTop: espacio.xl, alignSelf: 'stretch', alignItems: 'center' },
+  registerLinkText: { ...tipografia.meta, color: colores.textoSuave, textAlign: 'center' },
+  registerLinkHighlight: { color: colores.primario, fontWeight: '700' },
 });

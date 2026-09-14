@@ -1,5 +1,24 @@
-const fs = require('fs');
-const path = require('path');
+const pool = require('../config/database');
+
+// D6: antes esto escribía en logs/security_audit.log. En Render el disco es
+// efímero y el archivo se perdía en cada despliegue, así que el bloqueo va a
+// la tabla Bitacora_Auditoria. Es mejor esfuerzo: un fallo al auditar no
+// puede convertirse en un 500 para el usuario.
+async function registrarBloqueo(req, userId, userRole) {
+    try {
+        await pool.query(
+            `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+             VALUES ('BLOQUEO_ACCESO_RBAC', 'Usuario', ?, ?, ?)`,
+            [
+                req.ip || null,
+                JSON.stringify({ rol: userRole, metodo: req.method, ruta: req.originalUrl }),
+                userId || null,
+            ]
+        );
+    } catch (error) {
+        console.error('[RBAC] No se pudo registrar el bloqueo en la bitácora:', error.message);
+    }
+}
 
 /**
  * Middleware de Autorización RBAC (Control de Acceso Basado en Roles)
@@ -20,18 +39,7 @@ const authorizeRoles = (allowedRoles) => {
 
             // EXCEPCIÓN 4: Privilegios insuficientes
             if (!allowedRoles.includes(userRole)) {
-                // 1. Preparamos el mensaje de la bitácora
-                const timestamp = new Date().toISOString();
-                const logMessage = `[${timestamp}] ⚠️ BLOQUEO DE ACCESO | Usuario ID: ${userId} | Rol: ${userRole} | Intentó acceder a: ${req.originalUrl}\n`;
-                
-                const logPath = path.join(__dirname, '../../logs/security_audit.log');
-                const logsDir = path.dirname(logPath);
-
-                if (!fs.existsSync(logsDir)) {
-                    fs.mkdirSync(logsDir, { recursive: true });
-                }
-
-                fs.appendFileSync(logPath, logMessage, 'utf8');
+                registrarBloqueo(req, userId, userRole);
 
                 return res.status(403).json({
                     error: 'Acceso restringido. Su rol no cuenta con los privilegios necesarios para visualizar o modificar este recurso.'

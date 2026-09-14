@@ -6,11 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Platform,
 } from "react-native";
 import client from "../../api/client";
+import VistaConTeclado from "../../components/VistaConTeclado";
+import { colores, radio, sombra } from '../../theme';
+import CodigoOTP from '../../components/CodigoOTP';
+import DialogoAviso from '../../components/DialogoAviso';
+import DialogoConfirmacion from '../../components/DialogoConfirmacion';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OTPScreen
@@ -25,6 +27,11 @@ const SEGUNDOS_REENVIO = 60;
 
 export default function OTPScreen({ route, navigation }) {
   const { usuario_id, canal = "EMAIL", destino = "" } = route?.params ?? {};
+
+  // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
+
+  const [aviso, setAviso] = useState(null);
+  const [confirmacion, setConfirmacion] = useState(null);
 
   const [digitos, setDigitos] = useState(Array(LARGO_OTP).fill(""));
   const [cargando, setCargando] = useState(false);
@@ -83,9 +90,13 @@ export default function OTPScreen({ route, navigation }) {
         codigo,
       });
 
-      Alert.alert("¡Listo!", data.mensaje, [
-        { text: "Iniciar sesión", onPress: () => navigation.replace("Login") },
-      ]);
+      setAviso({
+        tono: 'ok',
+        titulo: '¡Listo!',
+        mensaje: data.mensaje,
+        etiqueta: 'Iniciar sesión',
+        alCerrar: () => navigation.replace('Login'),
+      });
     } catch (err) {
       const respuesta = err.response?.data;
       const errorCodigo = respuesta?.error;
@@ -97,11 +108,11 @@ export default function OTPScreen({ route, navigation }) {
         inputs.current[0]?.focus();
       } else if (errorCodigo === "PERSISTENCIA_FALLIDA") {
         // Excepción 4: falla de escritura en servidor
-        Alert.alert(
-          "Error al activar cuenta",
-          "No se pudo activar tu cuenta. Por favor recarga la pantalla e intenta de nuevo.",
-          [{ text: "Entendido" }]
-        );
+        setAviso({
+          tono: 'error',
+          titulo: 'Error al activar cuenta',
+          mensaje: 'No se pudo activar tu cuenta. Recarga la pantalla e intenta de nuevo.',
+        });
       } else {
         setError("Ocurrió un error inesperado. Intenta de nuevo.");
       }
@@ -123,24 +134,29 @@ export default function OTPScreen({ route, navigation }) {
         canal,
       });
 
-      if (data.ok) {
-        setSegundos(SEGUNDOS_REENVIO);
-        setDigitos(Array(LARGO_OTP).fill(""));
-        inputs.current[0]?.focus();
-        Alert.alert("Código reenviado", data.mensaje);
-      }
+      // El backend responde 200 con { mensaje }. Si llegamos aquí, se envió.
+      setSegundos(SEGUNDOS_REENVIO);
+      setDigitos(Array(LARGO_OTP).fill(""));
+      inputs.current[0]?.focus();
+      setAviso({ tono: 'ok', titulo: "Código reenviado", mensaje: data?.mensaje || "Revisa tu correo." });
     } catch (err) {
-      const errorCodigo = err.response?.data?.error;
+      const respuesta = err.response?.data;
+      const errorCodigo = respuesta?.error;
 
       // Excepción 1: falla del servicio de comunicaciones externo
       if (errorCodigo === "ENVIO_FALLIDO") {
-        Alert.alert(
-          "Error al enviar",
-          "No se pudo enviar el código. Verifica tu señal e intenta de nuevo.",
-          [{ text: "Reintentar", onPress: reenviarCodigo }, { text: "Cancelar" }]
-        );
+        // El detalle dice qué revisar en la configuración del servidor.
+        setConfirmacion({
+          tono: 'peligro',
+          titulo: 'No se pudo enviar el código',
+          mensaje: respuesta?.detalle
+            ? `${respuesta.mensaje}\n\n${respuesta.detalle}`
+            : respuesta?.mensaje || 'El servicio de correo no está disponible.',
+          etiqueta: 'Reintentar',
+          accion: reenviarCodigo,
+        });
       } else {
-        Alert.alert("Error", "No se pudo reenviar el código. Intenta más tarde.");
+        setAviso({ tono: 'error', titulo: "Error", mensaje: "No se pudo reenviar el código. Intenta más tarde." });
       }
     } finally {
       setCargandoReenvio(false);
@@ -149,9 +165,9 @@ export default function OTPScreen({ route, navigation }) {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <KeyboardAvoidingView
-      style={estilos.contenedor}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+    <VistaConTeclado
+      style={estilos.fondo}
+      contentContainerStyle={estilos.contenedor}
     >
       <View style={estilos.tarjeta}>
         <Text style={estilos.titulo}>Verificación de identidad</Text>
@@ -161,22 +177,16 @@ export default function OTPScreen({ route, navigation }) {
         </Text>
 
         {/* Campos OTP */}
-        <View style={estilos.filaOTP}>
-          {digitos.map((digito, i) => (
-            <TextInput
-              key={i}
-              ref={(ref) => (inputs.current[i] = ref)}
-              style={[estilos.celdaOTP, error && estilos.celdaError]}
-              value={digito}
-              onChangeText={(texto) => manejarCambio(texto, i)}
-              onKeyPress={(e) => manejarRetroceso(e, i)}
-              keyboardType="numeric"
-              maxLength={1}
-              selectTextOnFocus
-              autoFocus={i === 0}
-            />
-          ))}
-        </View>
+        <CodigoOTP
+          valor={digitos.join('')}
+          onCambiar={(v) => {
+            setDigitos(Array.from({ length: LARGO_OTP }, (_, i) => v[i] || ''));
+            setError(null);
+          }}
+          largo={LARGO_OTP}
+          error={Boolean(error)}
+          autoFocus
+        />
 
         {/* Mensaje de error */}
         {error && <Text style={estilos.textoError}>{error}</Text>}
@@ -188,7 +198,7 @@ export default function OTPScreen({ route, navigation }) {
           disabled={cargando}
         >
           {cargando ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colores.superficie} />
           ) : (
             <Text style={estilos.textoBoton}>Verificar código</Text>
           )}
@@ -202,7 +212,7 @@ export default function OTPScreen({ route, navigation }) {
           ) : (
             <TouchableOpacity onPress={reenviarCodigo} disabled={cargandoReenvio}>
               {cargandoReenvio ? (
-                <ActivityIndicator size="small" color="#2563eb" />
+                <ActivityIndicator size="small" color={colores.primario} />
               ) : (
                 <Text style={estilos.textoEnlace}>Reenviar ahora</Text>
               )}
@@ -210,47 +220,74 @@ export default function OTPScreen({ route, navigation }) {
           )}
         </View>
       </View>
-    </KeyboardAvoidingView>
+    <DialogoConfirmacion
+      visible={confirmacion !== null}
+      titulo={confirmacion?.titulo || ''}
+      mensaje={confirmacion?.mensaje}
+      etiquetaConfirmar={confirmacion?.etiqueta || 'Confirmar'}
+      etiquetaCancelar={confirmacion?.etiquetaCancelar || 'Cancelar'}
+      tono={confirmacion?.tono || 'normal'}
+      onConfirmar={() => {
+        const accion = confirmacion?.accion;
+        setConfirmacion(null);
+        if (accion) accion();
+      }}
+      onCancelar={() => setConfirmacion(null)}
+    />
+
+    <DialogoAviso
+      visible={aviso !== null}
+      titulo={aviso?.titulo || ''}
+      mensaje={aviso?.mensaje}
+      tono={aviso?.tono}
+      etiquetaCerrar={aviso?.etiqueta || 'Entendido'}
+      onCerrar={() => {
+        const seguir = aviso?.alCerrar;
+        setAviso(null);
+        if (seguir) seguir();
+      }}
+    />
+    </VistaConTeclado>
   );
 }
 
 // ─ Estilos 
 const estilos = StyleSheet.create({
-  contenedor: {
+  fondo: {
     flex: 1,
+    backgroundColor: colores.fondo,
+  },
+  contenedor: {
+    flexGrow: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f8fafc",
     padding: 24,
   },
   tarjeta: {
     width: "100%",
-    backgroundColor: "#fff",
-    borderRadius: 16,
+    backgroundColor: colores.superficie,
+    borderRadius: radio.lg,
     padding: 28,
-    shadowColor: "#000",
-    shadowOpacity: 0.07,
-    shadowRadius: 12,
-    elevation: 4,
     alignItems: "center",
+    ...sombra.media,
   },
   titulo: {
     fontSize: 22,
     fontWeight: "700",
-    color: "#0f172a",
+    color: colores.textoTitulo,
     marginBottom: 8,
     textAlign: "center",
   },
   subtitulo: {
-    fontSize: 14,
-    color: "#64748b",
+    fontSize: 15,
+    color: colores.textoSuave,
     textAlign: "center",
     marginBottom: 28,
     lineHeight: 20,
   },
   destino: {
     fontWeight: "600",
-    color: "#334155",
+    color: colores.primario,
   },
   filaOTP: {
     flexDirection: "row",
@@ -261,29 +298,29 @@ const estilos = StyleSheet.create({
     width: 44,
     height: 54,
     borderWidth: 1.5,
-    borderColor: "#cbd5e1",
-    borderRadius: 10,
+    borderColor: colores.borde,
+    borderRadius: radio.md,
     textAlign: "center",
     fontSize: 22,
     fontWeight: "700",
-    color: "#0f172a",
-    backgroundColor: "#f8fafc",
+    color: colores.textoTitulo,
+    backgroundColor: colores.fondo,
   },
   celdaError: {
-    borderColor: "#ef4444",
-    backgroundColor: "#fef2f2",
+    borderColor: colores.error,
+    backgroundColor: colores.errorSuave,
   },
   textoError: {
-    color: "#ef4444",
+    color: colores.error,
     fontSize: 13,
     marginBottom: 12,
     textAlign: "center",
   },
   boton: {
     width: "100%",
-    backgroundColor: "#2563eb",
+    backgroundColor: colores.primario,
     paddingVertical: 14,
-    borderRadius: 12,
+    borderRadius: radio.md,
     alignItems: "center",
     marginTop: 8,
   },
@@ -291,8 +328,8 @@ const estilos = StyleSheet.create({
     opacity: 0.6,
   },
   textoBoton: {
-    color: "#fff",
-    fontSize: 16,
+    color: colores.superficie,
+    fontSize: 17,
     fontWeight: "600",
   },
   filareenvio: {
@@ -301,11 +338,11 @@ const estilos = StyleSheet.create({
     marginTop: 20,
   },
   textoGris: {
-    color: "#94a3b8",
+    color: colores.textoTenue,
     fontSize: 13,
   },
   textoEnlace: {
-    color: "#2563eb",
+    color: colores.primario,
     fontSize: 13,
     fontWeight: "600",
   },
