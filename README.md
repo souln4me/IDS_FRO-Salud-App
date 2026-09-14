@@ -1,4 +1,15 @@
 # Guía de Instalación y Despliegue - FRO Salud (Incremento 1)
+
+> ### ⚡ ¿Solo quieres probar la app?
+> Ya no hace falta instalar MySQL ni levantar el backend: **están en la nube**.
+> Sigue la [**Guía de la nube**](GUIA-NUBE.md) (Parte 2) y en 5 minutos tienes la
+> app andando. Son tres pasos: clonar, crear un archivo `.env` con la dirección
+> del servidor, y `npx expo start -c`.
+>
+> Esta guía de abajo sirve si necesitas montar **todo el entorno local**
+> (backend + base de datos en tu propio computador), por ejemplo para
+> desarrollar el servidor.
+
 Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el entorno de desarrollo local de la aplicación FRO Salud (Vista y Controlador).
 
 [Video guía de instalación del Sistema](https://drive.google.com/file/d/1eLFtI8UtEgKLBEWcWh41RKkWUYzGCzV2/view?usp=sharing)
@@ -66,6 +77,20 @@ SMTP_PASS=passwordapp
 JWT_SECRET=tu_clave # puede ser otra contraseña sin necesidad que sea la misma de mYSQL
 ```
 ### Paso 2.3: Inicialización de la Base de Datos
+
+**Opción A (recomendada, sin instalar nada extra):** con el `.env` ya configurado,
+ejecute dentro de `fro-controlador`:
+
+```
+npm run db:importar
+```
+
+Esto crea la base `fro_salud_db`, todas las tablas y los datos iniciales. Si su
+base ya existe y solo quiere cargar las tablas dentro de ella, agregue
+`-- --sin-crear-base` al final del comando.
+
+**Opción B (manual):**
+
 1. Abra su gestor de bases de datos y conéctese a su servidor local (localhost).
 
 2. Abra el archivo ubicado en ```fro-controlador/src/database/mysql/schema.sql```.
@@ -90,14 +115,28 @@ La vista está construido con React Native y Expo. Para que la aplicación en el
 
 3. Busque la línea que dice "Dirección IPv4" (ej. 192.168.1.80) y anótela.
 
-### Paso 3.2: Configurar la conexión (client.js)
-1. Navegue a la ruta: ```fro-vista/src/api/client.js```.
+### Paso 3.2: Configurar la conexión (archivo .env)
 
-2. Abra el archivo client.js en su editor de código.
+Ya **no** se edita `client.js` a mano. La dirección del servidor se define en un
+archivo de entorno, así cada uno usa la suya sin generar conflictos en Git.
 
-3. Modifique la variable const COMPUTADORA IP para que use la IP que acaba de anotar.
+1. Dentro de la carpeta `fro-vista`, copie el archivo `.env.example` y renómbrelo
+   a `.env`.
 
-4. Ejemplo correcto: ```const COMPUTADORA_IP = '192.168.1.130';```
+2. Escriba adentro la dirección del servidor:
+
+```
+EXPO_PUBLIC_API_URL=http://192.168.1.130:3000
+```
+
+   Reemplace `192.168.1.130` por la IP que acaba de anotar. **No use
+   `localhost`**: desde el celular, "localhost" apunta al propio celular.
+
+   Si en vez del backend local quiere usar el de la nube, ponga ahí la dirección
+   que compartió el equipo (ver [GUIA-NUBE.md](GUIA-NUBE.md)).
+
+3. Cada vez que cambie este archivo, reinicie Expo con `npx expo start -c` para
+   que tome la nueva dirección.
 
 ### Paso 3.3: Instalación de Dependencias
 1. En su terminal, navegue a la carpeta de la vista:

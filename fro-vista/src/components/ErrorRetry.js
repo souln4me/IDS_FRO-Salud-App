@@ -1,6 +1,7 @@
 // Ruta: fro-vista/src/components/ErrorRetry.js
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { colores, espacio, radio, sombra, tipografia, piezas } from '../theme';
 
 /**
  * Componente reutilizable para manejar la Excepción 3 (Caída de red o servidor).
@@ -25,48 +26,30 @@ export default function ErrorRetry({ mensaje, onRetry }) {
 
 const styles = StyleSheet.create({
   container: {
-    padding: 24,
-    backgroundColor: '#ffffff',
-    borderRadius: 12,
+    padding: espacio.xl,
+    backgroundColor: colores.superficie,
+    borderRadius: radio.lg,
     borderWidth: 1,
-    borderColor: '#e0e0e0',
+    borderColor: colores.bordeSuave,
     alignItems: 'center',
-    margin: 20,
-    elevation: 3,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4
+    margin: espacio.lg,
+    ...sombra.suave,
   },
-  icon: {
-    fontSize: 48,
-    marginBottom: 15,
-  },
-  title: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 8,
-  },
+  icon: { fontSize: 40, marginBottom: espacio.md },
+  title: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.sm },
   message: {
-    fontSize: 14,
-    color: '#666666',
+    ...tipografia.meta,
+    color: colores.textoSuave,
     textAlign: 'center',
-    marginBottom: 20,
-    lineHeight: 20,
+    marginBottom: espacio.lg,
   },
   retryButton: {
-    backgroundColor: '#0052cc',
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    borderRadius: 6,
+    ...piezas.botonPrimario,
     width: '100%',
-    alignItems: 'center',
   },
   retryButtonText: {
-    color: '#ffffff',
-    fontWeight: 'bold',
-    fontSize: 14,
-    letterSpacing: 1,
-  }
+    ...tipografia.metaFuerte,
+    color: colores.textoInverso,
+    letterSpacing: 0.8,
+  },
 });

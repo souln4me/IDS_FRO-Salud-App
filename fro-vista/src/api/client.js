@@ -1,10 +1,19 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
+// ── Dirección del backend ────────────────────────────────────────────────────
+// En la nube se define EXPO_PUBLIC_API_URL en el archivo .env de fro-vista
+// (ej. EXPO_PUBLIC_API_URL=https://fro-salud-api.onrender.com).
+// Si no está definida, se usa la IP local de respaldo para trabajar sin nube.
 const COMPUTADORA_IP = '192.168.1.130';
+const URL_LOCAL = `http://${COMPUTADORA_IP}:3000`;
+
+const servidor = (process.env.EXPO_PUBLIC_API_URL || URL_LOCAL).replace(/\/+$/, '');
+// Se acepta tanto la URL con /api al final como sin ella.
+const baseURL = servidor.endsWith('/api') ? servidor : `${servidor}/api`;
 
 const apiClient = axios.create({
-  baseURL: `http://${COMPUTADORA_IP}:3000/api`,
+  baseURL,
   timeout: 100000,
   headers: {
     'Content-Type': 'application/json',
@@ -40,8 +49,18 @@ apiClient.interceptors.response.use(
     const status = error.response?.status;
 
     // 401: token expirado/inválido → logout global (vía AuthContext).
-    if (status === 401 && _onUnauthorized) {
-      _onUnauthorized();
+    //
+    // Solo aplica a peticiones que iban autenticadas: un login con contraseña
+    // equivocada también responde 401, y ahí no corresponde avisar que "la
+    // sesión fue cerrada" — no había ninguna sesión que cerrar.
+    const ibaAutenticada = Boolean(error.config?.headers?.Authorization);
+
+    if (status === 401 && ibaAutenticada && _onUnauthorized) {
+      const datos = error.response?.data || {};
+      _onUnauthorized({
+        codigo: datos.code || null,
+        mensaje: datos.error || datos.mensaje || null,
+      });
     }
 
     // ── CU70 Exc 3: el backend agotó los reintentos contra el proveedor externo (HTTP 503). ──
@@ -147,6 +166,12 @@ export const guardarIntervencion = async (episodioId, payload) => {
 // =========================================================================
 // CU38 - MARCAS TEMPORALES DE LA PRESTACION
 // =========================================================================
+
+// Opción C: la atención que el profesional tiene abierta ahora mismo, o null.
+export const getAtencionEnCurso = async () => {
+  const response = await apiClient.get('/citas/atencion-en-curso');
+  return response.data;
+};
 
 export const getCitasMarcasTemporales = async () => {
   const response = await apiClient.get('/citas/marcas-temporales');

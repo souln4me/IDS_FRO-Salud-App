@@ -1,0 +1,59 @@
+# Configuración de despliegue para Render (https://render.com).
+#
+# Render lee este archivo y crea el servicio solo. Las variables marcadas con
+# "sync: false" NO se guardan aquí (son secretas): se escriben una vez en el
+# panel de Render, en la pestaña Environment del servicio.
+#
+# Guía completa paso a paso: ver GUIA-NUBE.md en la raíz del repositorio.
+
+services:
+  - type: web
+    name: fro-salud-api
+    runtime: node
+    plan: free
+    # El repositorio tiene dos proyectos; el backend vive en esta subcarpeta.
+    rootDir: fro-controlador
+    buildCommand: npm install
+    startCommand: npm start
+    # Render consulta esta ruta para saber si el servicio está sano.
+    healthCheckPath: /api/health
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+
+      # Cadena de conexión que entrega Aiven (empieza con mysql://).
+      - key: DATABASE_URL
+        sync: false
+
+      # Aiven exige conexión cifrada.
+      - key: DB_SSL
+        value: "true"
+
+      # Aiven firma con su propia autoridad certificadora. Lo correcto es pegar
+      # su certificado en DB_SSL_CA; mientras tanto, esto permite conectar.
+      - key: DB_SSL_REJECT_UNAUTHORIZED
+        value: "false"
+
+      # Certificado CA de Aiven (opcional pero recomendado). Si lo defines,
+      # cambia DB_SSL_REJECT_UNAUTHORIZED a "true".
+      - key: DB_SSL_CA
+        sync: false
+
+      # Render genera una clave larga y aleatoria automáticamente.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Correo desde el que salen los códigos de verificación (OTP).
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USER
+        sync: false
+      - key: SMTP_PASS
+        sync: false
+
+      # La app móvil no necesita restricción de origen.
+      - key: CORS_ORIGIN
+        value: "*"

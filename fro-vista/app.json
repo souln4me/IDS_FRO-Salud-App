@@ -11,6 +11,26 @@
     "plugins": [
       "expo-secure-store",
       "@react-native-community/datetimepicker"
-    ]
+    ],
+    "icon": "./assets/logo-fro.png",
+    "primaryColor": "#004639",
+    "backgroundColor": "#FAFBFA",
+    "splash": {
+      "image": "./assets/logo-fro.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo-fro.png",
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "ios": {
+      "supportsTablet": true
+    },
+    "web": {
+      "favicon": "./assets/logo-fro.png"
+    }
   }
 }

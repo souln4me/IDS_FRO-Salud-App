@@ -1,0 +1,1403 @@
+CASOS DE USO CORREGIDOS — FRO SALUD, INCREMENTOS 1 Y 2
+Fichas listas para reemplazar en el informe. Cada bloque va desde "CUxx" hasta "Dependencias".
+Código de referencia: IDS_FRO-Salud-App commit ed760555 (11-09-2026).
+Las fichas reflejan el código con las decisiones D1–D13 ya aplicadas (commit "aplica las decisiones D1-D13").
+
+Orden: CU01, CU02, CU03, CU04, CU05, CU06, CU07, CU08, CU09, CU10, CU11, CU12, CU13, CU14, CU15, CU16, CU17, CU18, CU20, CU22, CU23, CU24, CU27, CU28, CU29, CU30, CU31, CU32, CU33, CU34, CU35, CU36, CU38, CU39, CU40, CU41, CU42, CU43, CU46, CU47, CU48, CU49, CU59, CU66, CU67, CU68, CU69, CU70, CU71, CU76, CU77, CU78, CU79.
+
+════════════════════════════════════════════════════════════════════
+
+CU01
+Registrando paciente con validación de integridad
+Nombre
+Registrando paciente con validación de integridad
+Actor(es)
+Paciente
+Resumen
+El sistema permite a un nuevo usuario registrarse bajo el rol de Paciente, validando sintácticamente sus datos personales, verificando la unicidad de su identidad y resguardando sus credenciales de acceso.
+Frecuencia
+Alta
+Precondiciones
+El actor no debe estar registrado con una cuenta verificada en el sistema.
+Descripción
+El paciente accede a la interfaz de registro de pacientes para iniciar el proceso [Excepción 1], el sistema despliega el formulario de captura de datos personales, de contacto y credenciales [Excepción 2], el paciente completa íntegramente los campos de nombres, apellidos, RUT, email, teléfono, sexo clínico, dirección (calle, número, departamento y comuna), contacto de emergencia, contraseña y confirmación de contraseña [Excepción 3], el sistema realiza la validación sintáctica de los formatos ingresados, verifica la coincidencia de las contraseñas [Excepción 4], el actor verifica visualmente que su información esté correcta en el diálogo de confirmación y presiona el botón de envío para confirmar la creación de su cuenta [Excepción 5], el sistema ejecuta el cifrado hash de la contraseña, persiste el perfil del paciente en estado inactivo en la base de datos, reemplazando cualquier registro previo con el mismo RUT o correo que nunca haya sido verificado, y despacha el código OTP de activación al correo registrado [Excepción 6].
+Excepciones
+Excepción 1: El enlace de acceso a la interfaz no carga o está roto. El sistema notifica un error de disponibilidad del servicio. El actor refresca la página o intenta el acceso más tarde.
+Excepción 2: Los componentes visuales del formulario no se renderizan correctamente. El sistema registra un error de carga de interfaz en el log. El actor reinicia la aplicación.
+Excepción 3: Un campo no cumple el formato requerido, como un RUT inválido, un email mal formado o una contraseña que no cumple la política de seguridad (mínimo ocho caracteres, con letras, números y al menos un símbolo). El sistema muestra un mensaje de error específico con los requisitos incumplidos y detiene el envío. El actor corrige el dato conforme a la máscara de entrada indicada.
+Excepción 4: Las contraseñas ingresadas no coinciden. El sistema muestra una alerta de discrepancia y resalta los campos de credenciales. El actor reingresa las claves asegurando su igualdad.
+Excepción 5: El actor pierde la conexión a internet justo al momento de presionar el botón de envío. El sistema alerta de un error de red. El actor restablece su conexión y reintenta el envío, debiendo reingresar los datos si la caché no los conservó.
+Excepción 6: Ocurre una falla de escritura o pérdida de conexión con el motor de base de datos durante el proceso de persistencia. El sistema detiene el flujo, revierte la transacción, genera un log de error interno y notifica al actor que el servicio no está disponible temporalmente. El actor debe intentar registrarse más tarde.
+Poscondiciones
+La cuenta del actor queda creada en estado inactivo, con sus datos validados y únicos, a la espera de la verificación de identidad mediante OTP.
+Dependencias
+RF01, RF03, RF04
+
+════════════════════════════════════════════════════════════════════
+
+CU02
+Registrando y acreditando profesional de salud
+Nombre
+Registrando y acreditando profesional de salud
+Actor(es)
+Profesional
+Resumen
+El sistema gestiona la creación de perfiles para profesionales, validando su habilitación mediante una nómina de personal autorizado, guardando su especialidad, configurando su disponibilidad semanal con la modalidad de atención de cada bloque y estableciendo credenciales de acceso seguras.
+Frecuencia
+Baja
+Precondiciones
+El Profesional debe contar con sus credenciales de la Superintendencia de Salud y su RUT debe estar previamente registrado y habilitado en la lista de profesionales autorizados por un Administrador.
+Descripción
+El Profesional ingresa su RUT en el campo respectivo para iniciar su registro [Excepción 1]. El sistema consulta de manera síncrona la vigencia del RUT en la nómina de profesionales autorizados y habilita los campos del formulario para el rol Profesional [Excepción 2]. El Profesional ingresa sus datos de identidad básicos como nombres, apellidos, correo, teléfono, establece una contraseña de acceso y define su especialidad, su número de registro de salud, su reseña curricular y su modalidad general de atención [Excepción 3]. El sistema efectúa la validación sintáctica de los formatos iniciales y despliega la interfaz gráfica para la configuración de la jornada laboral [Excepción 4]. El Profesional estructura su matriz de atención semanal, indicando para cada bloque el día, la hora de inicio, la hora de término y la modalidad de atención (a domicilio, virtual o ambas) [Excepción 5]. El sistema procesa la configuración horaria y presenta en pantalla un resumen solicitando la confirmación de veracidad de los datos [Excepción 6]. El Profesional valida la exactitud de la información ingresada y otorga el consentimiento final para terminar el proceso de alta [Excepción 7]. El sistema ejecuta el cifrado hash de la contraseña, persiste el perfil y la disponibilidad en la base de datos centralizada y despacha el código OTP de activación al correo registrado [Excepción 8].
+Excepciones
+Excepción 1: El Profesional ingresa un RUT que no cumple con el formato algorítmico válido. El sistema resalta el campo de entrada indicando un error de sintaxis. El Profesional corrige el RUT ingresado.
+Excepción 2: El RUT ingresado no figura en la nómina de profesionales autorizados o figura como inhabilitado. El sistema detiene el registro, alerta mediante una ventana emergente que el usuario no está habilitado y bloquea el avance del flujo. El Profesional verifica su RUT o contacta a la administración.
+Excepción 3: El Profesional ingresa un número de registro o teléfono con caracteres alfabéticos no permitidos, o establece una contraseña que no cumple la política de seguridad (mínimo ocho caracteres, con letras, números y al menos un símbolo). El sistema resalta los campos con error y muestra los requisitos faltantes en pantalla. El Profesional corrige los datos según el estándar exigido.
+Excepción 4: La interfaz de configuración de disponibilidad no carga por un error de comunicación interna con el servidor. El sistema muestra un mensaje de tiempo de espera agotado. El Profesional refresca la página para reintentar la carga.
+Excepción 5: El Profesional intenta finalizar sin haber agregado ningún bloque horario a su jornada. El sistema detiene el envío y muestra la alerta de agenda vacía. El Profesional agrega al menos un bloque horario.
+Excepción 6: El sistema experimenta una interrupción o latencia excesiva al compilar los datos para generar el resumen. El sistema muestra una alerta de error de carga en el componente. El Profesional presiona el botón de reintentar para volver a solicitar el despliegue del resumen.
+Excepción 7: El Profesional decide cancelar el proceso rechazando la confirmación de veracidad. El sistema cierra el diálogo y mantiene los datos en pantalla para su revisión sin guardar nada. El Profesional corrige la información o cierra la ventana de registro.
+Excepción 8: Ocurre una falla de escritura en el servidor de base de datos durante la persistencia final. El sistema revierte la transacción, genera un log de error y notifica la imposibilidad de guardar el perfil. El Profesional contacta al soporte técnico para reportar la incidencia.
+Poscondiciones
+La cuenta del Profesional queda registrada con sus credenciales cifradas y su matriz de disponibilidad horaria con modalidad por bloque, pendiente de activación mediante la verificación OTP.
+Dependencias
+RF02, RF03, RF04, RF59
+
+════════════════════════════════════════════════════════════════════
+
+CU03
+Controlando unicidad de cuentas de usuario
+Nombre
+Controlando unicidad de cuentas de usuario
+Actor(es)
+Paciente / Profesional
+Resumen
+El sistema verifica que el RUT y el correo no pertenezcan a una cuenta verificada antes de guardar un nuevo usuario para evitar duplicados; los registros previos que nunca completaron su verificación se informan y se reemplazan.
+Frecuencia
+Alta
+Precondiciones
+El Paciente / Profesional debe haber completado y enviado el formulario de registro con datos sintácticamente válidos.
+Descripción
+El Paciente / Profesional envía el formulario de registro solicitando la creación de una nueva cuenta en la plataforma [Excepción 1], el sistema recibe los parámetros y realiza una búsqueda indexada en la base de datos para validar que el RUT no pertenezca a una cuenta verificada [Excepción 2], el Paciente / Profesional aguarda la respuesta del motor de validación en la pantalla de procesamiento [Excepción 3], el sistema verifica la disponibilidad del correo electrónico y autoriza la persistencia final del registro si se cumple la condición de unicidad; si existe un registro previo sin verificar con los mismos datos, informa que será reemplazado y continúa [Excepción 4].
+Excepciones
+Excepción 1: Se detecta una interrupción en el envío de los paquetes de datos por falla de red. El sistema muestra una alerta de pérdida de conexión persistente. El Paciente / Profesional verifica su acceso a internet y reintenta la operación.
+Excepción 2: El RUT ingresado ya se encuentra registrado en una cuenta verificada del repositorio central. El sistema aborta el flujo de registro y emite una notificación de cuenta existente. El Paciente / Profesional utiliza la opción de recuperación de contraseña o ingresa un documento distinto.
+Excepción 3: El tiempo de respuesta de la consulta a la base de datos excede el umbral de latencia permitido. El sistema informa que el servicio de validación no está disponible momentáneamente. El Paciente / Profesional intenta el registro nuevamente tras unos minutos.
+Excepción 4: El correo electrónico proporcionado ya está vinculado a una cuenta verificada. El sistema detiene el proceso y resalta el campo de email con una advertencia de duplicidad. El Paciente / Profesional introduce una dirección de correo alternativa para completar el alta.
+Poscondiciones
+Se asegura que el nuevo registro es único entre las cuentas verificadas y se avanza en el proceso de creación de cuenta.
+Dependencias
+RF01, RF02, RF03, RNF05.
+
+════════════════════════════════════════════════════════════════════
+
+CU04
+Verificando identidad mediante código OTP
+Nombre
+Verificando identidad mediante código OTP
+Actor(es)
+Paciente / Profesional
+Resumen
+El sistema envía por correo electrónico un código de un solo uso para validar la identidad del usuario y activar su cuenta recién registrada.
+Frecuencia
+Alta
+Precondiciones
+El Paciente / Profesional debe haber pasado el control de unicidad de registro.
+Descripción
+El Paciente / Profesional solicita el envío del código de seguridad para iniciar el proceso de validación de su identidad [Excepción 1], el Sistema genera un código OTP de seis dígitos con vigencia de diez minutos y lo transmite al correo electrónico registrado [Excepción 2], el Paciente / Profesional ingresa la secuencia numérica recibida en el formulario de activación de la plataforma [Excepción 3], el Sistema comprueba la exactitud y vigencia del código para proceder con la activación definitiva de la cuenta en la base de datos [Excepción 4].
+Excepciones
+Excepción 1: El servicio de correo presenta una caída que impide el envío. El Sistema registra el fallo en la bitácora de auditoría y alerta al usuario indicando la causa. El Paciente / Profesional presiona el botón de reintento, habilitado tras sesenta segundos.
+Excepción 2: La dirección de correo es marcada como inalcanzable por el proveedor. El Sistema muestra una notificación de error en el envío del código. El Paciente / Profesional vuelve a registrarse con un correo válido.
+Excepción 3: El Paciente / Profesional introduce un código que no coincide con el generado o que ya ha superado su tiempo de vida útil. El Sistema invalida el intento, limpia los campos y solicita la generación de una nueva clave. El Paciente / Profesional solicita un nuevo código OTP desde la interfaz.
+Excepción 4: Se produce una falla de escritura en el servidor durante el cambio de estado del perfil. El Sistema registra el fallo en la bitácora de auditoría, lanza una excepción de persistencia y mantiene la cuenta como no activa. El Paciente / Profesional refresca la página e intenta el proceso nuevamente.
+Poscondiciones
+La cuenta del Paciente / Profesional cambia a estado "Activada" y el actor es dirigido al inicio de sesión.
+Dependencias
+RF01, RF02, RF04, RNF05
+
+════════════════════════════════════════════════════════════════════
+
+CU05
+Autenticando usuario y resguardando credenciales
+Nombre
+Autenticando usuario y resguardando credenciales
+Actor(es)
+Paciente / Profesional / Administrador
+Resumen
+El sistema permite el inicio de sesión validando RUT y contraseña, utilizando algoritmos de hashing para comparar de forma segura, y registra la sesión del dispositivo para que pueda ser revocada.
+Frecuencia
+Muy Alta
+Precondiciones
+El Paciente / Profesional / Administrador debe tener una cuenta activa.
+Descripción
+El Paciente / Profesional / Administrador ingresa su RUT y su contraseña en el portal de acceso para iniciar la sesión [Excepción 1], el Sistema captura las credenciales y aplica el algoritmo de hashing unidireccional a la contraseña proporcionada [Excepción 2], el Paciente / Profesional / Administrador permanece en la interfaz de espera mientras se realiza la consulta de seguridad en el repositorio de identidades [Excepción 3], el Sistema compara el hash resultante con el registro almacenado en la base de datos, genera un Token de Acceso y registra la sesión del dispositivo para conceder la entrada si la validación es exitosa [Excepción 4].
+Excepciones
+Excepción 1: El Paciente / Profesional / Administrador introduce un formato de RUT no reconocido por las reglas de validación del lado del cliente. El Sistema resalta el campo de entrada con un mensaje de error de formato. El Paciente / Profesional / Administrador corrige el RUT según el estándar permitido.
+Excepción 2: El servicio de criptografía interno no se encuentra disponible para procesar el hash de la contraseña. El Sistema emite un código de error de servicio y registra la incidencia en el log de seguridad. El Paciente / Profesional / Administrador intenta realizar el ingreso nuevamente tras unos segundos.
+Excepción 3: La conexión con el servidor de base de datos se interrumpe durante la consulta de los hashes. El Sistema informa sobre la indisponibilidad momentánea del servicio de autenticación. El Paciente / Profesional / Administrador refresca la página para restablecer el canal de comunicación.
+Excepción 4: Los hashes comparados no coinciden debido a una contraseña incorrecta, o el Paciente / Profesional / Administrador no existe o su cuenta no está activa. El Sistema deniega el acceso, registra el intento fallido en la bitácora de auditoría con el RUT, el motivo y la dirección IP, y muestra una alerta de credenciales inválidas. El Paciente / Profesional / Administrador verifica sus datos e ingresa la contraseña correcta.
+Poscondiciones
+Se inicia una sesión segura para el usuario, visible y revocable desde la configuración de seguridad de su cuenta.
+Dependencias
+RF05, RF08, RNF03
+
+════════════════════════════════════════════════════════════════════
+
+CU06
+Solicitando restablecimiento de credenciales
+Nombre
+Solicitando restablecimiento de credenciales
+Actor(es)
+Paciente / Profesional / Administrador
+Resumen
+El Paciente / Profesional / Administrador solicita cambiar su contraseña olvidada mediante su correo, recibiendo un OTP automatizado para autorizar el cambio.
+Frecuencia
+Media
+Precondiciones
+El Paciente / Profesional / Administrador debe estar registrado en el sistema con un correo electrónico válido.
+Descripción
+El Paciente / Profesional / Administrador accede a la opción de "Olvidé mi contraseña" para dar inicio al flujo de recuperación de credenciales [Excepción 1], el Sistema presenta la interfaz de captura de datos solicitando el correo electrónico vinculado a la cuenta [Excepción 2], el Paciente / Profesional / Administrador ingresa su dirección de correo electrónico en el campo habilitado para tal fin [Excepción 3], el Sistema realiza la búsqueda en la base de datos y envía un código OTP con vigencia de diez minutos al correo si el Paciente / Profesional / Administrador es identificado [Excepción 4].
+Excepciones
+Excepción 1: El enlace de recuperación presenta un error de redireccionamiento interno. El Sistema registra el fallo de navegación y muestra un mensaje de servicio no disponible momentáneamente. El Paciente / Profesional / Administrador intenta el acceso nuevamente pasados unos minutos.
+Excepción 2: La interfaz de recuperación no se renderiza por falta de conexión con el servidor de aplicaciones. El Sistema lanza una alerta de tiempo de espera agotado. El Paciente / Profesional / Administrador recarga la aplicación.
+Excepción 3: El Paciente / Profesional / Administrador introduce una dirección con un formato de dominio inválido o incompleto. El Sistema bloquea el envío y resalta el error sintáctico bajo el campo de texto. El Paciente / Profesional / Administrador corrige la cadena de texto ingresada según el formato estándar.
+Excepción 4: El correo electrónico ingresado no existe en los registros de la plataforma. El Sistema simula el proceso de despacho y muestra un mensaje genérico de envío exitoso para evitar la enumeración de Paciente / Profesional / Administrador por parte de terceros.
+Poscondiciones
+El Paciente / Profesional / Administrador recibe un OTP válido para proceder con el cambio de contraseña.
+Dependencias
+RF06, RF07
+
+════════════════════════════════════════════════════════════════════
+
+CU07
+Ejecutando cambio de contraseña
+Nombre
+Ejecutando cambio de contraseña
+Actor(es)
+Paciente / Profesional / Administrador
+Resumen
+El sistema procesa y guarda una nueva contraseña segura tras validar el código OTP ingresado por el usuario, cerrando todas sus sesiones activas.
+Frecuencia
+Media
+Precondiciones
+El Paciente / Profesional / Administrador debe poseer un OTP válido, obtenido desde la recuperación pública de credenciales (CU06) o solicitado desde la configuración de seguridad de su cuenta con sesión iniciada.
+Descripción
+El Paciente / Profesional / Administrador ingresa el código OTP de validación en el campo correspondiente de la interfaz para verificar su identidad [Excepción 1], el Sistema comprueba la integridad y vigencia del código habilitando inmediatamente el formulario de ingreso de nueva credencial [Excepción 2], el Paciente / Profesional / Administrador escribe la nueva contraseña asegurándose de cumplir con los criterios de complejidad y seguridad exigidos [Excepción 3], el Sistema ejecuta el algoritmo de hashing, persiste el nuevo registro en la base de datos, revoca todas las sesiones activas del usuario y registra el cambio en la bitácora de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El Paciente / Profesional / Administrador introduce caracteres alfabéticos en un campo que solo admite entradas numéricas. El Sistema bloquea la entrada de datos inválidos mediante una máscara de validación en tiempo real. Paciente / Profesional / Administrador corrige el ingreso utilizando únicamente dígitos.
+Excepción 2: El código ingresado no coincide con el registro activo o el tiempo de validez ha expirado. El Sistema deniega la habilitación del formulario y muestra una alerta de código inválido. El Paciente / Profesional / Administrador solicita el reenvío de un nuevo código OTP.
+Excepción 3: La contraseña proporcionada no alcanza el nivel de robustez requerido por las políticas de seguridad (mínimo ocho caracteres, con letras, números y al menos un símbolo). El Sistema resalta los requisitos incumplidos y mantiene deshabilitado el botón de confirmación. El Paciente / Profesional / Administrador modifica la clave hasta satisfacer todos los criterios técnicos.
+Excepción 4: Se produce una interrupción en la comunicación con el servidor de datos durante el proceso de guardado. El Sistema notifica que la operación no pudo completarse y registra el fallo de persistencia. El Paciente / Profesional / Administrador reintenta el envío del formulario una vez restablecida la conexión.
+Poscondiciones
+La contraseña del Paciente / Profesional / Administrador es actualizada en la base de datos y todas sus sesiones quedan cerradas; debe iniciar sesión nuevamente con la clave nueva.
+Dependencias
+RF05, RF06, RF07, RF08, RNF08
+
+════════════════════════════════════════════════════════════════════
+
+CU08
+Gestionando sesiones y tokens de acceso
+Nombre
+Gestionando sesiones y tokens de acceso
+Actor(es)
+Paciente / Profesional / Administrador
+Resumen
+El Paciente / Profesional / Administrador visualiza sus sesiones activas en distintos dispositivos y puede cerrarlas remotamente, invalidando los tokens.
+Frecuencia
+Baja
+Precondiciones
+El Paciente / Profesional / Administrador debe tener una sesión activa.
+Descripción
+El Paciente / Profesional / Administrador accede al apartado de seguridad de su cuenta para gestionar sus sesiones [Excepción 1], el Sistema consulta el registro de sesiones y despliega la lista de sesiones activas con dispositivo, dirección IP y fecha de inicio, marcando la sesión del dispositivo actual [Excepción 2], el Paciente / Profesional / Administrador selecciona una sesión específica de la lista y activa la opción para revocar el acceso remoto [Excepción 3], el Sistema desactiva la sesión en el registro; en la siguiente petición desde el dispositivo destino, el Token de Acceso es rechazado y la sesión se cierra con un aviso [Excepción 4].
+Excepciones
+Excepción 1: El enlace a los ajustes de seguridad no responde debido a un error de ruteo en la aplicación. El Sistema devuelve un mensaje de error de navegación. El Paciente / Profesional / Administrador recarga la aplicación para restablecer los parámetros de acceso.
+Excepción 2: El servicio de gestión de identidades no logra recuperar la lista de sesiones activas. El Sistema muestra una advertencia indicando que la información de los dispositivos no está disponible momentáneamente. El Paciente / Profesional / Administrador presiona el botón de actualización manual para reintentar la carga.
+Excepción 3: El Paciente / Profesional / Administrador intenta revocar una sesión que ya fue cerrada o expiró durante la visualización de la lista. El Sistema notifica que esa sesión ya no está activa y actualiza la vista removiendo el dispositivo. El Paciente / Profesional / Administrador continúa gestionando sus otras conexiones activas.
+Excepción 4: El servidor experimenta una falla de persistencia al intentar desactivar el registro de sesión. El Sistema registra la excepción y solicita al Paciente / Profesional / Administrador reintentar la operación. El Paciente / Profesional / Administrador presiona nuevamente el botón de revocación.
+Poscondiciones
+La sesión seleccionada queda terminada y el dispositivo pierde el acceso en su siguiente petición al servidor.
+Dependencias
+RF05, RF08, RNF03, RNF08
+
+════════════════════════════════════════════════════════════════════
+
+CU09
+Configurando privacidad de datos de contacto
+Nombre
+Configurando privacidad de datos de contacto
+Actor(es)
+Paciente
+Resumen
+El paciente ajusta los parámetros de su perfil para definir qué datos de contacto serán visibles para el profesional que lo atiende.
+Frecuencia
+Baja
+Precondiciones
+El paciente debe estar autenticado en el sistema.
+Descripción
+El Paciente navega hacia el módulo de privacidad dentro de la configuración de seguridad de su cuenta [Excepción 1], el Sistema presenta la matriz de opciones de visibilidad: mostrar dirección y mostrar teléfono [Excepción 2], el Paciente ajusta los parámetros de privacidad activando o desactivando cada interruptor [Excepción 3], el Sistema valida las nuevas preferencias, actualiza el registro del paciente y deja constancia del cambio en la bitácora de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El módulo de privacidad no se encuentra disponible por una falla en el servidor de aplicaciones. El Sistema muestra un mensaje de error de carga de componente. El Paciente intenta acceder nuevamente tras recargar la aplicación.
+Excepción 2: Las opciones de configuración no se despliegan correctamente debido a un fallo en la interfaz. El Sistema registra un error de ejecución. El Paciente reinicia la aplicación.
+Excepción 3: El Paciente envía valores inválidos para las opciones de privacidad. El Sistema rechaza la configuración e indica el campo incorrecto. El Paciente ajusta los interruptores de visibilidad.
+Excepción 4: Se produce una falla crítica de persistencia al intentar escribir los cambios en el repositorio de datos. El Sistema notifica al paciente que los cambios no pudieron ser guardados y sugiere un reintento. El Paciente presiona nuevamente el botón de guardar.
+Poscondiciones
+Las preferencias de visibilidad se aplican a los datos del paciente: la dirección oculta se muestra al profesional como reservada; el contacto de emergencia permanece siempre visible.
+Dependencias
+RF09, RF11, RF12
+
+════════════════════════════════════════════════════════════════════
+
+CU10
+Administrando catálogo de perfil profesional
+Nombre
+Administrando catálogo de perfil profesional
+Actor(es)
+Profesional
+Resumen
+El profesional edita su perfil público añadiendo su fotografía, reseña curricular, áreas de experticia y modalidad general de atención, que los pacientes ven al buscar una hora.
+Frecuencia
+Media
+Precondiciones
+El actor debe tener rol de Profesional y estar autenticado.
+Descripción
+El profesional accede a "Mi perfil público" desde su panel para iniciar la actualización de su catálogo [Excepción 1], el Sistema muestra la fotografía actual, la reseña, las áreas de experticia y la modalidad con sus límites de formato [Excepción 2], el profesional carga su fotografía desde el dispositivo y redacta su reseña curricular junto con sus áreas de experticia [Excepción 3], el Sistema realiza la validación técnica del formato y peso de la imagen y de la extensión de los textos ingresados [Excepción 4], el profesional define la modalidad general de atención (a domicilio, virtual o ambas) [Excepción 5], el Sistema persiste los cambios, almacena la fotografía en el repositorio en la nube, registra la actualización en la bitácora de auditoría y publica la información en el buscador de horas de los pacientes [Excepción 6].
+Excepciones
+Excepción 1: El módulo de perfil no carga debido a un error de comunicación con el servidor. El Sistema muestra un mensaje de error con opción de reintentar. El actor reintenta el acceso.
+Excepción 2: El perfil profesional del usuario no se encuentra en la base de datos. El Sistema informa que no existe el perfil. El actor contacta al Administrador.
+Excepción 3: El archivo de imagen no cumple con el formato permitido (JPG, PNG, WEBP o HEIC) o excede el peso máximo definido. El Sistema rechaza la carga y despliega una alerta con las especificaciones técnicas requeridas. El actor selecciona un archivo compatible o reduce su peso antes de reintentar.
+Excepción 4: La reseña curricular o las áreas de experticia superan el límite máximo de caracteres permitido. El Sistema bloquea el guardado y resalta el campo en conflicto indicando el límite. El actor ajusta la longitud del texto según las restricciones indicadas.
+Excepción 5: El profesional omite la selección de la modalidad de atención obligatoria. El Sistema impide el guardado y señala el campo requerido. El actor selecciona la modalidad correspondiente para completar el formulario.
+Excepción 6: Ocurre una falla de persistencia en la base de datos o en el repositorio de imágenes durante el guardado. El Sistema notifica al actor que los cambios no pudieron ser grabados. El actor intenta guardar nuevamente o contacta al soporte técnico.
+Poscondiciones
+El perfil público del profesional se actualiza para la vista de los pacientes en el motor de agendamiento.
+Dependencias
+RF02, RF10, RF14, RF33
+
+════════════════════════════════════════════════════════════════════
+
+CU11
+Visualizando panel interno de gestión profesional
+Nombre
+Visualizando panel interno de gestión profesional
+Actor(es)
+Profesional
+Resumen
+El profesional accede a una vista segura y restringida cuyo panel principal es la nómina de sus pacientes asignados, desde la cual abre la ficha clínica de cada uno y accede a su agenda del día.
+Frecuencia
+Muy Alta
+Precondiciones
+El actor debe tener rol profesional y estar autenticado.
+Descripción
+El profesional inicia sesión y accede al panel interno de gestión profesional [Excepción 1], el Sistema verifica los permisos del actor mediante el control de acceso basado en roles RBAC y despliega como panel principal la nómina de pacientes vinculados (aquellos con un episodio clínico suyo o con una cita vigente con él), junto con los accesos a Mi Jornada, Gestión de Agenda y Seguridad de la Cuenta [Excepción 2], el profesional filtra la nómina por nombre, RUT o identificador y selecciona un paciente para solicitar su historial de atenciones [Excepción 3], el Sistema abre la Ficha Clínica del paciente con sus pestañas de historial, anamnesis, episodios, sesión clínica y pautas, aplicando las preferencias de privacidad de contacto del paciente [Excepción 4].
+Excepciones
+Excepción 1: El enlace al panel de gestión presenta un error de redireccionamiento por sesión expirada. El Sistema redirige al actor a la pantalla de login con un mensaje de tiempo de espera agotado. El actor ingresa sus credenciales nuevamente para acceder al panel.
+Excepción 2: El actor autenticado no cuenta con el rol de Profesional habilitado en su perfil de seguridad. El Sistema deniega el acceso al panel interno y genera una alerta de violación de privilegios. El actor contacta al administrador del sistema para solicitar la asignación del rol correspondiente.
+Excepción 3: El profesional aplica un filtro de búsqueda que no coincide con ningún paciente en su nómina asignada. El Sistema muestra una notificación de "Sin resultados encontrados" en la grilla de datos. El actor limpia los filtros de búsqueda para visualizar la lista completa.
+Excepción 4: Ocurre un fallo en el servicio de recuperación de registros clínicos históricos, o el paciente seleccionado no está vinculado al profesional. El Sistema informa que la información clínica no puede mostrarse o deniega el acceso. El actor presiona el botón de actualizar o vuelve a la nómina.
+Poscondiciones
+El profesional visualiza la información clínica y administrativa de sus pacientes.
+Dependencias
+RF09, RF11, RF12, RF28
+
+════════════════════════════════════════════════════════════════════
+
+CU12
+Controlando acceso basado en roles RBAC
+Nombre
+Controlando acceso basado en roles RBAC
+Actor(es)
+Paciente, Profesional, Administrador
+Resumen
+El sistema intercepta las peticiones de los usuarios para verificar que su sesión esté vigente y que sus roles tengan los permisos necesarios para acceder a módulos sensibles.
+Frecuencia
+Muy Alta
+Precondiciones
+El Paciente, Profesional o Administrador debe tener una sesión activa con un Token de Acceso.
+Descripción
+El Paciente, Profesional o Administrador intenta acceder a un módulo o recurso protegido mediante el envío de una petición al servidor [Excepción 1], el Sistema intercepta la solicitud para verificar la vigencia del Token de Acceso y de la sesión del dispositivo, y el rol (Paciente, Profesional o Administrador) vinculado al token [Excepción 2], el Paciente, Profesional o Administrador aguarda la resolución de sus privilegios mientras la aplicación procesa la validación de seguridad [Excepción 3], el Sistema contrasta el rol con las políticas de autorización y permite la visualización del dato si se cumplen los permisos requeridos [Excepción 4].
+Excepciones
+Excepción 1: La petición de acceso se realiza con un Token de Acceso que ha expirado, es inválido o cuya sesión fue cerrada desde otro dispositivo. El Sistema deniega la solicitud y redirige automáticamente al actor hacia el portal de inicio de sesión con el aviso correspondiente. El Paciente, Profesional o Administrador ingresa nuevamente sus credenciales para obtener un token vigente.
+Excepción 2: El rol asociado a la sesión del usuario presenta una inconsistencia estructural en la base de datos. El Sistema genera un error de configuración de perfil y bloquea el flujo de navegación. El actor contacta al administrador del sistema para la corrección de su cuenta.
+Excepción 3: El motor de políticas de permisos no responde debido a una caída en el servicio de autorización. El Sistema notifica que el servicio de validación no está disponible momentáneamente. El actor refresca la página para reintentar la carga del módulo.
+Excepción 4: El rol verificado no cuenta con los permisos necesarios para acceder al nivel de sensibilidad del recurso solicitado. El Sistema bloquea el acceso de forma definitiva, registra el intento en la bitácora de auditoría y muestra un mensaje de restricción de privilegios. El actor regresa al panel principal para acceder a las funciones permitidas para su cargo.
+Poscondiciones
+Se garantiza que los datos sensibles permanezcan protegidos y solo visibles para los roles autorizados.
+Dependencias
+RF05, RF08, RF11, RF12
+
+════════════════════════════════════════════════════════════════════
+
+CU13
+Registrando bitácora de auditoría de seguridad
+Nombre
+Registrando bitácora de auditoría de seguridad
+Actor(es)
+Profesional, Paciente, Administrador, Sistema
+Resumen
+El sistema guarda un registro inmutable en la bitácora de auditoría por cada acceso a la Ficha Clínica Electrónica y por cada evento clínico, de agenda, de seguridad, de pagos o de integración externa que se ejecute en la plataforma.
+Frecuencia
+Muy Alta
+Precondiciones
+Un usuario ejecuta una acción de lectura o escritura sobre una entidad clínica auditable (ficha, episodio, evolución, pautas), o el sistema ejecuta un evento de agenda, seguridad, pagos, evidencia o integración.
+Descripción
+El Profesional ejecuta una acción de lectura o modificación dentro de una Ficha Clínica Electrónica [Excepción 1], el Sistema intercepta la operación y la clasifica según la entidad afectada y el verbo (lectura, creación, modificación o eliminación) para iniciar el proceso de registro obligatorio [Excepción 2], el Profesional continúa con su labor clínica mientras el entorno de ejecución provee los metadatos necesarios de la sesión activa [Excepción 3], el Sistema captura el ID del usuario, el Timestamp, la acción, la entidad y la dirección IP para escribirlos de forma permanente en la bitácora inmutable de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El profesional intenta una acción sobre una ruta que no está registrada en la tabla de entidades auditables. El Sistema bloquea preventivamente la operación para evitar accesos no rastreados. El Profesional reintenta la acción o solicita soporte técnico.
+Excepción 2: El Sistema falla al clasificar o identificar el tipo de evento de acceso detectado. El Sistema genera una alerta de error interno y suspende la visualización de la ficha clínica. El profesional refresca el módulo para reiniciar la validación del acceso.
+Excepción 3: Los metadatos requeridos como el ID del usuario no se encuentran disponibles en la solicitud. El Sistema rechaza la petición por razones de seguridad e integridad. El profesional inicia sesión nuevamente para restablecer su contexto de seguridad.
+Excepción 4: La escritura en la bitácora inmutable falla debido a una falta de espacio o pérdida de conexión con el repositorio. El Sistema detiene la operación clínica y notifica la imposibilidad de auditar la acción. El profesional informa al administrador de sistemas sobre el fallo de persistencia en la bitácora.
+Poscondiciones
+Queda un rastro auditable detallado de la interacción con los datos de salud y de los eventos relevantes del sistema.
+Dependencias
+RF13, RF22, RF28, RF69, RNF06
+
+════════════════════════════════════════════════════════════════════
+
+CU14
+Buscando y seleccionando cita en el motor de agendamiento
+Nombre
+Buscando y seleccionando cita en motor de agendamiento
+Actor(es)
+Paciente
+Resumen
+El paciente busca profesionales filtrando por especialidad, modalidad de atención (a domicilio, virtual o ambas) y fecha, seleccionando un bloque horario disponible para reservar una cita.
+Frecuencia
+Alta
+Precondiciones
+El paciente debe estar autenticado.
+Descripción
+El paciente accede al motor de búsqueda de citas y aplica los filtros de especialidad, modalidad de atención y fecha (a partir del día actual) para localizar profesionales disponibles [Excepción 1], el Sistema genera los bloques horarios de una hora a partir de la jornada semanal de cada profesional de la especialidad, descartando los ocupados por citas vigentes y los inhabilitados por bloqueos de agenda, y despliega la lista de especialistas con su disponibilidad [Excepción 2], el paciente selecciona un bloque horario identificado como "Disponible" para iniciar el trámite de reserva de su cita [Excepción 3], el Sistema valida el estado del bloque en tiempo real e inicia la vinculación técnica de la cita, con la modalidad elegida, al identificador único del paciente en la sesión activa [Excepción 4].
+Excepciones
+Excepción 1: El catálogo de especialidades no carga por un fallo del servicio. El Sistema muestra una alerta indicando que el servicio no se encuentra disponible momentáneamente. El actor refresca el motor de búsqueda para reintentar la operación de filtrado.
+Excepción 2: No existen profesionales con cupos vigentes para los criterios de especialidad, modalidad y fecha seleccionados por el actor. El Sistema indica mediante una notificación visual que no hay horas disponibles bajo esos parámetros. El actor cambia la fecha, la especialidad o la modalidad de búsqueda.
+Excepción 3: El bloque horario seleccionado cambia su estado a reservado por otro paciente de forma concurrente justo antes de la confirmación. El Sistema actualiza la vista de la agenda marcando el bloque como no disponible. El actor elige un horario diferente de la lista desplegada.
+Excepción 4: La sesión del paciente expira por superar el tiempo de inactividad permitido durante la etapa de selección. El Sistema redirige automáticamente al actor a la pantalla de inicio de sesión por protocolos de seguridad. El actor se autentica nuevamente para retomar el proceso de agendamiento desde el inicio.
+Poscondiciones
+Se avanza al proceso de bloqueo de concurrencia para confirmar la cita.
+Dependencias
+RF14, RF15, RF16, RF20
+
+════════════════════════════════════════════════════════════════════
+
+CU15
+Controlando concurrencia de bloqueo de agendamiento
+Nombre
+Controlando concurrencia de bloqueo de agendamiento
+Actor(es)
+Paciente
+Resumen
+El sistema bloquea de manera síncrona el horario seleccionado por un paciente para evitar duplicidades o colisiones con otros pacientes.
+Frecuencia
+Alta
+Precondiciones
+Un paciente selecciona un bloque horario en el motor de agendamiento.
+Descripción
+El actor ejecuta la selección de un Bloque Horario disponible en el motor de agendamiento y confirma la reserva [Excepción 1], el Sistema procesa la solicitud de exclusividad temporal en el servidor [Excepción 2], el actor aguarda la confirmación visual de la reserva en la Vista [Excepción 3], el Sistema aplica el bloqueo síncrono mediante una transacción con bloqueo de filas, garantizando la exclusividad, y persiste la cita en estado AGENDADA con su modalidad [Excepción 4].
+Excepciones
+Excepción 1: El actor pierde conexión de red al ejecutar la selección. El Sistema ignora la petición vacía. El actor restablece la conexión y reintenta.
+Excepción 2: El Sistema detecta caducidad en el Token de Acceso JWT. El Sistema deniega la solicitud por falta de autenticación. El actor inicia sesión nuevamente.
+Excepción 3: El actor abandona la interfaz o pierde la conexión durante la espera. El Sistema aborta la transacción de bloqueo y revierte cualquier escritura parcial. El Paciente reinicia la búsqueda.
+Excepción 4: El Sistema detecta una colisión de reserva simultánea por otro actor en la base de datos. El Sistema mitiga la concurrencia abortando la transacción actual y notificando que el bloque acaba de ser reservado. El actor selecciona un Bloque Horario alternativo.
+Poscondiciones
+La cita queda persistida en estado AGENDADA, reservando el bloque de forma exclusiva para el paciente.
+Dependencias
+RF14, RF15, RF20
+
+════════════════════════════════════════════════════════════════════
+
+CU16
+Restringiendo disponibilidad administrativa
+Nombre
+Restringiendo disponibilidad administrativa
+Actor(es)
+Profesional / Administrador
+Resumen
+Se inhabilitan rangos de fechas específicos por vacaciones, licencias o eventos, restringiendo su visibilidad en el motor de búsqueda y en la reprogramación de citas.
+Frecuencia
+Baja
+Precondiciones
+El actor debe tener rol de Profesional o Administrador.
+Descripción
+El actor accede al módulo de gestión de disponibilidad para modificar el calendario de atención (el Administrador indica además el profesional afectado) [Excepción 1], el Sistema despliega el formulario de bloqueo con fecha de inicio, fecha de término y motivo [Excepción 2], el actor define un rango de fechas en formato DD/MM/AAAA y un motivo, marcándolo como inhabilitado por razones administrativas o licencias [Excepción 3], el Sistema valida que el rango no contenga citas agendadas ni se superponga con otro bloqueo, persiste el bloqueo cubriendo el último día completo y oculta automáticamente dicho periodo en el motor de búsqueda orientado a los pacientes [Excepción 4].
+Excepciones
+Excepción 1: El enlace al módulo de gestión de disponibilidad no responde por una falla de carga en el servidor de aplicaciones. El Sistema muestra una notificación de servicio no disponible momentáneamente. El actor intenta acceder nuevamente tras refrescar el sistema.
+Excepción 2: El actor intenta inhabilitar un rango que se superpone con un bloqueo ya registrado. El Sistema rechaza la operación e informa la coincidencia de fechas. El actor ajusta las fechas del nuevo bloqueo.
+Excepción 3: El actor intenta inhabilitar un rango que contiene citas médicas ya agendadas. El Sistema bloquea la operación y emite una alerta indicando que las citas existentes deben ser reprogramadas o canceladas primero. El actor gestiona administrativamente las citas en conflicto antes de reintentar la inhabilitación.
+Excepción 4: Se produce un error de persistencia al intentar registrar el bloqueo en la base de datos. El Sistema revierte la transacción e informa que los cambios no pudieron ser persistidos. El actor presiona el botón de guardar nuevamente para reintentar la sincronización.
+Poscondiciones
+La matriz de disponibilidad del profesional se actualiza y no ofrece ese rango de fechas.
+Dependencias
+RF14, RF16, RF17
+
+════════════════════════════════════════════════════════════════════
+
+CU17
+Gestionando reprogramación de cita
+Nombre
+Gestionando reprogramación de cita
+Actor(es)
+Paciente (el Profesional dispone del servicio, sin interfaz en este incremento)
+Resumen
+El actor modifica la fecha u hora de su cita, indicando el motivo, siempre y cuando se cumplan las reglas de anticipación parametrizadas.
+Frecuencia
+Media
+Precondiciones
+Debe existir una cita agendada o confirmada y, para el paciente, debe estar dentro del tiempo mínimo de anticipación parametrizado.
+Descripción
+El actor selecciona la opción de reprogramar su cita vigente desde Mis Citas e indica el motivo del cambio [Excepción 1], el Sistema valida el cumplimiento de la regla de anticipación comparando la fecha actual con el bloque agendado [Excepción 2], el actor explora los cupos disponibles en el motor de agendamiento y selecciona una nueva fecha y hora para la atención [Excepción 3], el Sistema verifica que el nuevo bloque esté libre y fuera de bloqueos de agenda, actualiza la cita al nuevo horario en estado AGENDADA liberando el anterior, registra la trazabilidad con ambos bloques y el motivo, y notifica el cambio a ambos participantes [Excepción 4].
+Excepciones
+Excepción 1: La cita seleccionada ya ha sido marcada como realizada, cancelada o con inasistencia, o se encuentra en curso. El Sistema deshabilita los controles de edición. El actor vuelve al listado principal para elegir una cita activa.
+Excepción 2: La solicitud de modificación se realiza fuera del tiempo mínimo de anticipación configurado. El Sistema emite una notificación de restricción temporal y deniega la habilitación del calendario de cambios. El actor mantiene su cita original o contacta a soporte administrativo.
+Excepción 3: El bloque horario seleccionado es ocupado por otro proceso de reserva justo antes de confirmar el cambio, o cae en un bloqueo de agenda del profesional. El Sistema detecta el conflicto y refresca la matriz de disponibilidad. El actor selecciona un nuevo horario disponible de la lista.
+Excepción 4: Ocurre una falla en el servicio de notificaciones tras guardar el cambio. El Sistema registra el error de comunicación pero mantiene la cita actualizada en la base de datos. El actor verifica la nueva fecha directamente en su panel de próximas consultas.
+Poscondiciones
+La cita queda reprogramada en el nuevo bloque horario, en estado AGENDADA, pendiente de confirmación.
+Dependencias
+RF15, RF16, RF17, RF22, RNF18
+
+════════════════════════════════════════════════════════════════════
+
+CU18
+Cancelando cita y liberando recursos
+Nombre
+Cancelando cita y liberando recursos
+Actor(es)
+Paciente / Profesional
+Resumen
+Al anularse una cita con su motivo, el sistema libera el bloque horario e inmediatamente notifica a quienes esperan un cupo.
+Frecuencia
+Media
+Precondiciones
+Debe existir una cita agendada o confirmada; para el paciente, dentro del plazo mínimo de anticipación parametrizado.
+Descripción
+El actor solicita la anulación de una cita y ratifica su decisión indicando el motivo en el diálogo de confirmación [Excepción 1], el Sistema actualiza la cita a estado CANCELADA_PACIENTE o CANCELADA_PROFESIONAL según quién la anula, con su motivo, liberando el bloque horario para nuevas reservas [Excepción 2], el actor visualiza la confirmación de cancelación y el estado actualizado de su cronograma personal [Excepción 3], el Sistema identifica a los pacientes en lista de espera de ese bloque y les envía la notificación de cupo liberado [Excepción 4].
+Excepciones
+Excepción 1: La petición de anulación del paciente se realiza fuera del plazo reglamentario parametrizado por la institución. El Sistema restringe la acción y muestra un mensaje informativo sobre la imposibilidad de cancelar con tan poca antelación. El actor desiste de la operación o contacta directamente al centro.
+Excepción 2: Se produce un fallo de persistencia al intentar actualizar la cita en la base de datos. El Sistema revierte la transacción y solicita un reintento manual. El actor presiona nuevamente el botón de confirmar anulación.
+Excepción 3: La interfaz del actor no logra renderizar el resumen de la operación debido a un fallo de visualización. El Sistema registra un error de carga en el log del cliente. El actor refresca la aplicación para verificar en su panel que la cita figura como cancelada.
+Excepción 4: El servicio de notificaciones falla al intentar avisar a los pacientes en lista de espera. El Sistema registra el fallo y mantiene la cancelación. El actor finaliza su sesión tras recibir la confirmación local de la baja.
+Poscondiciones
+El bloque queda libre, la cancelación queda trazada con su responsable y motivo, y la oportunidad de atención es notificada a quienes estén inscritos en la lista de espera.
+Dependencias
+RF17, RF18, RF19, RF20, RF22, RNF11
+
+════════════════════════════════════════════════════════════════════
+
+CU20
+Transicionando máquina de estados de cita
+Nombre
+Transicionando máquina de estados de cita
+Actor(es)
+Paciente, Profesional, Administrador
+Resumen
+El sistema gestiona el ciclo de vida de la cita mediante los siete estados AGENDADA, CONFIRMADA, EN_CURSO, REALIZADA, INASISTENCIA, CANCELADA_PACIENTE y CANCELADA_PROFESIONAL, validando cada transición y quién la ejecuta.
+Frecuencia
+Muy Alta
+Precondiciones
+Una cita es creada.
+Descripción
+El actor ejecuta una acción de cambio de estado sobre una cita propia (el profesional: confirmar, iniciar, registrar inasistencia, finalizar o cancelar; el paciente: cancelar) [Excepción 1], el Sistema verifica que el actor sea el paciente o el profesional de la cita y evalúa la lógica de la máquina de estados para determinar la fase correspondiente dentro del ciclo de vida [Excepción 2], el actor observa la actualización visual del estado en su tablero de gestión para confirmar que el evento fue procesado correctamente [Excepción 3], el Sistema persiste el nuevo estado (una cancelación queda como CANCELADA_PACIENTE o CANCELADA_PROFESIONAL según el rol del actor), registra la trazabilidad con responsable y motivo (CU22), descuenta la sesión del paquete cuando la cita se realiza o registra inasistencia (CU76), notifica a ambos participantes y, si la cita se canceló, avisa a la lista de espera [Excepción 4].
+Excepciones
+Excepción 1: El actor intenta realizar una transición manual sobre una cita que ya se encuentra en un estado terminal (REALIZADA, INASISTENCIA o cualquiera de las dos cancelaciones). El Sistema bloquea la interacción y muestra un mensaje de acción no permitida. El actor selecciona una cita activa para operar sobre ella.
+Excepción 2: El evento de entrada no cumple con las reglas de negocio necesarias para la transición solicitada, o la cita pertenece a otro profesional. El Sistema detiene el cambio de fase, muestra la cita como bloqueada y registra un error de validación de flujo lógico. El actor verifica los requisitos previos necesarios para habilitar dicho estado.
+Excepción 3: La latencia de red impide que el actor visualice el cambio de estado en la interfaz de manera inmediata. El Sistema procesa la transacción exitosamente en el servidor. El actor refresca la aplicación para sincronizar la vista con los datos del controlador.
+Excepción 4: El motor de base de datos no logra guardar el nuevo estado debido a un fallo de persistencia o tiempo de espera agotado. El Sistema revierte la transacción, emite una alerta de error crítica y genera un reporte técnico automático. El actor contacta al soporte técnico para informar sobre la falla en el registro del estado.
+Poscondiciones
+La cita refleja exactamente su fase dentro del ciclo de vida de la atención.
+Dependencias
+RF17, RF18, RF20, RF22, RF76, RNF18
+
+════════════════════════════════════════════════════════════════════
+
+CU22
+Registrando trazabilidad de transiciones de agenda
+Nombre
+Registrando trazabilidad de transiciones de agenda
+Actor(es)
+Paciente, Profesional, Administrador
+Resumen
+El sistema guarda un log por cada modificación o cambio de estado de una cita, documentando el responsable y el motivo, y permite consultarlo desde la ficha del paciente.
+Frecuencia
+Muy Alta
+Precondiciones
+Se ejecuta cualquier cambio de estado o reprogramación de una cita.
+Descripción
+El Paciente, Profesional, Administrador ejecuta una modificación o un cambio de estado sobre una cita médica dentro del módulo de agenda [Excepción 1], el Sistema detecta la transición de datos e inicia la captura automática del ID del responsable, su rol, el Timestamp y la IP de origen [Excepción 2], el Paciente, Profesional, Administrador ingresa la justificación obligatoria del movimiento cuando se trata de una cancelación o reprogramación [Excepción 3], el Sistema valida la integridad de los metadatos y persiste el log de auditoría en el repositorio inmutable, dentro de la misma transacción que el cambio, para garantizar la trazabilidad [Excepción 4].
+Excepciones
+Excepción 1: El Paciente, Profesional o Administrador intenta realizar un cambio de estado sobre una cita que ya posee un estado terminal no modificable. El Sistema bloquea la edición y muestra un mensaje de restricción de flujo. El actor selecciona una cita válida para su edición.
+Excepción 2: El Sistema no logra obtener la información del actor responsable debido a una pérdida de contexto en la sesión. El Sistema omite la modificación de la cita y lanza una advertencia de seguridad. El actor reinicia su sesión para recuperar sus credenciales.
+Excepción 3: El Paciente, Profesional o Administrador deja el campo de justificación vacío antes de intentar guardar una cancelación o reprogramación. El Sistema impide la transición de estado y resalta el campo obligatorio. El actor redacta el motivo del cambio para proceder.
+Excepción 4: El sistema experimenta un fallo de persistencia durante el registro del log. El Sistema revierte la operación completa y notifica que el cambio no pudo aplicarse. El actor reintenta la operación.
+Poscondiciones
+Queda un historial detallado para auditoría de agenda, consultable por el Profesional o el Administrador desde el historial del paciente.
+Dependencias
+RF17, RF18, RF20, RF22, RNF18
+
+════════════════════════════════════════════════════════════════════
+
+CU23
+Ejecutando entrevista clínica automatizada de triaje
+Nombre
+Ejecutando entrevista clínica automatizada de triaje
+Actor(es)
+Paciente
+Resumen
+Previo a su sesión, el paciente responde un árbol de decisión dinámico que sistematiza la captura de sus síntomas y antecedentes, con posibilidad de reanudar la entrevista donde la dejó.
+Frecuencia
+Alta
+Precondiciones
+El paciente está autenticado y aceptó el Disclaimer Legal para este ciclo de entrevista (CU27).
+Descripción
+El actor accede al módulo de entrevista previa desde su inicio para comenzar la evaluación automatizada [Excepción 1], el Sistema activa la interfaz dinámica y despliega preguntas secuenciales desde un árbol de decisión (motivo de consulta, rama específica del motivo, tiempo de evolución, antecedentes patológicos, antecedentes quirúrgicos y alergias) utilizando lógica condicional basada en las respuestas previas [Excepción 2], el actor completa íntegramente la captura de su sintomatología y antecedentes médicos navegando por el árbol de decisión [Excepción 3], el Sistema valida el cierre del flujo de preguntas y finaliza el cuestionario marcando los datos como listos para su procesamiento clínico [Excepción 4].
+Excepciones
+Excepción 1: El paciente no ha aceptado el Disclaimer Legal del ciclo actual. El Sistema deniega el acceso a la entrevista. El actor acepta el disclaimer para continuar.
+Excepción 2: La lógica condicional del árbol de decisión experimenta un error de carga de reglas desde el servidor de aplicaciones. El Sistema registra el fallo de lógica y detiene la progresión del cuestionario. El actor refresca la página para reiniciar la carga de los componentes dinámicos.
+Excepción 3: El actor cierra la aplicación antes de terminar de responder. El Sistema conserva las respuestas parciales guardadas en cada paso y mantiene el triaje en estado "En progreso". El actor reingresa a la plataforma para retomar el proceso desde el último punto de guardado automático.
+Excepción 4: Se produce una falla de persistencia al intentar escribir el estado final del cuestionario en el repositorio de datos de salud. El Sistema notifica que la información no pudo ser estructurada satisfactoriamente. El actor presiona el botón de reintento de envío final.
+Poscondiciones
+La información es recolectada y lista para ser estructurada.
+Dependencias
+RF23, RF24, RF27
+
+════════════════════════════════════════════════════════════════════
+
+CU24
+Estructurando datos de sintomatología a Ficha Clínica
+Nombre
+Estructurando datos de sintomatología a Ficha Clínica
+Actor(es)
+Sistema (a partir de la entrevista completada por el Paciente)
+Resumen
+El sistema recibe los datos crudos del triaje al completarse la entrevista, los categoriza (zona anatómica, tiempo de evolución, antecedentes, alergias) y los integra automáticamente a la Anamnesis de la Ficha Clínica.
+Frecuencia
+Alta
+Precondiciones
+La entrevista clínica automatizada debe haber finalizado.
+Descripción
+El Paciente envía la entrevista completada [Excepción 1], el Sistema valida el formato de las respuestas y las categoriza por motivo de consulta, zona anatómica, intensidad, tiempo de evolución, antecedentes patológicos, antecedentes quirúrgicos y alergias según el modelo clínico [Excepción 2], el Sistema localiza la Ficha Clínica del paciente (creándola si no existe) y anexa el resumen estructurado al final de la Anamnesis, insertando alergias y antecedentes en sus registros específicos sin duplicar los existentes [Excepción 3], el Sistema confirma la integración y muestra al Paciente la vista previa de lo registrado, quedando disponible para revisión del Profesional en la pestaña Anamnesis [Excepción 4].
+Excepciones
+Excepción 1: El registro de paciente asociado a la cuenta no es localizado. El Sistema emite un error de referencia no encontrada. El Paciente contacta a soporte técnico.
+Excepción 2: Los datos del triaje presentan un formato incompatible con el motor de mapeo. El Sistema aborta el proceso y notifica una falla de integridad de datos. El Paciente reinicia la entrevista.
+Excepción 3: Ciertos datos recolectados no pueden ser clasificados bajo las reglas de categorización existentes. El Sistema agrupa la información ambigua en una sección "sin clasificar" dentro del resumen. El Profesional reclasifica manualmente los datos dentro de la anamnesis.
+Excepción 4: La base de datos de la Ficha Clínica falla durante el intento de persistencia. El Sistema revierte la integración y conserva las respuestas ya guardadas para reintentar. El Paciente reintenta el envío transcurrido un tiempo prudencial.
+Poscondiciones
+La sección de Anamnesis del paciente queda complementada con los datos estructurados del triaje para su sesión.
+Dependencias
+RF23, RF24, RF28, RF29
+
+════════════════════════════════════════════════════════════════════
+
+CU27
+Registrando aceptación de disclaimer legal
+Nombre
+Registrando aceptación de disclaimer legal
+Actor(es)
+Paciente
+Resumen
+Validación obligatoria del descargo de responsabilidad antes de cada ciclo de la entrevista automatizada.
+Frecuencia
+Media, una vez por cada ciclo de entrevista automatizada.
+Precondiciones
+El Paciente debe haber iniciado sesión y solicitado el inicio del triaje.
+Descripción
+El Sistema despliega el Disclaimer Legal vigente informando sobre la naturaleza de soporte de la herramienta [Excepción 1], el actor selecciona la opción de aceptación explícita [Excepción 2], el Sistema registra la aceptación vinculada al ID del actor con su marca temporal y la versión del texto, y desbloquea el inicio de la entrevista automatizada [Excepción 3].
+Excepciones
+Excepción 1: El Sistema falla al cargar el texto legal desde el servidor. El Sistema bloquea el flujo de avance. El actor reintenta la carga del módulo.
+Excepción 2: El actor selecciona la opción de rechazo. El Sistema bloquea el acceso a la entrevista. El actor es redirigido a la interfaz de inicio.
+Excepción 3: El Sistema detecta un fallo en el registro de la aceptación con su Timestamp. El Sistema deniega la activación del triaje. El actor reintenta la aceptación o solicita soporte técnico.
+Poscondiciones
+El consentimiento legal queda almacenado con marca temporal, vigente para un ciclo de entrevista, y se habilita la captura de datos clínicos.
+Dependencias
+RF27, RNF05.
+
+════════════════════════════════════════════════════════════════════
+
+CU28
+Consolidando historial en ficha clínica electrónica
+Nombre
+Consolidando historial en ficha clínica electrónica
+Actor(es)
+Profesional
+Resumen
+Integración cronológica de la historia de salud del paciente en una Ficha Clínica única organizada en pestañas: historial, anamnesis, episodios, sesión clínica y pautas.
+Frecuencia
+Muy Alta, ejecutada en cada revisión de paciente o sesión clínica.
+Precondiciones
+El Paciente está vinculado al Profesional mediante un episodio clínico o una cita vigente.
+Descripción
+El Profesional solicita acceso a la Ficha Clínica Electrónica de un paciente asignado desde su nómina o desde Mi Jornada [Excepción 1], el Sistema verifica la vinculación y recupera la totalidad del historial: datos del paciente (respetando su configuración de privacidad), citas propias y de otros profesionales, episodios clínicos, evoluciones con sus correcciones versionadas y documentos multimedia, organizándolos cronológicamente [Excepción 2], el Profesional visualiza la interfaz unificada de trayectoria clínica, con las citas de otros profesionales en modo bloqueado, y navega entre las pestañas de la ficha [Excepción 3].
+Excepciones
+Excepción 1: El Profesional intenta acceder a un paciente no vinculado. El Sistema deniega el acceso basándose en la política de permisos. El Profesional solicita la asignación al Administrador.
+Excepción 2: El Sistema detecta un error de conexión con el servicio de base de datos. El Sistema emite un código de error de persistencia y ofrece reintentar. El Profesional reintenta la consulta.
+Excepción 3: El repositorio multimedia no se encuentra configurado o disponible. El Sistema carga únicamente los registros de texto. El Profesional visualiza un aviso de indisponibilidad temporal de los archivos.
+Poscondiciones
+El Profesional visualiza la trayectoria clínica integral para la toma de decisiones.
+Dependencias
+RF09, RF12, RF28, RF33, RF78.
+
+════════════════════════════════════════════════════════════════════
+
+CU29
+Registrando antecedentes en evaluación inicial
+Nombre
+Registrando antecedentes en evaluación inicial
+Actor(es)
+Profesional
+Resumen
+Captura estructurada de datos de la Anamnesis en campos parametrizados del sistema, complementando lo aportado por el triaje y la plantilla de la especialidad.
+Frecuencia
+Alta, realizada en la primera sesión del Episodio Clínico.
+Precondiciones
+Profesional autenticado con acceso a la Ficha Clínica del paciente.
+Descripción
+El Profesional revisa la información precargada desde el triaje y la plantilla de su especialidad, e ingresa la anamnesis, las alergias y los antecedentes patológicos y quirúrgicos en los campos de entrada específicos de la Anamnesis [Excepción 1], el Sistema valida la integridad sintáctica y obligatoriedad de los datos [Excepción 2], el Profesional ejecuta el comando de guardado persistiendo la evaluación en el repositorio digital junto con la versión de la ficha [Excepción 3].
+Excepciones
+Excepción 1: El Profesional ingresa una cadena de caracteres que excede el límite del campo. El Sistema trunca el texto e informa el límite. El Profesional ajusta la redacción.
+Excepción 2: El Sistema identifica campos obligatorios vacíos. El Sistema resalta los bloques pendientes en la Vista. El Profesional completa la información faltante.
+Excepción 3: El Sistema detecta una colisión de escritura porque la ficha fue modificada por otro usuario desde que se cargó. El Sistema bloquea la persistencia e informa el conflicto. El Profesional recarga la ficha y vuelve a guardar.
+Poscondiciones
+Los antecedentes quedan estructurados y disponibles en la Ficha Clínica Electrónica.
+Dependencias
+RF24, RF28, RF29, RF77, RNF07.
+
+════════════════════════════════════════════════════════════════════
+
+CU30
+Asegurando inalterabilidad de registros clínicos
+Nombre
+Asegurando inalterabilidad de registros clínicos
+Actor(es)
+Profesional
+Resumen
+Aplicación de restricciones técnicas que impiden la edición o eliminación de notas clínicas finalizadas; las correcciones posteriores solo pueden anexarse como versiones.
+Frecuencia
+Muy Alta, al finalizar cada prestación de salud.
+Precondiciones
+Evolución Clínica con la intervención registrada y una atención en curso para el episodio.
+Descripción
+El Profesional finaliza el registro clínico desde el paso de cierre de la Sesión Clínica y confirma el aviso de inalterabilidad, aplicándose la Firma Digital Simple generada desde su perfil [Excepción 1], el Sistema cambia el estado del registro a Finalizado aplicando la propiedad técnica de Inalterabilidad [Excepción 2], el Profesional intenta realizar una modificación o eliminación sobre el registro sellado [Excepción 3], el Sistema deniega la petición, registra el intento en el log inmutable y ofrece anexar una corrección versionada (CU31) [Excepción 4].
+Excepciones
+Excepción 1: El Profesional no cuenta con número de registro de la Superintendencia de Salud en su perfil. El Sistema bloquea el sellado del documento. El Profesional actualiza su perfil.
+Excepción 2: El Sistema falla al asignar el estado Finalizado por error del Controlador. El Sistema mantiene el registro abierto. El Profesional reporta la incidencia técnica.
+Excepción 3: El Profesional intenta editar el registro tras un periodo de inactividad. El Sistema detecta que el token de sesión ha expirado y deniega el acceso a la ruta. El Profesional renueva sus credenciales y reintenta la edición, siendo finalmente bloqueado por la inalterabilidad del registro y auditado por el Sistema.
+Excepción 4: El Sistema detecta un intento de vulneración de la base de datos para borrar el log. El Sistema activa el protocolo de seguridad y guarda una alerta crítica.
+Poscondiciones
+El registro clínico original queda protegido contra manipulaciones posteriores.
+Dependencias
+RF30, RF31, RF36, RNF07.
+
+════════════════════════════════════════════════════════════════════
+
+CU31
+Gestionando versionado de correcciones auditadas
+Nombre
+Gestionando versionado de correcciones auditadas
+Actor(es)
+Profesional
+Resumen
+Creación de nuevas versiones indexadas para registros cerrados sin alterar el documento original.
+Frecuencia
+Baja, ejecutada ante la detección de errores post-firma.
+Precondiciones
+El registro clínico original debe estar en estado Finalizado.
+Descripción
+El Profesional selecciona un registro clínico inalterable desde el historial del paciente solicitando la anexión de una corrección [Excepción 1], el Sistema habilita un nuevo campo de texto vinculado al documento base [Excepción 2], el Profesional redacta la aclaración necesaria y guarda la entrada [Excepción 3], el Sistema genera una nueva versión indexada preservando el original íntegro para auditoría [Excepción 4].
+Excepciones
+Excepción 1: El Profesional carece de permisos de autoría sobre el registro. El Sistema bloquea la opción de corrección y registra el intento. El Profesional solicita acceso al Administrador.
+Excepción 2: El Sistema detecta que el registro ya posee el número máximo de versiones permitidas. El Sistema deniega la nueva anexión. El Profesional contacta al Administrador.
+Excepción 3: El Profesional intenta guardar una corrección vacía. El Sistema emite un mensaje de validación. El Profesional ingresa el texto descriptivo.
+Excepción 4: El Sistema falla al vincular la nueva versión con el registro clínico. El Sistema cancela la operación. El Profesional reintenta el guardado.
+Poscondiciones
+Se dispone de una nueva versión del documento clínico garantizando la trazabilidad total.
+Dependencias
+RF30, RF31.
+
+════════════════════════════════════════════════════════════════════
+
+CU32
+Definiendo metas y objetivos terapéuticos
+Nombre
+Definiendo metas y objetivos terapéuticos
+Actor(es)
+Profesional
+Resumen
+Parametrización de metas clínicas cuantitativas por episodio y registro del avance del paciente en cada sesión.
+Frecuencia
+Media, se actualiza en cada sesión clínica realizada.
+Precondiciones
+Profesional autenticado, operando en la Sesión Clínica de un episodio con una atención en curso.
+Descripción
+El Profesional define las metas clínicas cuantitativas (descripción, valor meta y unidad) para el Episodio Clínico en el paso de avance de la Sesión Clínica [Excepción 1], el Sistema habilita los campos de seguimiento vinculados a las metas del episodio [Excepción 2], el Profesional ingresa el valor actual correspondiente al avance observado durante la atención [Excepción 3], el Sistema integra el dato cuantitativo en la ficha clínica y actualiza el porcentaje de cumplimiento de la meta [Excepción 4].
+Excepciones
+Excepción 1: El Profesional define una meta sin valor numérico o sin unidad de medida. El Sistema emite una alerta de sugerencia de cuantificación. El Profesional ajusta el criterio de la meta.
+Excepción 2: El Sistema detecta lentitud al cargar el historial de metas previas. El Sistema inyecta un componente de carga visual. El Profesional aguarda la habilitación de los campos.
+Excepción 3: El Profesional ingresa un valor de avance superior a la meta definida (más del cien por ciento). El Sistema bloquea la entrada de datos. El Profesional corrige el valor numérico.
+Excepción 4: El Sistema detecta un fallo al recalcular el porcentaje en la interfaz. El Sistema persiste el dato en la ficha emitiendo un aviso visual. El Profesional recarga la sesión clínica.
+Poscondiciones
+El nivel de cumplimiento queda registrado para el análisis de evolución sintomatológica.
+Dependencias
+RF28, RF32.
+
+════════════════════════════════════════════════════════════════════
+
+CU33
+Almacenando archivos en repositorio multimedia
+Nombre
+Almacenando archivos en repositorio multimedia
+Actor(es)
+Profesional
+Resumen
+Carga y asociación persistente de archivos externos a la historia de salud del paciente, almacenando el archivo en el repositorio en la nube y sus metadatos en la Ficha Clínica.
+Frecuencia
+Media, según la necesidad de adjuntar exámenes externos.
+Precondiciones
+Archivo disponible en el Dispositivo, repositorio multimedia configurado y Profesional con acceso a la ficha del paciente.
+Descripción
+El Profesional selecciona el documento desde el Dispositivo (archivos o galería) solicitando la carga multimedia [Excepción 1], el Sistema valida que la extensión corresponda a los formatos permitidos (imágenes JPG, PNG, WEBP, HEIC y GIF; documentos PDF y DOCX; video MP4 y MOV) y que el tamaño no supere el límite parametrizado, y habilita el control de envío [Excepción 2], el Profesional indica la categoría y ejecuta el comando de confirmación para iniciar la transferencia [Excepción 3], el Sistema transfiere el archivo al repositorio en la nube y registra su URL y metadatos asociados a la Ficha Clínica del paciente y, opcionalmente, a un episodio [Excepción 4].
+Excepciones
+Excepción 1: El tamaño del archivo excede el límite de Megabytes parametrizado. El Sistema rechaza la solicitud de carga inicial. El Profesional comprime el documento.
+Excepción 2: El Profesional intenta cargar un archivo con un formato no soportado. El Sistema bloquea la acción por seguridad e informa los formatos aceptados. El Profesional selecciona un formato permitido.
+Excepción 3: El Profesional cancela la confirmación antes de iniciar la transferencia. El Sistema descarta la selección. El Profesional selecciona un nuevo archivo.
+Excepción 4: El Sistema pierde conexión con el repositorio en la nube durante la transferencia de datos. El Sistema interrumpe la carga sin persistir ningún registro. El Profesional reinicia el proceso de carga.
+Poscondiciones
+El archivo queda disponible para consulta cronológica en el historial clínico.
+Dependencias
+RF28, RF33, RF34.
+
+════════════════════════════════════════════════════════════════════
+
+CU34
+Categorizando documentos mediante metadatos
+Nombre
+Categorizando documentos mediante metadatos
+Actor(es)
+Profesional
+Resumen
+Asignación de etiquetas taxonómicas para optimizar el filtrado y recuperación de información.
+Frecuencia
+Media, asociada a la carga de cada nuevo documento.
+Precondiciones
+Documento cargado exitosamente en el repositorio multimedia.
+Descripción
+El Sistema habilita el menú de clasificación taxonómica del archivo en la Vista (examen imagenológico, examen de laboratorio, informe médico externo, receta, consentimiento firmado, otro documento clínico o sin clasificar) [Excepción 1], el Profesional selecciona la categoría técnica correspondiente basándose en la naturaleza del documento, al cargarlo o posteriormente [Excepción 2], el Sistema registra la categoría del archivo habilitando su recuperación selectiva mediante el filtro por categoría [Excepción 3].
+Excepciones
+Excepción 1: El Sistema falla al cargar las categorías desde el Controlador. El Sistema muestra una lista vacía. El Profesional recarga el módulo.
+Excepción 2: El Profesional omite la selección de categoría. El Sistema asigna por defecto el metadato Sin Clasificar. El Profesional finaliza el proceso.
+Excepción 3: El Sistema falla al aplicar el filtro por categoría. El Sistema muestra el listado completo de documentos. El Profesional realiza la búsqueda visual.
+Poscondiciones
+El archivo queda clasificado y es recuperable mediante el filtro por categoría del repositorio.
+Dependencias
+RF33, RF34, RNF12.
+
+════════════════════════════════════════════════════════════════════
+
+CU35
+Visualizando archivos con visor embebido
+Nombre
+Visualizando archivos con visor embebido
+Actor(es)
+Paciente, Profesional, Administrador
+Resumen
+Permite previsualizar documentos sin requerir la descarga persistente en el hardware local.
+Frecuencia
+Alta, cada vez que se requiere consultar un examen o registro.
+Precondiciones
+El actor cuenta con los permisos de acceso definidos por el RBAC: el paciente sobre sus propios documentos, el profesional sobre los de sus pacientes vinculados, el administrador sobre todos.
+Descripción
+El actor selecciona el archivo clínico que desea consultar en el repositorio [Excepción 1], el Sistema valida los permisos de visualización del perfil solicitante en la base de datos [Excepción 2], el actor solicita la apertura gráfica del documento [Excepción 3], el Sistema renderiza el contenido según su tipo (imagen en visor nativo, PDF página a página, documento Word y video en visor web embebido) y registra la visualización en la bitácora de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El actor selecciona un archivo cuyo contenido no puede procesarse. El Sistema informa el error de carga. El actor selecciona un archivo válido.
+Excepción 2: El Sistema detecta un intento de acceso sin autorización. El Sistema deniega la visualización y registra el evento en el log de seguridad. El actor retorna al menú.
+Excepción 3: El actor cancela la petición antes del renderizado. El Sistema aborta la carga en memoria. El actor navega hacia otra sección.
+Excepción 4: El Sistema experimenta falla en el renderizador embebido. El Sistema emite un código de error de carga. El actor recarga la página.
+Poscondiciones
+Se accede a la información clínica sin comprometer la seguridad de los datos en el hardware local.
+Dependencias
+RF12, RF33, RF35, RNF19.
+
+════════════════════════════════════════════════════════════════════
+
+CU36
+Firmando digitalmente documentos clínicos
+Nombre
+Firmando digitalmente documentos clínicos
+Actor(es)
+Profesional
+Resumen
+Acreditación de autoría mediante el registro automático de Nombre, RUT, Registro Profesional y Timestamp al cerrar la evolución clínica (misma operación que la inalterabilidad del CU30).
+Frecuencia
+Muy Alta, obligatorio en cada cierre de sesión clínica.
+Precondiciones
+El Profesional posee autenticación activa mediante credenciales válidas y la intervención de la sesión está registrada.
+Descripción
+El Profesional solicita el cierre y firma del documento clínico desde el paso final de la Sesión Clínica [Excepción 1], el Sistema captura el Nombre, RUT y Número de Registro Profesional del autor desde su perfil [Excepción 2], el Profesional aprueba la operación confirmando su intención de firma en el aviso de inalterabilidad [Excepción 3], el Sistema genera un Timestamp automático y vincula los datos al documento mediante la Firma Digital Simple [Excepción 4].
+Excepciones
+Excepción 1: El Profesional intenta firmar un documento con campos obligatorios vacíos. El Sistema mantiene bloqueado el paso de firma. El Profesional completa el formulario.
+Excepción 2: El Sistema detecta falta de acreditación en la Superintendencia de Salud. El Sistema impide la firma. El Profesional actualiza su perfil.
+Excepción 3: El Profesional rechaza el aviso de inalterabilidad. El Sistema cancela la firma. El Profesional continúa editando el documento.
+Excepción 4: El Sistema experimenta un fallo de escritura al persistir la firma. El Sistema suspende el guardado e informa. El Profesional reintenta la operación de sellado.
+Poscondiciones
+El documento queda legalmente firmado y el autor identificado de forma unívoca.
+Dependencias
+RF02, RF30, RF36.
+
+════════════════════════════════════════════════════════════════════
+
+CU38
+Registrando marcas temporales de la prestación
+Nombre
+Registrando marcas temporales de la prestación
+Actor(es)
+Profesional
+Resumen
+Captura del Timestamp de inicio y término para calcular la duración total de la atención, vinculando la cita al episodio clínico y descontando la sesión del paquete del paciente.
+Frecuencia
+Muy Alta, ejecutada en cada sesión clínica.
+Precondiciones
+La cita del Profesional se encuentra en estado CONFIRMADA.
+Descripción
+El Profesional ejecuta la acción de iniciar atención desde el historial del paciente [Excepción 1], el Sistema registra automáticamente el Timestamp de inicio, cambia la cita a EN_CURSO y la vincula al episodio clínico abierto más reciente del paciente con ese profesional (si no existe, guía a crearlo) [Excepción 2], el Profesional marca la finalización del encuentro clínico tras concluir la intervención [Excepción 3], el Sistema registra el Timestamp de término, cambia la cita a REALIZADA, calcula la duración total de la prestación de salud y descuenta la sesión del paquete del paciente [Excepción 4].
+Excepciones
+Excepción 1: El Profesional inicia la atención antes del Bloque Horario agendado. El Sistema despliega un aviso de auditoría temporal. El Profesional confirma el inicio anticipado.
+Excepción 2: La hora automática del servidor no es utilizable. El Sistema exige una marca manual con justificación de trazabilidad. El Profesional registra la hora de forma manual justificada.
+Excepción 3: El Profesional abandona la interfaz sin marcar el término. El Sistema mantiene la cita EN_CURSO y muestra una barra persistente de atención en curso en toda la aplicación. El Profesional marca el cierre en su siguiente acceso.
+Excepción 4: El Sistema calcula una duración negativa por una marca de término anterior al inicio. El Sistema bloquea la persistencia temporal y registra el evento. El Profesional corrige la marca o contacta a soporte.
+Poscondiciones
+La duración de la sesión y sus marcas quedan almacenadas de forma inmutable, y la cita queda vinculada al episodio clínico.
+Dependencias
+RF20, RF38, RF41, RF76, RF78.
+
+════════════════════════════════════════════════════════════════════
+
+CU39
+Validando presencialidad mediante coordenadas GPS
+Nombre
+Validando presencialidad mediante coordenadas GPS
+Actor(es)
+Profesional, Paciente
+Resumen
+Captura y validación de geolocalización cruzada entre los dispositivos de ambos actores al inicio y término de sesiones domiciliarias.
+Frecuencia
+Alta, requerida en sesiones de modalidad domiciliaria.
+Precondiciones
+Dispositivos con hardware de geolocalización activo y una cita confirmada o en curso en modalidad a domicilio.
+Descripción
+El actor activa el comando de Check-in desde la pantalla de evidencia de sesión en su respectivo terminal [Excepción 1], el Sistema captura las coordenadas GPS y las contrasta con la marca equivalente del otro actor, validando que la distancia entre ambos dispositivos no supere el radio parametrizado [Excepción 2], el actor activa el comando de término de sesión tras la atención [Excepción 3], el Sistema registra nuevamente las coordenadas certificando la permanencia durante el Bloque Horario [Excepción 4].
+Excepciones
+Excepción 1: Un actor tiene el hardware GPS desactivado. El Sistema impide el registro de la marca. El actor habilita los servicios de ubicación en su terminal.
+Excepción 2: El Sistema detecta que la distancia entre los dispositivos supera el radio parametrizado. El Sistema rechaza la marca de inicio y registra el evento en la bitácora. Los actores verifican su ubicación y reintentan.
+Excepción 3: El terminal del Paciente pierde energía antes del cierre. El Sistema no recibe su marca de término. El Profesional ejecuta un cierre manual justificado en la validación de la sesión (CU41).
+Excepción 4: El Sistema detecta que el Profesional abandonó el radio de ubicación antes del término. El Sistema registra la marca con una bandera roja de auditoría. El Profesional redacta una justificación operativa al validar la sesión.
+Poscondiciones
+La ubicación de la prestación queda certificada y respaldada en la evidencia de la cita.
+Dependencias
+RF38, RF39, RF41.
+
+════════════════════════════════════════════════════════════════════
+
+CU40
+Documentando intervención y respuesta fisiológica
+Nombre
+Documentando intervención y respuesta fisiológica
+Actor(es)
+Profesional
+Resumen
+Registro detallado de técnicas aplicadas y respuesta fisiológica en el primer paso de la Sesión Clínica, que integra en una sola interfaz la intervención, el avance de metas y el cierre firmado.
+Frecuencia
+Muy Alta, durante el transcurso de cada sesión clínica.
+Precondiciones
+La cita se encuentra en estado EN_CURSO y vinculada al episodio clínico.
+Descripción
+El Profesional accede a la pestaña Sesión Clínica del episodio del paciente [Excepción 1], el Sistema muestra el contexto de la sesión (paciente, especialidad y cita en curso) y habilita el primer paso de registro [Excepción 2], el Profesional documenta las técnicas clínicas y la respuesta fisiológica observada en el Paciente y guarda el registro [Excepción 3], el Sistema integra estos datos en la nota técnica de la Evolución Clínica y habilita los pasos siguientes: avance de metas (CU32) y cierre con firma (CU30 / CU36) [Excepción 4].
+Excepciones
+Excepción 1: El Profesional accede a una sesión sin una cita EN CURSO vinculada. El Sistema carga los campos en modo de solo lectura e indica cómo iniciar la atención. El Profesional inicia la atención desde el historial del paciente.
+Excepción 2: El Sistema no logra recuperar la Especialidad del servidor. El Sistema muestra la especialidad como General. El Profesional continúa con los campos estándar.
+Excepción 3: El Profesional redacta un reporte con señales de deterioro clínico grave. El Sistema lo detecta y marca el registro con alerta prioritaria en la bitácora. El Profesional activa el flujo de atención prioritaria.
+Excepción 4: El Sistema detecta pérdida momentánea de red. El Sistema guarda un borrador local. El Profesional sincroniza al recuperar la conexión.
+Poscondiciones
+La intervención queda documentada de forma estructurada en la historia de salud.
+Dependencias
+RF30, RF32, RF36, RF38, RF40, RF78, RNF07, RNF16
+
+════════════════════════════════════════════════════════════════════
+
+CU41
+Validando sesión mediante protocolo multi-factor
+Nombre
+Validando sesión mediante protocolo multi-factor
+Actor(es)
+Profesional, Administrador
+Resumen
+Certificación de la sesión basada en la coincidencia cruzada de registros de Check-in y marcas temporales de ambos participantes; las discrepancias se derivan al Administrador.
+Frecuencia
+Muy Alta, ejecutada al finalizar cada sesión clínica.
+Precondiciones
+La cita se encuentra en estado REALIZADA con marcas de presencia registradas y aún no certificada.
+Descripción
+El Profesional ejecuta el comando de validar sesión desde el historial del paciente [Excepción 1]. El Sistema analiza los factores cruzados: marca de inicio del profesional, presencia del paciente, diferencia entre ambas marcas dentro de la tolerancia parametrizada y coincidencia de coordenadas GPS dentro del radio en sesiones domiciliarias [Excepción 2]. El Profesional visualiza el resumen de factores y emite la confirmación final de cierre en su dispositivo [Excepción 3]. El Sistema registra la certificación de la sesión en la cita (fecha y tipo: multifactor o manual) y persiste el detalle de los factores en la bitácora de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El Sistema detecta que el Paciente omitió emitir su marca de término en su aplicación. El Sistema detiene la validación automática y habilita al Profesional para ejecutar un cierre manual con justificación obligatoria.
+Excepción 2: El Sistema identifica discrepancias críticas en los factores, como diferencia mayor a la tolerancia o coordenadas GPS no coincidentes. El Sistema suspende la validación, marca la sesión como suspendida con el detalle de las discrepancias y la deriva al Administrador, avisándole en la aplicación y por correo con los datos de contacto del paciente y del profesional. El Administrador revisa el caso en la bandeja de sesiones suspendidas y coordina la resolución; el Profesional puede luego certificar mediante cierre manual justificado.
+Excepción 3: El Profesional rechaza el resumen o pierde conexión de red antes de confirmar. El Sistema no persiste ninguna certificación; la sesión queda pendiente de validación.
+Excepción 4: El Sistema experimenta una falla de escritura al intentar guardar la certificación. El Sistema informa que el cierre quedó pendiente y solicita reintentar en unos minutos.
+Poscondiciones
+La sesión queda certificada una única vez y lista para procesos de reembolso financiero; si fue suspendida, queda visible para el Administrador hasta que se certifique.
+Dependencias
+RF38, RF39, RF41.
+
+════════════════════════════════════════════════════════════════════
+
+CU42
+Capturando firma manuscrita de conformidad
+Nombre
+Capturando firma manuscrita de conformidad
+Actor(es)
+Paciente, Profesional
+Resumen
+Captura del trazo de firma del Paciente en el terminal móvil del Profesional como respaldo de recepción del servicio.
+Frecuencia
+Alta, al término de sesiones en modalidad presencial.
+Precondiciones
+La atención está en curso o concluida y se requiere el cierre documental por parte del beneficiario.
+Descripción
+El Profesional habilita la interfaz de captura de firma en su hardware táctil [Excepción 1], el Sistema despliega el lienzo de dibujo junto al texto de declaración de conformidad [Excepción 2], el Paciente realiza el trazo gráfico de su firma sobre la pantalla del terminal [Excepción 3], el Sistema procesa la captura almacenando los trazos como evidencia inalterable vinculada a la sesión [Excepción 4].
+Excepciones
+Excepción 1: El terminal del Profesional carece de interfaz táctil. El Sistema bloquea la captura gráfica. El Profesional habilita la validación por correo electrónico, que envía la declaración de conformidad al paciente.
+Excepción 2: El Sistema no logra obtener la declaración legal. El Sistema bloquea el lienzo. El Profesional recarga el módulo de cierre.
+Excepción 3: El Paciente rechaza ejecutar la firma de conformidad. El Sistema habilita un campo de observaciones obligatorio. El Profesional ingresa la justificación del rechazo.
+Excepción 4: El Sistema detecta un trazo vacío o nulo. El Sistema rechaza el guardado. El Paciente dibuja el trazo nuevamente.
+Poscondiciones
+La firma manuscrita queda vinculada de forma persistente e irrepetible al registro de la sesión.
+Dependencias
+RF20, RF41, RF42.
+
+════════════════════════════════════════════════════════════════════
+
+CU43
+Registrando evidencia técnica de teleconsulta
+Nombre
+Registrando evidencia técnica de teleconsulta
+Actor(es)
+Profesional, Paciente
+Resumen
+Registro de metadatos de red y dispositivo para certificar la ejecución de prestaciones en modalidad virtual, cuya videollamada se realiza en una plataforma externa.
+Frecuencia
+Alta, requerida en sesiones de modalidad teleconsulta.
+Precondiciones
+La cita está en modalidad virtual, confirmada o en curso, y los actores inician la videollamada.
+Descripción
+Los actores inician la videollamada en la plataforma externa y declaran el inicio en la pantalla de evidencia de sesión [Excepción 1], el Sistema recolecta los metadatos técnicos de dirección IP, latencia de red, dispositivo y permisos de cámara y micrófono [Excepción 2], los actores declaran el término de la atención al finalizar la transmisión [Excepción 3], el Sistema genera un registro de auditoría inmutable con los segmentos de conexión vinculándolo a la cita [Excepción 4].
+Excepciones
+Excepción 1: El dispositivo de un actor deniega los permisos de cámara o micrófono. El Sistema registra la evidencia indicando los permisos denegados. El actor otorga los permisos y reintenta.
+Excepción 2: El Sistema detecta pérdida intermitente de conexión. El Sistema registra múltiples segmentos cortos. Los actores reconectan la llamada.
+Excepción 3: La conexión se interrumpe abruptamente por corte de energía o de red de un actor. El actor declara la reconexión al retomar. El Sistema registra un segmento adicional.
+Excepción 4: El Sistema sufre un error de escritura en la base de datos de auditoría. El Sistema conserva un respaldo temporal local en el dispositivo. La aplicación sincroniza la evidencia al volver a la pantalla.
+Poscondiciones
+Los metadatos de conexión técnica quedan persistidos como evidencia certificada de la teleconsulta.
+Dependencias
+RF41, RF43, RNF21.
+
+════════════════════════════════════════════════════════════════════
+
+CU46
+Seleccionando material en biblioteca centralizada
+Nombre
+Seleccionando material en biblioteca centralizada
+Actor(es)
+Profesional
+Resumen
+Búsqueda y selección de recursos digitales indexados para vincularlos a los ejercicios de una pauta.
+Frecuencia
+Alta, durante la planificación del trabajo autónomo del paciente.
+Precondiciones
+Existencia de material terapéutico categorizado en la biblioteca del sistema.
+Descripción
+El Profesional ingresa una cadena de texto en el buscador de la Biblioteca Centralizada desde la prescripción de una pauta [Excepción 1], el Sistema cruza el texto con el nombre, la categoría y el tipo de los recursos disponibles retornando una lista de resultados [Excepción 2], el Profesional selecciona el recurso para asociarlo a un ejercicio de la pauta [Excepción 3], el Sistema registra la selección del recurso asociándolo al ejercicio en la pauta en preparación [Excepción 4].
+Excepciones
+Excepción 1: El Profesional ingresa un término de búsqueda inexistente. El Sistema informa la falta de coincidencias. El Profesional limpia el filtro de texto.
+Excepción 2: El Sistema sufre una caída del motor de búsqueda indexada. El Sistema retorna el catálogo completo sin filtrar. El Profesional realiza búsqueda visual.
+Excepción 3: El Profesional intenta asociar un recurso que no existe en el catálogo. El Sistema rechaza la asociación e informa. El Profesional elige un recurso del listado.
+Excepción 4: El Sistema detecta que el recurso seleccionado fue marcado como obsoleto. El Sistema rechaza la asociación. El Profesional selecciona un recurso actualizado.
+Poscondiciones
+El material terapéutico queda seleccionado para vincularse a un ejercicio de la Pauta de Ejercicios.
+Dependencias
+RF46, RF47.
+
+════════════════════════════════════════════════════════════════════
+
+CU47
+Prescribiendo pautas de ejercicio técnico
+Nombre
+Prescribiendo pautas de ejercicio técnico
+Actor(es)
+Profesional
+Resumen
+Configuración de los ejercicios, sus parámetros (series, repeticiones y frecuencia) y la vigencia de la pauta para la rehabilitación autónoma.
+Frecuencia
+Alta, al asignar o ajustar el tratamiento físico del paciente.
+Precondiciones
+Profesional con sesión iniciada y un episodio clínico del paciente bajo su cartera.
+Descripción
+El Profesional ingresa a la pestaña Pautas de la ficha del paciente y selecciona el episodio clínico [Excepción 1], el Sistema habilita los campos de nombre y vigencia de la pauta y, por cada ejercicio, nombre, series, repeticiones, frecuencia (diaria o semanal) y material opcional de la biblioteca [Excepción 2], el Profesional define los parámetros técnicos y el periodo de vigencia de la rutina [Excepción 3], el Sistema empaqueta la configuración vinculándola al Episodio Clínico del paciente [Excepción 4].
+Excepciones
+Excepción 1: El Profesional intenta guardar una pauta sin ejercicios o con ejercicios repetidos. El Sistema bloquea el formulario e indica el problema. El Profesional completa la lista de ejercicios.
+Excepción 2: El Profesional no indica una frecuencia válida. El Sistema asigna frecuencia diaria por defecto. El Profesional ajusta la frecuencia si corresponde.
+Excepción 3: El Profesional ingresa valores no numéricos o menores a uno en series o repeticiones. El Sistema rechaza el guardado indicando el ejercicio en conflicto. El Profesional ingresa dígitos válidos.
+Excepción 4: El Sistema detecta que el episodio indicado no existe o no pertenece al profesional. El Sistema deniega la vinculación. El Profesional instancia el Episodio Clínico base.
+Poscondiciones
+El paciente dispone de una Pauta de Ejercicios estructurada y accesible desde su aplicación.
+Dependencias
+RF46, RF47, RF78.
+
+════════════════════════════════════════════════════════════════════
+
+CU48
+Registrando cumplimiento diario de tareas
+Nombre
+Registrando cumplimiento diario de tareas
+Actor(es)
+Paciente
+Resumen
+Confirmación asíncrona de la ejecución física de los ejercicios pautados, un registro por ejercicio y día.
+Frecuencia
+Muy Alta, ingresada de forma diaria por el beneficiario del tratamiento.
+Precondiciones
+El Paciente posee una Pauta de Ejercicios vigente y no expirada.
+Descripción
+El Paciente accede a la pantalla de sus ejercicios desde el menú principal [Excepción 1], el Sistema consulta la base de datos desplegando sus pautas con los ejercicios programados y su estado de cumplimiento del día [Excepción 2], el Paciente interactúa con los botones de verificación tras ejecutar cada tarea física [Excepción 3], el Sistema persiste la marca del día en el registro de cumplimiento de la pauta [Excepción 4].
+Excepciones
+Excepción 1: El Paciente accede a una pauta fuera de su rango de vigencia. El Sistema muestra la pauta como programada o expirada sin controles de marcado. El Paciente revisa las fechas de la pauta.
+Excepción 2: El Sistema detecta una falla de comunicación impidiendo la carga de la pauta. El Sistema activa la caché local, mostrando la última carga en modo de solo lectura. El Paciente reintenta la carga al recuperar conexión.
+Excepción 3: El Paciente intenta marcar tareas de días distintos al actual. El Sistema solo admite marcas para el día de hoy según la fecha del servidor. El Paciente se limita a la jornada presente.
+Excepción 4: El Sistema recibe múltiples marcas de verificación del mismo ejercicio por error de red. El Sistema aplica control anti-rebote guardando un solo registro por ejercicio y día. El Paciente confirma el guardado visual.
+Poscondiciones
+El servidor acumula los datos crudos para la posterior resolución algorítmica de la adherencia.
+Dependencias
+RF47, RF48.
+
+════════════════════════════════════════════════════════════════════
+
+CU49
+Controlando vigencia y ciclo de vida de pautas
+Nombre
+Controlando vigencia y ciclo de vida de pautas
+Actor(es)
+Paciente
+Resumen
+Revocación automatizada del acceso al material terapéutico y a las marcas de cumplimiento tras alcanzar el límite temporal de la pauta.
+Frecuencia
+En cada consulta de pautas, calculada a partir de las fechas de vigencia.
+Precondiciones
+Existencia de Pautas de Ejercicio con periodos de vigencia definidos.
+Descripción
+El Paciente ingresa a sus pautas solicitando la carga del contenido [Excepción 1], el Sistema evalúa la fecha de inicio y de expiración de cada pauta y determina su estado (programada, vigente o expirada) [Excepción 2], el Paciente recibe un renderizado condicional del contenido según ese estado [Excepción 3], el Sistema bloquea el acceso al material y a las marcas de cumplimiento de las pautas vencidas y las marca como expiradas en la base de datos [Excepción 4].
+Excepciones
+Excepción 1: El Paciente intenta marcar un ejercicio de una pauta expirada. El Sistema rechaza la marca indicando que la pauta terminó. El Paciente consulta al Profesional por una nueva pauta.
+Excepción 2: El Sistema detecta lentitud en el servidor al calcular la vigencia. El Sistema muestra la última carga disponible. El Paciente visualiza el contenido.
+Excepción 3: El Paciente intenta marcar un ejercicio de una pauta aún no iniciada. El Sistema rechaza la marca indicando la fecha de inicio. El Paciente espera al inicio de la pauta.
+Excepción 4: El Sistema falla al actualizar el estado de expiración en la base de datos. El Sistema mantiene el estado calculado en la respuesta y reintenta la persistencia en la próxima consulta. El Administrador revisa el log.
+Poscondiciones
+Los recursos multimedia y el flujo clínico quedan resguardados bajo la política de temporalidad del tratamiento.
+Dependencias
+RF47, RF49.
+
+════════════════════════════════════════════════════════════════════
+
+CU59
+Gestionando Parámetros Globales del Sistema
+Nombre
+Gestionando Parámetros Globales del Sistema
+Actor(es)
+Administrador
+Resumen
+Modificación centralizada de las variables maestras de la arquitectura de negocio, incluyendo aranceles, plazos de agenda, tolerancias de evidencia y límites de archivos y versiones; desde el mismo panel el Administrador inhabilita rangos de agenda de un profesional (CU16).
+Frecuencia
+Baja, sujeta a modificaciones de infraestructura o parámetros comerciales.
+Precondiciones
+El actor remite una petición de acceso sustentada por un token JWT con privilegios de rol Administrador.
+Descripción
+El Administrador solicita la lectura del panel de configuración maestra en la ruta protegida de la Vista [Excepción 1], el Sistema extrae las tuplas de parámetros vigentes desde la tabla central y las renderiza en los componentes de edición [Excepción 2], el Administrador inserta la modificación de las variables en el formulario y despacha la mutación [Excepción 3], el Sistema valida el esquema de los datos entrantes, aplica la actualización de la fila en la persistencia de la base de datos y registra el cambio de parámetros en la bitácora de auditoría [Excepción 4].
+Excepciones
+Excepción 1: El Administrador transmite un token JWT con firma invalidada por el servidor. El Sistema deniega la carga del módulo y registra el intento de acceso no autorizado en la bitácora. El Administrador ejecuta el protocolo de inicio de sesión.
+Excepción 2: El Administrador aplica un formato alfanumérico en campos parametrizados exclusivamente para el ingreso de números enteros. El Sistema bloquea la validación local del formulario.
+Excepción 3: El Administrador envía una modificación con una versión de datos desactualizada por cambios concurrentes. El Sistema bloquea la transacción por conflicto de concurrencia y registra el evento en la bitácora. El Administrador solicita la lectura del panel para resincronizar la interfaz y reintenta la mutación con éxito.
+Excepción 4: El Sistema falla al persistir el cambio en la base de datos. El Sistema deshace la transacción principal y registra el fallo de persistencia en la bitácora. El Administrador repite la ejecución del cambio.
+Poscondiciones
+Las alteraciones de variables modifican inmediatamente el comportamiento, los plazos y las tarifas calculadas en los flujos transaccionales de la red.
+Dependencias
+RF16, RF59, RNF20.
+
+════════════════════════════════════════════════════════════════════
+
+CU66
+Registrando y Validando Bonos de Cobertura
+Nombre
+Registrando y Validando Bonos de Cobertura
+Actor(es)
+Paciente
+Resumen
+Acreditación y persistencia del bono de cobertura de una cita, validado contra el Financiador a través de la capa adaptadora, determinando el copago del paciente.
+Frecuencia
+Alta, requerida para aplicar la cobertura previsional a cada cita clínica.
+Precondiciones
+La cita del paciente está agendada o confirmada, y existe un Financiador con convenio activo.
+Descripción
+El Paciente selecciona el Financiador e inserta el folio del bono en el formulario de pagos de la aplicación móvil [Excepción 1], el Sistema valida el formato del folio, encapsula las variables y dispara el payload hacia el servicio de validación del Financiador a través de la capa adaptadora [Excepción 2], el Paciente aguarda la resolución observando el indicador de estado de red [Excepción 3], el Sistema procesa el retorno afirmativo y persiste el bono validado con su monto de cobertura y copago [Excepción 4].
+Excepciones
+Excepción 1: El Paciente ingresa un folio que incumple el formato exigido. El Sistema detiene el envío renderizando el aviso en la interfaz. El Paciente corrige el formato del código.
+Excepción 2: El Sistema recibe del Financiador una respuesta de rechazo por discrepancia de autenticación. El Sistema registra el bono como no validado y lo informa. El Paciente verifica el folio con su institución o procede con la tarifa completa particular.
+Excepción 3: El Sistema alcanza el límite de espera sin respuesta del Financiador tras los reintentos automáticos. El Sistema informa que el bono no pudo registrarse. El Paciente reintenta más tarde.
+Excepción 4: El Sistema experimenta rechazo de escritura por bloqueos de tabla en la persistencia. El Sistema aplica un retardo progresivo y reintenta la escritura. El Sistema asienta el registro exitosamente.
+Poscondiciones
+El bono queda validado y el copago de la cita calculado; sin bono validado, la cita mantiene el arancel completo.
+Dependencias
+RF66, RF68, RF70, RNF14.
+
+════════════════════════════════════════════════════════════════════
+
+CU67
+Registrando Transacciones y Copagos
+Nombre
+Registrando Transacciones y Copagos
+Actor(es)
+Paciente
+Resumen
+Cálculo del copago según la cobertura del bono y liquidación mediante pasarela de pago; adquisición de planes de sesiones que alimentan el inventario del paciente.
+Frecuencia
+Alta, insertada en el flujo de cada cita o adquisición de planes de sesiones.
+Precondiciones
+El arancel de la prestación está parametrizado y la cita del paciente no ha sido pagada.
+Descripción
+El Paciente inicia el flujo de pago de una cita desde la pantalla de pagos [Excepción 1], el Sistema deduce la cobertura del bono validado (o aplica el arancel completo si no lo hay) y renderiza el Copago exigible [Excepción 2], el Paciente emite la instrucción de cargo indicando su método de pago [Excepción 3], el Sistema registra la transacción en el historial de pagos [Excepción 4]. Alternativamente, el Paciente adquiere un plan de 4, 8 o 12 sesiones con descuento, que el Sistema registra como paquete activo para el descuento de sesiones (CU76).
+Excepciones
+Excepción 1: El Paciente pierde conexión al proveedor de internet. El Sistema retiene el estado de la deuda. El Paciente recarga el flujo de pago.
+Excepción 2: El Sistema detecta una incongruencia donde el aporte previsional supera la tarifa. El Sistema congela el flujo comercial y registra una traza técnica para revisión. El Paciente contacta a la administración.
+Excepción 3: El Paciente emplea una credencial rechazada por la entidad bancaria. El Sistema registra el intento fallido. El Paciente reconfigura su método de pago.
+Excepción 4: El Sistema no recibe la confirmación de la pasarela tras el descuento de fondos. El Sistema deja la transacción en tránsito. El Sistema la concilia en el siguiente intento de pago sin volver a cobrar.
+Poscondiciones
+El registro de pagos del paciente y su inventario de sesiones quedan actualizados, asegurando la cuadratura.
+Dependencias
+RF59, RF66, RF67, RF76.
+
+════════════════════════════════════════════════════════════════════
+
+CU68
+Intercambiando Datos con Proveedor Externo
+Nombre
+Intercambiando Datos con Proveedor Externo
+Actor(es)
+Proveedor Externo
+Resumen
+Modificación estructural del formato de los paquetes de datos para asegurar interoperabilidad aislada con servicios de terceros.
+Frecuencia
+Muy Alta, operando como middleware para la validación de bonos con el Financiador; los proveedores OpenAI, I-Med y pasarela de pago quedan registrados en la capa para su conexión futura.
+Precondiciones
+El flujo de negocio gatilla un requerimiento de lectura o escritura que excede la arquitectura interna del ecosistema FRO Salud.
+Descripción
+El Sistema transmite la petición con la estructura de datos estandarizada hacia el Proveedor Externo [Excepción 1], el Proveedor Externo procesa la carga útil y retorna el paquete de datos con la respuesta operativa [Excepción 2], el Sistema recibe la información externa evaluando los tiempos de latencia de la transacción [Excepción 3], el Proveedor Externo entrega la estructura final, el Sistema transforma el modelo al estándar interno asegurando la integridad [Excepción 4] y persiste el registro de la transacción en la bitácora de auditoría.
+Excepciones
+Excepción 1: El Sistema detecta que el objeto a enviar carece de atributos obligatorios. El Sistema aborta la transmisión, registra el fallo de sintaxis en la bitácora de auditoría y notifica el error al flujo de negocio original.
+Excepción 2: El Proveedor Externo rechaza la conexión por indisponibilidad de red o caída del servicio. El Sistema captura el código de error, lo documenta en la bitácora de auditoría y activa la lógica de reintento automático.
+Excepción 3: El Sistema identifica que el tiempo de respuesta excede el umbral de seguridad definido. El Sistema interrumpe la escucha y registra la transacción con estado de latencia crítica en la bitácora de auditoría.
+Excepción 4: El Proveedor Externo envía un formato de datos que diverge del esquema documentado. El Sistema aísla el paquete incompatible guardándolo en la bitácora de auditoría y retorna una excepción estandarizada al núcleo de la aplicación.
+Poscondiciones
+La segregación en la capa adaptadora asegura que el núcleo de la aplicación permanezca agnóstico frente a actualizaciones de esquemas de proveedores.
+Dependencias
+RF66, RF68, RF69.
+
+════════════════════════════════════════════════════════════════════
+
+CU69
+Registrando en Bitácora de Transacciones Externas
+Nombre
+Registrando en Bitácora de Transacciones Externas
+Actor(es)
+Proveedor Externo
+Resumen
+Captura e inserción inalterable de los paquetes de datos y latencias asociadas a las peticiones de integración con terceros en la bitácora de auditoría.
+Frecuencia
+Muy Alta, ejecutada como subproceso paralelo en cada interacción de red hacia nodos externos.
+Precondiciones
+El adaptador de API inicializa la construcción de un paquete de datos dirigido a un servicio foráneo.
+Descripción
+El Sistema inicia la captura de metadatos y emite la petición de datos hacia el Proveedor Externo [Excepción 1], el Proveedor Externo procesa la solicitud y despacha la respuesta técnica al origen [Excepción 2], el Sistema recibe la información, calcula la latencia y persiste el registro consolidado en la bitácora de auditoría con acción de integración externa (proveedor, operación, estado, código de respuesta, latencia, intentos y payloads enviado y recibido) [Excepción 3].
+Excepciones
+Excepción 1: El Sistema detecta la carencia de la credencial de seguridad requerida para la conexión. El Proveedor Externo rechaza la petición y el Sistema la registra, alertando al Administrador para actualizar las credenciales.
+Excepción 2: El Proveedor Externo omite la respuesta superando el umbral de tiempo de espera definido. El Sistema detiene la escucha y almacena la incidencia como un error de latencia crítica en la bitácora.
+Excepción 3: El Sistema experimenta un error de persistencia al intentar guardar el registro. El Sistema informa el fallo en el log del servidor y continúa la operación principal, notificando la inconsistencia técnica al Administrador.
+Poscondiciones
+La bitácora de auditoría asimila un registro histórico completo habilitando la trazabilidad técnica y la depuración de la interoperabilidad.
+Dependencias
+RF13, RF68, RF69, RNF14.
+
+════════════════════════════════════════════════════════════════════
+
+CU70
+Ejecutando Lógica de Reintento ante Fallos
+Nombre
+Ejecutando Lógica de Reintento ante Fallos
+Actor(es)
+Proveedor Externo
+Resumen
+Iteración temporal controlada de peticiones de red destinadas a mitigar interrupciones causadas por inestabilidad de infraestructura externa.
+Frecuencia
+Baja, sujeta exclusivamente al reconocimiento de códigos de error de capa de transporte o indisponibilidad de servidor.
+Precondiciones
+El adaptador de API recibe un código de error de conectividad, un tiempo de espera agotado o un error HTTP de la familia 500 desde un nodo externo.
+Descripción
+El Proveedor Externo emite un código de error de red tras la petición integradora inicial [Excepción 1], el Sistema incrementa el contador de intentos de la petición en memoria [Excepción 2], el Proveedor Externo recibe la petición reemitida portando un retraso temporal progresivo (exponencial, con tope) [Excepción 3], el Sistema lee el código de estado afirmativo y reinicia la variable del ciclo [Excepción 4].
+Excepciones
+Excepción 1: El Proveedor Externo emite un error de validación por formato incompatible, provocando que el Sistema aborte el ciclo iterativo y documente el rechazo en la bitácora técnica.
+Excepción 2: Una falla al registrar el contador de intentos obliga al Sistema a inicializar una variable temporal en memoria local para reanudar el ciclo de contingencia.
+Excepción 3: El Proveedor Externo persiste en el error tras alcanzar el límite máximo de cuatro intentos, forzando al Sistema a suprimir las peticiones, registrar el evento crítico y transferir el control a la interfaz originaria.
+Excepción 4: Tras la respuesta exitosa, el Sistema experimenta un fallo al consolidar la finalización del ciclo, ejecutando una rutina de estabilización de recursos y notificando la inconsistencia al Administrador.
+Poscondiciones
+La transacción externa consolida su estado final previniendo bloqueos indefinidos de hilos de ejecución en el servidor principal.
+Dependencias
+RF68, RF69, RF70, RNF14.
+
+════════════════════════════════════════════════════════════════════
+
+CU71
+Sincronizando y Validando Sesiones Bonificables
+Nombre
+Sincronizando y Validando Sesiones Bonificables
+Actor(es)
+Profesional
+Resumen
+Contrastación cuantitativa entre las sesiones ejecutadas y las coberturas autorizadas del paciente (paquetes de sesiones y bonos por cita), con alertas ante discrepancias.
+Frecuencia
+Media, consultada por el profesional al cerrar atenciones amparadas por esquemas de previsión.
+Precondiciones
+El Paciente posee citas realizadas con el Profesional y paquetes o bonos registrados.
+Descripción
+El Profesional solicita la cuadratura de coberturas desde el historial del paciente [Excepción 1], el Sistema calcula las sesiones realizadas por el profesional y las contrasta con las sesiones autorizadas en los paquetes del paciente y con los bonos registrados por cita [Excepción 2], el Profesional revisa el resumen y las alertas en la Vista [Excepción 3], el Sistema mantiene la cuadratura disponible para la siguiente consulta [Excepción 4].
+Excepciones
+Excepción 1: El Sistema detecta sesiones realizadas sin Bono Electrónico registrado. El Sistema las lista como alerta. El Profesional solicita al Paciente el registro del bono correspondiente.
+Excepción 2: El Sistema detecta que la cantidad de Sesiones Clínicas ejecutadas excede las autorizadas. El Sistema emite una alerta por discrepancia de saldo. El Profesional solicita al Paciente la adquisición de un nuevo plan o bono.
+Excepción 3: El Profesional descarta la alerta de cuadratura. El Sistema la oculta hasta la próxima consulta. El Profesional continúa con la atención.
+Excepción 4: El Sistema sufre una pérdida de conexión con la base de datos durante la sincronización. El Sistema informa que la sincronización quedó pendiente. El Profesional reintenta la operación.
+Poscondiciones
+El Profesional conoce las discrepancias entre las atenciones ejecutadas y las coberturas autorizadas del paciente.
+Dependencias
+RF66, RF71, RF76.
+
+════════════════════════════════════════════════════════════════════
+
+CU76
+Ejecutando transacciones en máquina de estados de la cita
+Nombre
+Ejecutando transacciones en máquina de estados de la cita
+Actores
+Profesional
+Resumen
+El Profesional modifica el estado de una cita desde el historial del paciente y el Sistema ejecuta el descuento del inventario de sesiones del paciente.
+Frecuencia
+Múltiples veces por día
+Precondiciones
+Existe una cita en estado CONFIRMADA o EN_CURSO del Profesional en el historial del paciente.
+Descripción
+El Profesional selecciona una cita desde el historial del paciente en la Ficha Clínica [Excepción 1], el Sistema despliega las acciones de transición de estado habilitadas para esa cita [Excepción 2], el Profesional ejecuta la transición a REALIZADA al finalizar la atención, o registra la inasistencia del paciente [Excepción 3], el Sistema ejecuta la sustracción exacta de un cupo en el paquete de sesiones activo del paciente actualizando la base de datos [Excepción 4].
+Excepciones
+Excepción 1: El Profesional selecciona una cita de otro profesional. El Sistema muestra la cita bloqueada sin controles de transición. El Profesional selecciona una cita propia.
+Excepción 2: El Sistema detecta que la cita ya posee un estado terminal. El Sistema bloquea modificaciones adicionales. El Profesional visualiza el estado de solo lectura.
+Excepción 3: El Profesional selecciona el estado INASISTENCIA debido a la ausencia del paciente. El Sistema aplica la penalización por inasistencia descontando igualmente la sesión. El Profesional finaliza la evaluación de agenda.
+Excepción 4: El Sistema detecta que el paciente no posee un paquete de sesiones activo. El Sistema omite la sustracción e informa que no se descontó ninguna sesión. El Profesional informa al paciente.
+Poscondiciones
+El estado lógico de la cita queda actualizado y el inventario del paciente se reduce en una unidad.
+Dependencias
+RF20, RF38, RF76
+
+════════════════════════════════════════════════════════════════════
+
+CU77
+Renderizando plantillas dinámicas de evaluación
+Nombre
+Renderizando plantillas dinámicas de evaluación
+Actores
+Profesional
+Resumen
+El Sistema adapta los campos de la evaluación inicial (Anamnesis) según la disciplina acreditada del profesional.
+Frecuencia
+Al inicio de cada captura de evaluación inicial
+Precondiciones
+El Profesional posee un Token de Acceso JWT válido y acceso a la ficha del paciente.
+Descripción
+El Profesional abre la pestaña Anamnesis de un paciente en el dispositivo [Excepción 1], el Sistema identifica el atributo de Especialidad persistido en el perfil del actor activo y despliega la plantilla correspondiente [Excepción 2], el Profesional ingresa la información médica en los campos de entrada habilitados [Excepción 3], el Sistema consolida los datos adaptados a los requerimientos técnicos de la disciplina como bloque estructurado dentro de la anamnesis, asegurando su persistencia en el servidor [Excepción 4].
+Excepciones
+Excepción 1: El Profesional carece de permisos sobre la ficha seleccionada. El Sistema despliega una alerta de restricción. El Profesional solicita autorización al Administrador.
+Excepción 2: El Sistema detecta una cuenta de Profesional sin Especialidad acreditada. El Sistema bloquea el renderizado de la plantilla. El Profesional completa su configuración de perfil.
+Excepción 3: El Profesional omite el ingreso de datos en campos declarados obligatorios por la plantilla. El Sistema resalta en rojo los bloques pendientes. El Profesional completa la información requerida.
+Excepción 4: El Sistema pierde conexión con la base de datos durante el guardado. El Sistema almacena la plantilla en caché local. El Profesional sincroniza los datos al restablecer la red.
+Poscondiciones
+El Sistema dispone de un formulario estructurado guardado bajo los estándares de la disciplina médica específica.
+Dependencias
+RF02, RF29, RF77
+
+════════════════════════════════════════════════════════════════════
+
+CU78
+Agrupando registros bajo entidad episodio clínico
+Nombre
+Agrupando registros bajo entidad episodio clínico
+Actores
+Profesional
+Resumen
+El Sistema asigna un identificador maestro a todas las prestaciones de salud (citas, evoluciones, pautas y documentos) impidiendo la mezcla de datos entre motivos de consulta; el episodio nace abierto y el Profesional lo cierra al terminar el tratamiento.
+Frecuencia
+Ejecución continua ante cada inserción de datos clínicos
+Precondiciones
+El Paciente posee un Episodio Clínico abierto, instanciado por el Profesional.
+Descripción
+El Profesional genera la petición de guardado para una nueva sesión, pauta o documento multimedia en la plataforma [Excepción 1], el Sistema exige la asociación obligatoria del registro con un identificador de Episodio Clínico [Excepción 2], el Profesional selecciona el Episodio Clínico correspondiente al motivo de consulta actual en el selector de la ficha, y la cita en curso queda vinculada a él [Excepción 3], el Sistema valida que el episodio pertenezca al profesional y esté abierto, y persiste el evento en el repositorio digital centralizado [Excepción 4].
+Excepciones
+Excepción 1: El Profesional adjunta un formato de archivo no soportado. El Sistema rechaza la petición en la Vista. El Profesional convierte el archivo a un formato permitido.
+Excepción 2: El Sistema detecta que el paciente carece de un Episodio Clínico. El Sistema guía a la creación del episodio desde la pestaña correspondiente. El Profesional instancia una nueva entidad agrupadora indicando el motivo de consulta.
+Excepción 3: El Profesional selecciona un Episodio Clínico cerrado o de otro profesional. El Sistema bloquea la vinculación de nuevos registros. El Profesional asocia el evento a un episodio propio abierto o crea uno nuevo.
+Excepción 4: El Sistema experimenta un fallo de persistencia al vincular el registro. El Sistema deniega la escritura. El Profesional reintenta la operación.
+Poscondiciones
+El registro clínico queda vinculado de forma inalterable a un único tratamiento evitando la fragmentación de la historia de salud.
+Dependencias
+RF28, RF78
+
+════════════════════════════════════════════════════════════════════
+
+CU79
+Segregando interfaces según rol de acceso
+Nombre
+Segregando interfaces según rol de acceso
+Actor(es)
+Paciente / Profesional / Administrador
+Resumen
+El Sistema decodifica el Token de Acceso JWT y renderiza un entorno de Vista estructuralmente independiente para cada rol.
+Frecuencia
+Ejecución síncrona en cada inicio de sesión
+Precondiciones
+El Paciente, Profesional o Administrador posee credenciales válidas y una cuenta activa en la plataforma.
+Descripción
+El Paciente / Profesional / Administrador ingresa sus credenciales de acceso en la interfaz de autenticación solicitando la entrada [Excepción 1], el Sistema evalúa la carga útil del token identificando el Rol de Acceso acreditado en la matriz de permisos [Excepción 2], el Paciente / Profesional / Administrador interactúa con los módulos y rutas de navegación habilitadas para su perfil [Excepción 3], el Sistema renderiza los componentes visuales bloqueando accesos no autorizados a datos sensibles mediante validación síncrona en el servidor [Excepción 4].
+Excepciones
+Excepción 1: El Paciente / Profesional / Administrador ingresa credenciales incorrectas. El Sistema rechaza la solicitud de autenticación. El Paciente / Profesional / Administrador reintenta el ingreso de su clave.
+Excepción 2: El Sistema identifica un Token de Acceso JWT adulterado. El Sistema revoca la sesión de forma inmediata. El Paciente / Profesional / Administrador contacta a soporte técnico.
+Excepción 3: El Paciente / Profesional / Administrador intenta acceder a un recurso reservado a otro rol. El Sistema intercepta la petición en el servidor bloqueando la carga de datos. El Paciente / Profesional / Administrador es redirigido al panel de inicio.
+Excepción 4: El Sistema detecta que el token expiró o que la sesión fue cerrada desde otro dispositivo. El Sistema invalida el token forzando el cierre de sesión. El Paciente / Profesional / Administrador reinicia el proceso de autenticación.
+Poscondiciones
+El Paciente / Profesional / Administrador opera en un entorno confinado únicamente a las funciones designadas para su rol.
+Dependencias
+RF08, RF79, RNF03
+
+════════════════════════════════════════════════════════════════════
+
+DECISIONES D1–D13 APLICADAS EN ESTAS FICHAS
+
+D1  CU10 implementado y documentado (ficha nueva).
+D2  CU18 y CU20: cancelación separada en CANCELADA_PACIENTE y CANCELADA_PROFESIONAL (siete estados, RF20).
+D3  CU70: límite de cuatro intentos (RF70).
+D4  CU01, CU02 y CU07: política de contraseña con letras, números y símbolo.
+D5  CU33 y CU35: DOCX aceptado y visualizable.
+D6  CU12 y CU59: registro en la bitácora de auditoría (tabla).
+D7  CU05: intento de login fallido registrado en la bitácora.
+D8  Sin efecto en fichas (solo base de datos).
+D9, D10, D13: sin efecto en fichas.
+D11 CU41: derivación al Administrador con aviso en la app y por correo; actor Administrador agregado.
+D12 CU78: episodio cerrado rechaza registros nuevos; cierre explícito por el profesional.

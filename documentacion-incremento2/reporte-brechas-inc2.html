@@ -1,0 +1,1006 @@
+<title>Brechas Documentales Inc. 2</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+:root{
+  --fondo:#FAFBFA; --superficie:#FFFFFF; --superficie2:#F4F6F5; --borde:#DCE2DF; --borde-suave:#E9EDEB;
+  --texto:#0B0F0D; --texto2:#3D4642; --texto3:#5A6560;
+  --acento:#004639; --acento-fuerte:#002B22; --acento-suave:#E8F2EF; --acento-borde:#9DC4BA;
+  --ok:#0E7A4A; --ok-bg:#E6F4EC; --adv:#8A5300; --adv-bg:#FBF1E2; --err:#B3261E; --err-bg:#FBE9E7;
+  --mono-bg:#EEF2F0; --sombra:0 1px 2px rgba(11,15,13,.06),0 4px 14px rgba(11,15,13,.05);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --fondo:#0B0F0D; --superficie:#151A18; --superficie2:#1F2724; --borde:#2E3733; --borde-suave:#252D2A;
+    --texto:#F4F6F5; --texto2:#DCE2DF; --texto3:#9AA5A0;
+    --acento:#6BA697; --acento-fuerte:#9DC4BA; --acento-suave:#0F2A24; --acento-borde:#1A6B58;
+    --ok:#5FCF8F; --ok-bg:#0F2A1C; --adv:#E9B564; --adv-bg:#2E2210; --err:#F28B82; --err-bg:#3A1714;
+    --mono-bg:#1A211E; --sombra:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+  }
+}
+:root[data-theme="dark"]{
+  --fondo:#0B0F0D; --superficie:#151A18; --superficie2:#1F2724; --borde:#2E3733; --borde-suave:#252D2A;
+  --texto:#F4F6F5; --texto2:#DCE2DF; --texto3:#9AA5A0;
+  --acento:#6BA697; --acento-fuerte:#9DC4BA; --acento-suave:#0F2A24; --acento-borde:#1A6B58;
+  --ok:#5FCF8F; --ok-bg:#0F2A1C; --adv:#E9B564; --adv-bg:#2E2210; --err:#F28B82; --err-bg:#3A1714;
+  --mono-bg:#1A211E; --sombra:0 1px 2px rgba(0,0,0,.4),0 4px 14px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--fondo);color:var(--texto);font-family:"Source Sans 3",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:16px;line-height:1.55}
+a{color:var(--acento)}
+code,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.86em;background:var(--mono-bg);padding:.08em .35em;border-radius:4px;color:var(--texto2)}
+h1,h2,h3,h4{font-family:Manrope,ui-sans-serif,system-ui,sans-serif;text-wrap:balance;line-height:1.2;margin:0}
+h1{font-size:2rem;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.45rem;font-weight:700;margin-top:3rem;padding-top:1.25rem;border-top:2px solid var(--acento);color:var(--acento-fuerte)}
+h3{font-size:1.1rem;font-weight:700;margin-top:2rem}
+h4{font-size:1rem;font-weight:700}
+p{margin:.6rem 0}
+.ojo{font-family:Manrope,sans-serif;font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--texto3)}
+.marco{display:grid;grid-template-columns:260px minmax(0,1fr);gap:0;min-height:100vh}
+nav.indice{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;padding:1.5rem 1.25rem;border-right:1px solid var(--borde-suave);background:var(--superficie)}
+nav.indice .ojo{margin-bottom:.75rem;display:block}
+nav.indice a{display:block;text-decoration:none;color:var(--texto2);font-size:.9rem;padding:.28rem .5rem;border-radius:6px;border-left:2px solid transparent}
+nav.indice a:hover,nav.indice a:focus-visible{background:var(--acento-suave);color:var(--acento-fuerte);outline:none}
+nav.indice a.sub{padding-left:1.25rem;font-size:.84rem;color:var(--texto3)}
+main{padding:2.5rem 3rem 5rem;max-width:960px}
+.cabecera{border-bottom:1px solid var(--borde);padding-bottom:1.5rem;margin-bottom:1.5rem}
+.cabecera .meta{color:var(--texto3);font-size:.92rem;margin-top:.75rem;display:flex;gap:1.5rem;flex-wrap:wrap}
+.lead{font-size:1.08rem;color:var(--texto2);max-width:72ch}
+.cifras{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.75rem;margin:1.5rem 0}
+.cifra{background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:.9rem 1rem}
+.cifra b{display:block;font-family:Manrope,sans-serif;font-size:1.7rem;font-weight:800;color:var(--acento-fuerte);font-variant-numeric:tabular-nums;line-height:1.1}
+.cifra span{font-size:.82rem;color:var(--texto3)}
+.aviso{border-left:3px solid var(--adv);background:var(--adv-bg);padding:.75rem 1rem;border-radius:0 8px 8px 0;margin:1rem 0;font-size:.95rem}
+.aviso.ok{border-color:var(--ok);background:var(--ok-bg)}
+.aviso.info{border-color:var(--acento);background:var(--acento-suave)}
+.chip{display:inline-block;font-family:Manrope,sans-serif;font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.2rem .55rem;border-radius:999px;white-space:nowrap;vertical-align:middle}
+.chip.cambio{background:var(--adv-bg);color:var(--adv)}
+.chip.ajuste{background:var(--acento-suave);color:var(--acento-fuerte)}
+.chip.igual{background:var(--ok-bg);color:var(--ok)}
+.chip.no{background:var(--err-bg);color:var(--err)}
+.chip.nuevo{background:var(--acento);color:#fff}
+.cu{background:var(--superficie);border:1px solid var(--borde);border-radius:12px;padding:1.1rem 1.3rem;margin:1rem 0;box-shadow:var(--sombra)}
+.cu header{display:flex;align-items:baseline;gap:.75rem;flex-wrap:wrap;margin-bottom:.6rem}
+.cu header .id{font-family:Manrope,sans-serif;font-weight:800;color:var(--acento);font-size:1.05rem;font-variant-numeric:tabular-nums}
+.cu header .nombre{font-family:Manrope,sans-serif;font-weight:700;font-size:1.02rem;flex:1 1 auto}
+.cu .pantalla{font-size:.82rem;color:var(--texto3);width:100%}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:1.25rem}
+@media (max-width:900px){.dos{grid-template-columns:1fr}.marco{grid-template-columns:1fr}nav.indice{position:static;height:auto;border-right:0;border-bottom:1px solid var(--borde)}main{padding:1.5rem 1.25rem 4rem}}
+.dos h4{font-size:.78rem;letter-spacing:.06em;text-transform:uppercase;color:var(--texto3);margin-bottom:.3rem}
+.dos ul{margin:0;padding-left:1.1rem;font-size:.94rem}
+.dos li{margin:.25rem 0}
+.dos li b{color:var(--texto)}
+ul.lista{padding-left:1.2rem}
+ul.lista li{margin:.3rem 0}
+.tabla-wrap{overflow-x:auto;margin:1rem 0;border:1px solid var(--borde);border-radius:10px;background:var(--superficie)}
+table{border-collapse:collapse;width:100%;font-size:.9rem}
+th,td{text-align:left;vertical-align:top;padding:.55rem .75rem;border-bottom:1px solid var(--borde-suave)}
+th{font-family:Manrope,sans-serif;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--texto3);background:var(--superficie2);position:sticky;top:0}
+tr:last-child td{border-bottom:0}
+td.mono,th.mono{font-family:"JetBrains Mono",monospace;font-size:.82rem;white-space:nowrap}
+.esquema{font-family:"JetBrains Mono",monospace;font-size:.8rem;line-height:1.7;background:var(--superficie);border:1px solid var(--borde);border-radius:10px;padding:1rem 1.25rem;overflow-x:auto;white-space:pre;color:var(--texto2)}
+.esquema b{color:var(--texto);font-weight:500;text-decoration:underline;text-underline-offset:2px}
+.esquema i{color:var(--acento);font-style:normal;font-weight:500}
+.esquema .n{color:var(--adv);font-weight:500}
+.esquema .c{color:var(--texto3)}
+details{border:1px solid var(--borde);border-radius:10px;background:var(--superficie);margin:.75rem 0}
+summary{cursor:pointer;padding:.75rem 1rem;font-family:Manrope,sans-serif;font-weight:700;list-style:none;display:flex;align-items:center;gap:.6rem}
+summary::before{content:"▸";color:var(--acento);transition:transform .15s}
+details[open] summary::before{transform:rotate(90deg)}
+details>div{padding:0 1rem 1rem}
+summary:focus-visible{outline:2px solid var(--acento);outline-offset:2px;border-radius:10px}
+.decision{display:grid;grid-template-columns:2.4rem 1fr;gap:.6rem;padding:.7rem 0;border-bottom:1px solid var(--borde-suave)}
+.decision .num{font-family:Manrope,sans-serif;font-weight:800;color:var(--acento);font-variant-numeric:tabular-nums}
+.decision p{margin:.15rem 0}
+.decision .pregunta{color:var(--texto3);font-size:.92rem}
+@media (prefers-reduced-motion: reduce){summary::before{transition:none}}
+</style>
+
+<div class="marco">
+<nav class="indice" aria-label="Índice">
+  <span class="ojo">Contenido</span>
+  <a href="#resumen">Resumen</a>
+  <a href="#decisiones">Decisiones pendientes</a>
+  <a href="#alcance">Alcance y método</a>
+  <a href="#inc1">A · CU del Incremento 1</a>
+  <a class="sub" href="#inc1-cuentas">Cuentas y acceso</a>
+  <a class="sub" href="#inc1-agenda">Agenda</a>
+  <a class="sub" href="#inc1-clinica">Ficha y sesión clínica</a>
+  <a class="sub" href="#inc1-admin">Administración e integración</a>
+  <a href="#inc2">B · CU del Incremento 2</a>
+  <a class="sub" href="#inc2-cuenta">Cuenta y seguridad</a>
+  <a class="sub" href="#inc2-citas">Gestión de citas</a>
+  <a class="sub" href="#inc2-triaje">Triaje y evaluación</a>
+  <a class="sub" href="#inc2-pautas">Pautas de ejercicio</a>
+  <a class="sub" href="#inc2-evidencia">Evidencia de atención</a>
+  <a class="sub" href="#inc2-docs">Documentos y versionado</a>
+  <a class="sub" href="#inc2-pagos">Bonos y copagos</a>
+  <a class="sub" href="#inc2-otros">Episodio y segregación</a>
+  <a href="#bd">C · Base de datos</a>
+  <a class="sub" href="#bd-nuevas">Clases nuevas</a>
+  <a class="sub" href="#bd-atributos">Atributos nuevos</a>
+  <a class="sub" href="#bd-sinuso">Columnas sin uso</a>
+  <a class="sub" href="#bd-mere">Cómo reflejarlo en el MERE</a>
+  <a class="sub" href="#bd-mr">MR y normalización</a>
+  <a class="sub" href="#bd-nombres">Diferencias de nombres</a>
+</nav>
+
+<main>
+<div class="cabecera">
+  <span class="ojo">FRO Salud · Grupo 17 · Paso 2 de la actualización documental</span>
+  <h1 style="margin-top:.4rem">Brechas entre lo documentado y lo implementado</h1>
+  <p class="lead">Comparación de las fichas de casos de uso del Documento 0 y del Incremento 1, y del modelo de datos del Incremento 1, contra el código que quedó en el repositorio al 11 de septiembre de 2026. Sirve de guía para corregir a mano los documentos Word.</p>
+  <div class="meta"><span>Código: <code>IDS_FRO-Salud-App</code> commit <code>34d4be7f</code></span><span>Documentación: <code>IDS_Documentacion_Grupo17</code> commit <code>5f2775d</code></span></div>
+</div>
+
+<h2 id="resumen" style="margin-top:0;border-top:0;padding-top:0">Resumen</h2>
+<div class="cifras">
+  <div class="cifra"><b>22</b><span>CU del Incremento 1 revisados</span></div>
+  <div class="cifra"><b>31</b><span>CU del Incremento 2 revisados</span></div>
+  <div class="cifra"><b>5</b><span>tablas nuevas en la base de datos</span></div>
+  <div class="cifra"><b>16</b><span>columnas nuevas en tablas existentes</span></div>
+  <div class="cifra"><b>1</b><span>CU no implementado (CU10)</span></div>
+</div>
+<p>Cómo leer cada ficha: el chip indica cuánto se aleja el código de lo escrito. <span class="chip cambio">Cambia el flujo</span> quiere decir que hay que reescribir pasos, actores o excepciones; <span class="chip ajuste">Ajustes</span> que la lógica coincide y solo cambian detalles (nombres de estados, códigos, dónde vive la acción); <span class="chip igual">Coincide</span> que la ficha sigue vigente; <span class="chip no">No implementado</span> que no existe en el código.</p>
+<div class="aviso info">Los cambios más transversales, que afectan a varias fichas a la vez: (1) la ficha clínica es una sola pantalla con cinco pestañas y la evolución e intervención se fusionaron en "Sesión clínica" de tres pasos; (2) los estados de cita reales son <code>AGENDADA → CONFIRMADA → EN_CURSO → REALIZADA</code>, más <code>CANCELADA</code> e <code>INASISTENCIA</code>; (3) toda la trazabilidad (agenda, OTP, pagos, documentos, integraciones) se escribe en la tabla <code>Bitacora_Auditoria</code>, que dejó de ser solo "acceso a ficha"; (4) el concepto "tipo de sede" pasó a llamarse "modalidad" (a domicilio / virtual) y existe una única Sede.</div>
+
+<h2 id="decisiones">Decisiones tomadas (11-09-2026)</h2>
+<p style="color:var(--texto3);font-size:.95rem">Las trece decisiones quedaron resueltas y aplicadas en el código (commit <code>ed760555</code>). Cada una indica qué se hizo.</p>
+<p>Puntos donde el código y el documento no pueden coincidir sin que ustedes elijan. Los numero para que me respondan por número.</p>
+<div class="decision"><span class="num">D1</span><div><p><b>CU10 (catálogo de perfil profesional) no está implementado.</b> No hay pantalla ni endpoint para editar foto, reseña o modalidades después del registro.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — implementado.</b> Pantalla "Mi perfil público" (foto, reseña, áreas de experticia, modalidad), endpoints <code>/profesionales/mi-perfil</code>; columna nueva <code>Profesional.areas_experticia</code>. El buscador de horas muestra las áreas.</p></div></div>
+<div class="decision"><span class="num">D2</span><div><p><b>Estados de cita.</b> El RF20 y el CU20 hablan de 7 estados (Reservada, Confirmada, En curso, Realizada, No asistió, Cancelada por paciente, Cancelada por profesional). El código usa 6 y no distingue quién cancela (queda en la bitácora como <code>rol_actor</code>).</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se separa en dos.</b> Siete estados: AGENDADA, CONFIRMADA, EN_CURSO, REALIZADA, INASISTENCIA, CANCELADA_PACIENTE y CANCELADA_PROFESIONAL. <code>Cita.estado</code> pasa a VARCHAR(30); las cancelaciones antiguas se reclasifican por migración.</p></div></div>
+<div class="decision"><span class="num">D3</span><div><p><b>Reintentos (CU70 / RF70).</b> El RF dice "máximo 4 intentos"; el código usa 3 por defecto (<code>EXTERNAL_MAX_INTENTOS</code>).</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — valor por defecto 4.</b></p></div></div>
+<div class="decision"><span class="num">D4</span><div><p><b>Política de contraseña.</b> La definición del Documento 0 exige letras, números y un símbolo especial. El código exige 8 caracteres, una letra y un número (sin símbolo), tanto en registro como en cambio de contraseña.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se exige el símbolo</b> en registro, recuperación y cambio de contraseña, con aviso en la app y rechazo en el servidor (<code>CONTRASENA_DEBIL</code>). Antes el registro aceptaba "11111111" sin aviso.</p></div></div>
+<div class="decision"><span class="num">D5</span><div><p><b>Formatos de archivo (RF33 / CU33).</b> El RF incluye DOCX; el código acepta jpg, jpeg, png, webp, heic, gif, pdf, mp4 y mov (DOCX no se puede previsualizar en el visor).</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se acepta DOCX</b> (Cloudinary tipo <em>raw</em>); el visor lo muestra con Google Docs incrustado.</p></div></div>
+<div class="decision"><span class="num">D6</span><div><p><b>Auditoría en archivo vs. tabla.</b> CU12 (bloqueo por rol) y CU59 (cambios de parámetros) escriben en archivos <code>logs/security_audit.log</code> y <code>logs/audit.log</code>, no en <code>Bitacora_Auditoria</code>. En Render el disco es efímero, así que esos logs se pierden en cada despliegue.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — ambos pasan a <code>Bitacora_Auditoria</code></b> (acciones <code>BLOQUEO_ACCESO_RBAC</code>, <code>PARAMETRO_MODIFICADO</code>, <code>PARAMETRO_CONFLICTO_CONCURRENCIA</code>, <code>PARAMETRO_FALLO_PERSISTENCIA</code>).</p></div></div>
+<div class="decision"><span class="num">D7</span><div><p><b>Intentos de login fallidos.</b> El CU05 dice que se registran en la bitácora; el código solo responde 401 sin registrar.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se registra</b> cada intento fallido (<code>LOGIN_FALLIDO</code> con RUT, motivo e IP).</p></div></div>
+<div class="decision"><span class="num">D8</span><div><p><b>Tabla <code>Pauta_Material</code>.</b> Existe en el esquema pero ningún flujo la usa: el material se asocia por ejercicio (<code>Pauta_Ejercicio.material_terapeutico_id</code>).</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se elimina</b> del esquema (migración <code>DROP TABLE</code>). En la documentación: quitar la relación "Usa" del MERE, la tabla del MR y de las tres formas normales, y del modelo físico. Detalle en la sección C.</p></div></div>
+<div class="decision"><span class="num">D9</span><div><p><b>Columnas JSON y la 1FN.</b> <code>Cita.evidencia_presencial</code>, <code>Cita.metadatos_teleconsulta</code>, <code>Cita.firma_conformidad_datos</code>, <code>Triaje.respuestas</code> y <code>Paciente.privacidad_contacto</code> guardan estructuras. Es una práctica aceptada en MySQL 8, pero un evaluador estricto puede objetar la primera forma normal.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se mantienen</b> como atributos de tipo JSON con nota en la normalización.</p></div></div>
+<div class="decision"><span class="num">D10</span><div><p><b>Columnas heredadas sin uso</b> en <code>Cita</code> (<code>checkin_paciente</code>, <code>firma_conformidad_url</code>), <code>Evolucion_Clinica.porcentaje_objetivo</code> y <code>Profesional.calificacion_promedio</code> / <code>foto_url</code>.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se mantienen</b> reservadas para los incrementos 3 y 4.</p></div></div>
+<div class="decision"><span class="num">D11</span><div><p><b>CU41: no existe el estado "Validada" ni "Auditable".</b> La certificación queda en <code>Cita.sesion_certificada_en</code> y <code>certificacion_tipo</code>; una sesión suspendida solo queda en la bitácora, sin derivación al administrador.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se agrega la derivación.</b> Columnas <code>Cita.sesion_suspendida_en</code> y <code>motivo_suspension</code>; aviso en la app y por correo a cada administrador con los contactos de paciente y profesional; bandeja "Sesiones suspendidas" en el panel de administración.</p></div></div>
+<div class="decision"><span class="num">D12</span><div><p><b>CU78: no se valida superposición temporal ni se bloquea un episodio cerrado.</b> Pautas y documentos exigen que el episodio exista y sea del profesional, pero no que esté abierto.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>Resuelto — se agrega la validación.</b> El episodio nace ABIERTO y el profesional lo cierra; un episodio CERRADO rechaza sesiones, metas, pautas, documentos y el vínculo de una atención (409 <code>EPISODIO_CERRADO</code>). La superposición temporal no se valida (se retira de la ficha).</p></div></div>
+<div class="decision"><span class="num">D13</span><div><p><b>Lista de espera (CU19, fuera del incremento).</b> Al cancelar se notifica a la lista de espera (CU18), pero no hay pantalla para inscribirse, así que en la práctica nunca hay a quién avisar.</p><p class="pregunta" style="color:var(--exito,#1b7a3d)"><b>De acuerdo.</b> Se deja como está y se menciona en CU18 como dependencia futura.</p></div></div>
+
+<h2 id="alcance">Alcance y método</h2>
+<p>Los 31 CU del Incremento 2 que consideré son los que trabajamos por bloques: <b>06, 07, 08, 09</b> (cuenta), <b>17, 18, 22, 76</b> (citas), <b>23, 24, 27, 77</b> (triaje), <b>46, 47, 48, 49</b> (pautas), <b>39, 41, 42, 43</b> (evidencia), <b>31, 33, 34, 35</b> (documentos), <b>66, 67, 69, 71</b> (bonos), más <b>10</b> (no implementado), <b>78</b> y <b>79</b> (ya existían y se reforzaron). Si la lista oficial es otra, avísame y ajusto.</p>
+<p>Para cada CU comparé la ficha extendida (actores, precondiciones, descripción paso a paso y excepciones) contra los controladores, rutas, middlewares y pantallas reales. Para la base de datos comparé el MR y la 3FN del Incremento 1 contra <code>schema.sql</code> y las migraciones automáticas de <code>scripts/migrar-db.js</code>.</p>
+<div class="aviso">El Documento 0 recién actualizado solo cambió en "Dimensión Técnica" (Render, Aiven, Cloudinary, Brevo); las fichas de CU no cambiaron, así que todo lo que sigue aplica a ambas versiones.</div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="inc1">A · Casos de uso del Incremento 1</h2>
+<p>Lo que cambió después de la entrega del Incremento 1, ya sea por el Incremento 2 o por las correcciones de la ronda de pruebas.</p>
+
+<h3 id="inc1-cuentas">Cuentas y acceso</h3>
+
+<div class="cu"><header><span class="id">CU01</span><span class="nombre">Registrando paciente con validación de integridad</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Registro (pública) · <code>POST /auth/registrar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Nombre en tres campos (nombres, apellido paterno, materno); dirección en calle, número, depto y comuna (catálogo).</li>
+<li>Antes de crear la cuenta se eliminan los registros "fantasma" del mismo RUT/correo que nunca activaron su OTP; solo una cuenta ya verificada bloquea (409).</li>
+<li>El OTP se genera y responde de inmediato; el correo sale en segundo plano (Brevo por HTTPS, SMTP de respaldo).</li>
+<li>Confirmación de datos y avisos con los diálogos propios de la app.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Poscondición: "la cuenta queda creada <b>inactiva</b> a la espera del OTP".</li>
+<li>Excepción 5 (sesión caduca al enviar) no aplica: el registro es público, sin sesión. Reemplazar por "pérdida de conexión".</li>
+<li>Dependencias: agregar RF04 explícito y mencionar el reemplazo de cuentas sin verificar (afecta CU03).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU02</span><span class="nombre">Registrando y acreditando profesional de salud</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Registro · <code>GET /auth/validar-profesional/:rut</code>, <code>POST /auth/registrar-profesional</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>El RUT se valida contra <code>Profesional_Autorizado</code> (404 si no está, 403 si está inhabilitado).</li>
+<li>Cada bloque de la jornada semanal lleva su <b>propia modalidad</b> (a domicilio / virtual / ambas) además de la modalidad general del profesional.</li>
+<li>No se elige sede: existe una única "Sede Principal".</li>
+<li>Foto queda <code>default.jpg</code> y calificación 0 (no hay CU10).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 5 (matriz semanal): "…indicando día, hora de inicio, hora de fin y modalidad de cada bloque".</li>
+<li>Quitar la referencia a "Sede" en RF02/CU02 o aclarar que se asigna la sede única.</li>
+<li>Excepción 5 (solapamiento de bloques) no se valida en el servidor; la app tampoco. Retirarla o marcarla pendiente.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU03</span><span class="nombre">Controlando unicidad de cuentas de usuario</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla"><code>POST /auth/verificar-unicidad</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Solo las cuentas <b>verificadas</b> bloquean el RUT o el correo.</li>
+<li>Si existe un registro sin verificar con esos datos, la respuesta avisa "será reemplazado" (<code>reemplazo: true</code>) y el registro posterior lo borra y lo sustituye.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Excepciones 2 y 4: condicionarlas a "cuenta activa". Agregar un paso: "si el dato pertenece a una cuenta no verificada, el sistema informa que será reemplazada y continúa".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU04</span><span class="nombre">Verificando identidad mediante código OTP</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Verificar cuenta · <code>POST /auth/otp/solicitar</code>, <code>POST /auth/otp/verificar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Canal único: correo (no SMS). Código de 6 dígitos, vigencia 10 minutos, reenvío con espera de 60 s.</li>
+<li>Envío por API de Brevo (HTTPS) cuando hay <code>BREVO_API_KEY</code>; SMTP solo como respaldo local.</li>
+<li>Exc. 1: falla de envío → bitácora <code>OTP_ENVIO_FALLIDO</code> y 502 <code>ENVIO_FALLIDO</code> con el detalle del proveedor.</li>
+<li>Exc. 4: falla al activar → bitácora <code>OTP_ACTIVACION_FALLIDA</code>, 500 <code>PERSISTENCIA_FALLIDA</code>.</li>
+<li>El mismo mecanismo se reutiliza para CU06/CU07 con plantilla de correo distinta.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Quitar "teléfono móvil / SMS" de la descripción y de la Exc. 2.</li>
+<li>Precisar vigencia (10 min) y que la cuenta activada redirige al inicio de sesión.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU05</span><span class="nombre">Autenticando usuario y resguardando credenciales</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Inicio de sesión · <code>POST /auth/login</code>, <code>POST /auth/logout</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Solo cuentas activas pueden entrar. Token JWT de 8 h con <code>usuario_id</code>, <code>nombre_rol</code> y <code>jti</code>.</li>
+<li>Cada inicio crea una fila en <code>Sesion_Usuario</code> (CU08); entrar de nuevo desde el mismo dispositivo cierra la sesión anterior de ese dispositivo.</li>
+<li>Cada petición posterior verifica que la sesión siga activa; si fue cerrada remotamente responde 401 <code>SESION_REVOCADA</code> y la app lo avisa.</li>
+<li>Cerrar sesión avisa al servidor (<code>/auth/logout</code>) y pide confirmación.</li>
+<li>Credenciales inválidas → 401 y registro <code>LOGIN_FALLIDO</code> en la bitácora (D7).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 4: "…genera un Token de Acceso <b>y registra la sesión del dispositivo</b>".</li>
+<li>Poscondición: agregar "la sesión queda visible y revocable desde Seguridad de la cuenta".</li>
+<li>Exc. 4: se mantiene "registra el intento fallido" (D7 implementado).</li>
+<li>Dependencias: RF05, RF08, RNF03 (se mantiene) + CU08.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU11</span><span class="nombre">Visualizando panel interno de gestión profesional</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pantallas: Inicio del profesional, Mi Jornada · <code>GET /profesionales/usuario/:id/pacientes</code>, <code>GET /citas/marcas-temporales</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>El inicio del profesional <b>es</b> la lista de pacientes asignados (con episodio suyo o con cita no cancelada con él), con buscador por nombre, RUT o id, más accesos a Mi Jornada, Gestión de agenda y Seguridad.</li>
+<li>Tocar un paciente abre la Ficha Clínica (cinco pestañas).</li>
+<li>Mi Jornada: agenda del día en solo lectura (confirmadas, en curso, realizadas); tocar una cita abre la ficha de ese paciente.</li>
+<li>Barra "atención en curso" persistente en toda la app mientras hay una cita <code>EN_CURSO</code>.</li>
+<li>Los datos de contacto respetan la privacidad elegida por el paciente (CU09).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Reescribir la descripción: el panel es la nómina misma; el "historial de atenciones" se consulta entrando a la ficha (CU28).</li>
+<li>Exc. 3 (sin resultados) coincide. Agregar "paciente no asignado → 403" como excepción.</li>
+<li>Dependencias: RF11, RF12, RF28 + RF09.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU12</span><span class="nombre">Controlando acceso basado en roles RBAC</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Middlewares <code>verifyToken</code> y <code>authorizeRoles</code> en todas las rutas privadas</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Roles existentes en la base: Paciente, Profesional, Administrador. <b>Supervisor no existe</b> como rol sembrado (solo aparece en una ruta de demostración).</li>
+<li>Exc. 1 token expirado/inválido → 401; Exc. 2 rol ausente → 500 "configuración de perfil"; Exc. 4 rol sin permiso → 403 y registro <code>BLOQUEO_ACCESO_RBAC</code> en la bitácora (D6).</li>
+<li>Además del rol, se verifica que la sesión no haya sido revocada (CU08).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actores: quitar Supervisor o aclarar que está previsto y no instanciado.</li>
+<li>Exc. 4: "registra el intento en la bitácora de auditoría" (D6).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU13</span><span class="nombre">Registrando bitácora de auditoría de seguridad</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Middleware <code>auditarAccesoClinico</code> en <code>/clinica/ficha</code>, <code>/episodio</code>, <code>/objetivos</code>, <code>/pautas/paciente</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>El middleware clasifica la petición con una tabla única de entidades auditables (ficha, episodio, evolución, pautas) y verbos (lectura, creación, modificación, eliminación).</li>
+<li>Exc. 1 ruta no registrada → 403 <code>ACCION_NO_RECONOCIDA</code>; Exc. 3 sin usuario → 401 <code>METADATOS_INSUFICIENTES</code>; Exc. 4 falla de escritura → 507 <code>FALLO_BITACORA</code> y la operación se detiene.</li>
+<li><code>Bitacora_Auditoria</code> pasó a ser la bitácora <b>general</b>: agenda (CU22), OTP, cambios de contraseña y privacidad, pautas, evidencia y certificación (CU39–43), documentos (CU33–35), correcciones (CU31), pagos (CU66/67) e integraciones externas (CU69).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Resumen: ampliar de "acceso a la ficha" a "eventos clínicos, de agenda y de integración".</li>
+<li>Actores: Profesional, Paciente, Administrador y Sistema (muchos eventos los escribe el propio servidor).</li>
+<li>Exc. 2 en la práctica no puede ocurrir (la tabla resuelve acción y entidad a la vez); se puede dejar como salvaguarda.</li>
+</ul></div></div></div>
+
+<h3 id="inc1-agenda">Agenda</h3>
+
+<div class="cu"><header><span class="id">CU14</span><span class="nombre">Buscando y seleccionando cita en el motor de agendamiento</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Buscar y agendar cita · <code>GET /citas/especialidades</code>, <code>GET /citas/disponibilidad</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Filtros: especialidad, <b>modalidad</b> (a domicilio / virtual / ambas) y fecha (solo desde hoy). No hay filtro por sede.</li>
+<li>Bloques de una hora generados desde la jornada semanal del profesional, descontando citas no canceladas y bloqueos de agenda (CU16).</li>
+<li>Si el bloque acepta ambas modalidades y el paciente buscó una específica, la cita queda en la que pidió; se guarda en <code>Cita.modalidad</code>.</li>
+<li>La misma pantalla se reutiliza para reprogramar (CU17).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Reemplazar "tipo de sede" por "modalidad" en resumen, pasos y Exc. 2.</li>
+<li>Exc. 1 (catálogo externo) no aplica: las especialidades son tabla propia. Cambiar a "servicio no disponible".</li>
+<li>Dependencias reales: RF14, RF15, RF16, RF20 (las actuales RF02/RF10 no corresponden).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU15</span><span class="nombre">Controlando concurrencia de bloqueo de agendamiento</span><span class="chip ajuste">Ajustes</span><span class="pantalla"><code>POST /citas/validar-bloque</code>, <code>POST /citas/bloquear</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Reserva dentro de una transacción con bloqueo de filas (<code>FOR UPDATE</code>); colisión → 409 <code>BLOQUE_OCUPADO</code> y la app refresca la lista.</li>
+<li>Pérdida de conexión durante la transacción → 503 <code>CONEXION_PERDIDA</code> con reversión.</li>
+<li>La cita nace en estado <code>AGENDADA</code> con modalidad y sede única.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Poscondición: "la cita queda <code>AGENDADA</code>" (no "reservada"). Estados según D2 (siete).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU16</span><span class="nombre">Restringiendo disponibilidad administrativa</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantallas: Gestión de agenda (profesional), Parámetros (administrador) · <code>POST /clinica/disponibilidad/restringir</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Rango en DD/MM/AAAA; el último día se bloquea completo (hasta 23:59:59).</li>
+<li>Exc. 3: rechaza si hay citas <code>AGENDADA</code> en el rango. <b>Nueva</b> validación: rechaza si se superpone con otro bloqueo existente.</li>
+<li>El bloqueo oculta los bloques en la búsqueda (CU14) y en la reprogramación (CU17).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Agregar la excepción "rango superpuesto con un bloqueo anterior".</li>
+<li>Exc. 3: precisar que solo mira citas agendadas (una confirmada en el rango no bloquea; conviene decidir si debería).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU20</span><span class="nombre">Transicionando máquina de estados de cita</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pantallas: Mis citas (paciente), Historial de la ficha (profesional) · <code>POST /citas/:id/transicionar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Transiciones: <code>AGENDADA</code> → CONFIRMAR → <code>CONFIRMADA</code> → INICIAR → <code>EN_CURSO</code> → FINALIZAR → <code>REALIZADA</code>; CANCELAR desde agendada o confirmada; REGISTRAR_INASISTENCIA desde confirmada. Terminales: realizada, cancelada, inasistencia.</li>
+<li>Solo el paciente o el profesional dueño puede mover la cita (403 <code>CITA_AJENA</code>); las citas de otros profesionales se ven "bloqueadas" en el historial.</li>
+<li>El paciente solo puede <b>cancelar</b> (y reprogramar por CU17); confirmar, iniciar, marcar ausente y finalizar las hace el profesional.</li>
+<li>Cancelar exige motivo (CU22) y, para el paciente, plazo mínimo (CU18). Realizada e inasistencia descuentan el paquete (CU76). Se notifica a ambos y a la lista de espera.</li>
+<li>Exc. 1 → 409 <code>ESTADO_TERMINAL</code>; Exc. 2 → 422 <code>TRANSICION_INVALIDA</code>; Exc. 4 → 500 <code>PERSIST_FAIL</code> con reversión.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Listar los siete estados (D2) y quién puede disparar cada evento; la cancelación queda como CANCELADA_PACIENTE o CANCELADA_PROFESIONAL según el rol.</li>
+<li>Agregar excepción "cita de otro profesional → bloqueada".</li>
+<li>Paso 4: "…persiste el nuevo estado, la trazabilidad (CU22), el descuento de sesión (CU76) y las notificaciones".</li>
+<li>Dependencias: RF20, RF22, RNF18 + RF17, RF18, RF76.</li>
+</ul></div></div></div>
+
+<h3 id="inc1-clinica">Ficha y sesión clínica</h3>
+
+<div class="cu"><header><span class="id">CU28</span><span class="nombre">Consolidando historial en ficha clínica electrónica</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pantalla: Ficha Clínica (pestañas Historial · Anamnesis · Episodios · Sesión clínica · Pautas) · <code>GET /profesionales/pacientes/:id/historial</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>La ficha es una única pantalla con cinco pestañas; se llega desde la nómina de pacientes o desde Mi Jornada.</li>
+<li>Historial: datos del paciente (dirección oculta si él lo decidió), <b>todas</b> sus citas (las de otros profesionales bloqueadas), episodios, evoluciones (con cantidad de correcciones), acceso a documentos, trazabilidad, evidencia, firma y cuadratura.</li>
+<li>Exc. 1: acceso solo si el paciente tiene episodio o cita no cancelada con el profesional (403). Esta ruta ahora exige token y rol (antes no lo hacía).</li>
+<li>Exc. 3: "multimedia no disponible" solo si Cloudinary no está configurado; si está, muestra el conteo de documentos.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Describir la estructura de pestañas y qué CU vive en cada una (útil también para el árbol de navegación).</li>
+<li>Paso 2: incluir citas, evoluciones, versiones y documentos, no solo "anamnesis y notas".</li>
+<li>Dependencias: RF28, RF78 + RF09, RF12, RF33.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU29</span><span class="nombre">Registrando antecedentes en evaluación inicial</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Anamnesis · <code>GET /clinica/ficha/:paciente</code>, <code>POST /clinica/ficha</code>, <code>GET /clinica/plantilla-evaluacion</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Campos: anamnesis (2000 caracteres), plantilla de especialidad (se fija sola con la especialidad del profesional, CU77), alergias, antecedentes quirúrgicos y patológicos como listas.</li>
+<li>Exc. 1 trunca a 2000 e informa; Exc. 2 campos obligatorios; Exc. 3 colisión por versión (<code>ultima_actualizacion</code>) → 409 <code>COLISION_ESCRITURA</code> con botón "Recargar".</li>
+<li>Lo que llegó del triaje (CU24) se muestra como tarjeta de solo lectura y se conserva al guardar. La evaluación estructurada (CU77) se guarda dentro de la anamnesis entre delimitadores.</li>
+<li>Sin conexión, el borrador queda en el dispositivo y se sincroniza después.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Precondición: ya no exige "sesión clínica iniciada"; la anamnesis se puede completar en cualquier momento.</li>
+<li>Agregar al paso 1: "el sistema precarga lo aportado por el triaje y la plantilla de la especialidad".</li>
+<li>Dependencias: RF28, RF29, RF77, RNF07 + RF24.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU30</span><span class="nombre">Asegurando inalterabilidad de registros clínicos</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pestaña Sesión clínica, paso 3 · <code>POST /inalterabilidad/finalizar/:evolucion</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>El cierre y la firma son una sola acción ("Cerrar y firmar", paso 3 de la sesión clínica); no se pide contraseña de firma: la firma digital simple se genera desde el perfil (CU36).</li>
+<li>Una evolución cerrada no puede editarse ni eliminarse: 403 <code>REGISTRO_INALTERABLE</code> y el intento queda en la bitácora. Cerrar dos veces → 409 <code>REGISTRO_YA_INALTERABLE</code>.</li>
+<li>Además, los campos de la sesión son de <b>solo lectura si no hay una atención en curso</b>; la app guía a iniciar la atención desde el historial.</li>
+<li>Las correcciones posteriores van por CU31 (versiones), nunca sobre el original.</li>
+<li>Los endpoints de editar/eliminar evolución existen para respaldar la regla, pero la app ya no los usa.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Exc. 1 (contraseña de firma incorrecta) no existe; reemplazar por "profesional sin número de registro → firma bloqueada" (CU36 Exc. 2).</li>
+<li>Paso 3/4: precisar que la edición se rechaza con 403 y se audita, y que la corrección se anexa como versión (CU31).</li>
+<li>Precondición: "evolución completa <b>y cita en curso</b>".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU32</span><span class="nombre">Definiendo metas y objetivos terapéuticos</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Sesión clínica, paso 2 · <code>GET/POST /clinica/episodio/:id/objetivos</code>, <code>PUT /clinica/episodio/:id/avance</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Metas por episodio: descripción, valor meta, unidad; avance como valor actual (porcentaje calculado).</li>
+<li>Exc. 1 meta sin número o unidad → 422 <code>META_NO_CUANTIFICABLE</code>; Exc. 3 avance mayor a la meta → 400 <code>AVANCE_SUPERA_META</code>.</li>
+<li>El avance se registra en el paso 2 de la sesión, solo con atención en curso.</li>
+<li><code>Evolucion_Clinica.porcentaje_objetivo</code> ya no se usa (queda en 0); el avance vive en <code>Objetivo_Terapeutico.valor_actual</code> (ver D10).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Precondición: "operando en la Sesión clínica con una atención en curso".</li>
+<li>Paso 4: no hay "panel gráfico"; se actualiza el porcentaje en la tarjeta de la meta.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU36</span><span class="nombre">Firmando digitalmente documentos clínicos</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Sesión clínica, paso 3 (misma acción que CU30)</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Firma = texto "Firmado digitalmente por: Nombre | RUT | Reg. SIS: N°" + fecha y hora del servidor, guardados en la evolución.</li>
+<li>Exc. 2 sin número de registro → 403 <code>FALTA_ACREDITACION</code>; Exc. 3 rechazar el aviso de inalterabilidad mantiene el registro editable; Exc. 4 fallo → 500 y reintento.</li>
+<li>Exc. 1 (campos vacíos) la valida la app antes de habilitar el paso 3 (paso 1 guardado).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Indicar que CU30 y CU36 son la misma operación en la interfaz.</li>
+<li>Exc. 4: "pérdida de sincronización con el servidor horario" → "fallo de escritura".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU38</span><span class="nombre">Registrando marcas temporales de la prestación</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pestaña Historial (botones Iniciar / Finalizar) · <code>POST /citas/marcas-temporales/:id/iniciar|finalizar</code>, <code>GET /citas/atencion-en-curso</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Iniciar solo desde <code>CONFIRMADA</code>. Exc. 1 inicio antes del bloque → 409 <code>INICIO_ANTICIPADO</code>, la app pide confirmar y reenvía. Exc. 2 marca manual con justificación obligatoria.</li>
+<li>Al iniciar, la cita se <b>vincula al episodio abierto más reciente</b> del paciente con ese profesional (<code>Cita.episodio_clinico_id</code>); si no hay, la app guía a crear uno. La marca de inicio queda en <code>checkin_profesional</code>.</li>
+<li>Finalizar solo desde <code>EN_CURSO</code>; la marca de término reemplaza <code>fecha_hora_fin</code>, calcula duración, descuenta paquete (CU76) e informa sesiones restantes. Exc. 4 duración negativa → 409 <code>DURACION_NEGATIVA</code> con bitácora.</li>
+<li>Exc. 3: mientras haya una atención en curso, una barra persistente en toda la app recuerda cerrarla.</li>
+<li>Mi Jornada no tiene botones: solo muestra.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Precondición: "cita <code>CONFIRMADA</code> del profesional autenticado".</li>
+<li>Agregar el vínculo cita-episodio como efecto del paso 2.</li>
+<li>Exc. 2: "desincronización NTP" → "el profesional registra una marca manual justificada".</li>
+<li>Dependencias: RF20, RF38, RF41 + RF76, RF78.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU40</span><span class="nombre">Documentando intervención y respuesta fisiológica</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pestaña Sesión clínica, paso 1 · <code>GET/PUT /clinica/intervenciones/:episodio</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Evolución e intervención se fusionaron en "Sesión clínica" de tres pasos: (1) técnicas y respuesta fisiológica, (2) avance de metas (CU32), (3) cerrar y firmar (CU30/36). Cada paso se habilita al completar el anterior.</li>
+<li>Exc. 1: editable solo con cita <code>EN_CURSO</code> vinculada al episodio; si no, solo lectura con enlace a las citas del paciente. Servidor: 409 <code>SESION_NO_EN_CURSO</code>.</li>
+<li>Exc. 2: la especialidad se muestra en el contexto; la plantilla dinámica aplica a la anamnesis (CU77), no a estos campos.</li>
+<li>Exc. 3: si el texto contiene señales de deterioro grave (patrón de palabras), se marca <code>alerta_prioritaria</code> en la bitácora.</li>
+<li>Exc. 4: sin red, borrador local y sincronización posterior.</li>
+<li>Si la última evolución ya está cerrada y hay atención en curso, se crea una nueva.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Reescribir pasos 1–4 según los tres pasos de la sesión clínica.</li>
+<li>Exc. 2: cambiar "bloques de texto según especialidad" por "muestra la especialidad; los campos son fijos".</li>
+<li>Dependencias: RF30, RF32, RF36, RF38, RF40, RF78, RNF07, RNF16 (RF47/RF77 ya no aplican aquí).</li>
+</ul></div></div></div>
+
+<h3 id="inc1-admin">Administración e integración</h3>
+
+<div class="cu"><header><span class="id">CU59</span><span class="nombre">Gestionando parámetros globales del sistema</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Parámetros (administrador) · <code>GET /parametros</code>, <code>PUT /parametros/update</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Concurrencia optimista por <code>ultima_modificacion</code> (409 si otro administrador cambió antes).</li>
+<li>Bitácora en la tabla <code>Bitacora_Auditoria</code> (D6).</li>
+<li>Parámetros nuevos usados por el Incremento 2: <code>ANTICIPACION_MINIMA_REPROGRAMACION_HORAS</code> (24), <code>ANTICIPACION_MINIMA_CANCELACION_HORAS</code> (2), <code>RADIO_PRESENCIALIDAD_METROS</code> (200), <code>TOLERANCIA_MULTIFACTOR_MINUTOS</code> (15), <code>MAX_TAMANO_ARCHIVO_MB</code> (10), <code>MAX_VERSIONES_CORRECCION</code> (5).</li>
+<li>Desde esta pantalla el administrador también bloquea la agenda de un profesional (CU16) y entra a Seguridad (CU08).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Resumen: además de aranceles, gobierna plazos de agenda, tolerancias de evidencia y límites de archivos/versiones.</li>
+<li>Paso 4: "registra el cambio en la bitácora de auditoría" (D6).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU68</span><span class="nombre">Intercambiando datos con proveedor externo</span><span class="chip ajuste">Ajustes</span><span class="pantalla"><code>services/external/providerAdapter.js</code> · usado por CU66</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Proveedores registrados: <code>OPENAI</code>, <code>IMED</code>, <code>FINANCIADOR</code>, <code>PASARELA_PAGO</code>, cada uno con mapeador y esquema de salida/entrada.</li>
+<li>Uso real en producción: solo <code>FINANCIADOR</code> (CU66), que apunta al simulador interno <code>/api/financiador-simulado/validar-bono</code> (autenticado por <code>X-Api-Key</code>) salvo que se configure <code>FINANCIADOR_URL</code>.</li>
+<li>OpenAI e I-Med no se invocan en ningún flujo (el triaje es un árbol determinista); la pasarela de pago se simula dentro del propio controlador de pagos.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Frecuencia/resumen: quitar "triaje con IA OpenAI" y "I-Med" como usos activos; dejar "financiador de bonos (simulado)" y los demás como registrados.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU70</span><span class="nombre">Ejecutando lógica de reintento ante fallos</span><span class="chip ajuste">Ajustes</span><span class="pantalla"><code>utils/externalHttpClient.js</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Máximo 4 intentos por defecto (D3), retardo exponencial con tope de 10 s, tiempo de espera 5 s por intento.</li>
+<li>HTTP 400 aborta el ciclo (<code>RECHAZO_FORMATO</code>); timeout → <code>LATENCIA_CRITICA</code>; agotar intentos → <code>LIMITE_REINTENTOS</code> (evento crítico); fallo de limpieza tras éxito → <code>INCONSISTENCIA_CONSOLIDACION</code>. Todos en <code>Bitacora_Auditoria</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Exc. 2 (falla del servicio de caché): el contador vive en memoria del proceso, no hay caché externa; simplificar.</li>
+</ul></div></div></div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="inc2">B · Casos de uso del Incremento 2</h2>
+
+<h3 id="inc2-cuenta">Cuenta y seguridad</h3>
+
+<div class="cu"><header><span class="id">CU06</span><span class="nombre">Solicitando restablecimiento de credenciales</span><span class="chip igual">Coincide</span><span class="pantalla">Pantalla: Recuperar contraseña (pública) · <code>POST /auth/recuperar/solicitar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Correo mal formado → 400 <code>EMAIL_INVALIDO</code> (Exc. 3). Correo inexistente → misma respuesta genérica (Exc. 4).</li>
+<li>OTP de recuperación (10 min) con plantilla de correo propia.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Nada de fondo. Precisar "código por correo, 10 minutos".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU07</span><span class="nombre">Ejecutando cambio de contraseña</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantallas: Recuperar contraseña (pública) y Seguridad de la cuenta (autenticado) · <code>POST /auth/recuperar/confirmar</code>, <code>POST /auth/cambio-contrasena/solicitar|confirmar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Dos variantes: sin sesión (correo + código + nueva clave) y con sesión (desde Seguridad: pedir código, luego confirmar).</li>
+<li>Exc. 2 código inválido o vencido → 400 <code>CODIGO_INVALIDO</code>; Exc. 3 clave débil → 400 <code>CONTRASENA_DEBIL</code> con la lista de requisitos incumplidos (D4).</li>
+<li>Al cambiar la clave se cierran <b>todas</b> las sesiones (CU08) y queda bitácora <code>CAMBIO_CONTRASENA</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Agregar la variante autenticada y la revocación de sesiones como poscondición.</li>
+<li>Exc. 1 (letras en campo numérico): la app usa teclado numérico; se puede dejar.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU08</span><span class="nombre">Gestionando sesiones y tokens de acceso</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Seguridad de la cuenta (los tres roles) · <code>GET /auth/sesiones</code>, <code>POST /auth/sesiones/:id/cerrar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Lista de sesiones activas con dispositivo, IP y fecha; marca "este dispositivo".</li>
+<li>Cerrar una sesión la desactiva en <code>Sesion_Usuario</code>; el otro dispositivo recibe 401 <code>SESION_REVOCADA</code> en su siguiente petición y la app cierra con aviso. Exc. 3 sesión ya inactiva → 404 <code>SESION_NO_ENCONTRADA</code>.</li>
+<li>Reingresar desde el mismo teléfono no duplica sesiones (se identifica por <code>dispositivo_id</code>).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 4: la invalidación es "en la siguiente petición del dispositivo", no un cierre remoto instantáneo.</li>
+<li>Exc. 4 (concurrencia en el servidor de tokens) no aplica: es un UPDATE simple; dejar como fallo genérico.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU09</span><span class="nombre">Configurando privacidad de datos de contacto</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Seguridad de la cuenta (solo paciente) · <code>GET/PUT /auth/privacidad</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Dos interruptores: mostrar dirección, mostrar teléfono; se guardan en <code>Paciente.privacidad_contacto</code>. Exc. 3 valores no booleanos → 400 <code>CONFIGURACION_INVALIDA</code>.</li>
+<li>Efecto: el profesional ve la dirección oculta con una explicación; el contacto de emergencia siempre se muestra.</li>
+<li>El interruptor de teléfono se guarda pero hoy ninguna pantalla del profesional muestra el teléfono, así que no tiene efecto visible.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Describir la matriz real (2 opciones) y el efecto en la ficha del profesional.</li>
+<li>Exc. 3: "configuración inconsistente" → "valores inválidos".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU10</span><span class="nombre">Administrando catálogo de perfil profesional</span><span class="chip ok">Implementado (D1)</span><span class="pantalla">MiPerfilScreen</span></header>
+<div class="dos"><div><h4>Estado</h4><ul>
+<li>No existe pantalla ni endpoint de edición de perfil. La reseña y la modalidad se capturan solo al registrarse (CU02); la foto queda por defecto.</li>
+</ul></div><div><h4>Ficha (D1)</h4><ul>
+<li>Si se implementa: pantalla "Mi perfil" en el inicio del profesional; <code>PUT /profesionales/mi-perfil</code>; foto vía Cloudinary (misma infraestructura de CU33).</li>
+</ul></div></div></div>
+
+<h3 id="inc2-citas">Gestión de citas</h3>
+
+<div class="cu"><header><span class="id">CU17</span><span class="nombre">Gestionando reprogramación de cita</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Mis citas → Buscar cita en modo reprogramación · <code>POST /citas/:id/reprogramar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Actor con interfaz: <b>paciente</b>. La API acepta también al profesional, pero no tiene botón.</li>
+<li>Exige motivo (CU22). Exc. 1 terminal → 409; cita en curso → 409. Exc. 2 plazo mínimo 24 h (parámetro) solo para el paciente. Exc. 3 colisión → 409 <code>BLOQUE_OCUPADO</code>; nueva: bloque dentro de un bloqueo de agenda → 409 <code>AGENDA_BLOQUEADA</code>.</li>
+<li>La cita vuelve a <code>AGENDADA</code> (debe confirmarse de nuevo). Exc. 4: si el aviso falla, el cambio se mantiene.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actores: "Paciente (Profesional vía API, sin interfaz)".</li>
+<li>Agregar "motivo obligatorio" y la nueva excepción de agenda bloqueada.</li>
+<li>Poscondición: "la cita queda agendada en el nuevo bloque, pendiente de confirmación".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU18</span><span class="nombre">Cancelando cita y liberando recursos</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantallas: Mis citas / Historial · evento CANCELAR de <code>POST /citas/:id/transicionar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Es una transición de CU20 con motivo obligatorio. Exc. 1 paciente fuera de plazo (2 h, parámetro) → 409 <code>FUERA_DE_PLAZO</code>.</li>
+<li>El bloque queda libre porque las búsquedas ignoran citas <code>CANCELADA</code> (no hay estado "Disponible" en un bloque).</li>
+<li>Se notifica a los inscritos en <code>Lista_Espera</code> de esa cita (marcados <code>notificado</code>); la respuesta informa cuántos. Exc. 4: el aviso nunca revierte la cancelación. Ver D13.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 2: "actualiza la cita a <code>CANCELADA</code> con motivo".</li>
+<li>Exc. 2 (bloqueo de tabla) → "fallo de persistencia con reversión".</li>
+<li>Dependencias: RF18, RF19, RF20, RF22, RNF11 + RF17.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU22</span><span class="nombre">Registrando trazabilidad de transiciones de agenda</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Historial → "Ver trazabilidad" · <code>GET /citas/:id/trazabilidad</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Cada transición o reprogramación escribe en <code>Bitacora_Auditoria</code> (entidad Cita) con estado anterior, nuevo, evento, motivo, rol del actor, IP y, si hubo, descuento de sesión o bloques anterior/nuevo.</li>
+<li>El registro va <b>dentro</b> de la transacción: si la bitácora falla, el cambio se anula (la ficha dice "encola").</li>
+<li>Exc. 3 motivo vacío → 400 <code>MOTIVO_REQUERIDO</code>, solo para cancelar y reprogramar (confirmar/iniciar/finalizar no piden motivo).</li>
+<li>Consulta: profesional y administrador ven el historial en un diálogo con lista.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Exc. 4: "encola" → "revierte la operación".</li>
+<li>Paso 3: aclarar qué eventos exigen justificación.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU76</span><span class="nombre">Ejecutando transacciones en máquina de estados de la cita</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Historial (botones por cita) · descuento en <code>agendaService.descontarSesionPaquete</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>No hay calendario gráfico: las acciones están en las tarjetas de cita del historial de cada paciente; Mi Jornada es solo lectura.</li>
+<li>El descuento ocurre en las dos vías de término (FINALIZAR de CU20 y finalizar de CU38). Exc. 3: la inasistencia descuenta igual (penalización). Exc. 4: sin paquete activo se omite y se informa ("no se descontó ninguna sesión"); no se inactiva el perfil.</li>
+<li>Paquete <code>ACTIVO</code> → <code>AGOTADO</code> al llegar a cero; se responde con sesiones restantes.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 1–2: "selecciona la cita en el historial del paciente" en vez de "calendario".</li>
+<li>Exc. 4: quitar "inactiva el perfil transaccional".</li>
+</ul></div></div></div>
+
+<h3 id="inc2-triaje">Triaje y evaluación</h3>
+
+<div class="cu"><header><span class="id">CU27</span><span class="nombre">Registrando aceptación de disclaimer legal</span><span class="chip igual">Coincide</span><span class="pantalla">Pantalla: Entrevista previa · <code>GET /clinica/triaje/disclaimer</code>, <code>POST /clinica/triaje/disclaimer/aceptar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Texto versionado (1.0) en el servidor. La aceptación vale por <b>un ciclo</b>: una aceptación posterior al último triaje completado.</li>
+<li>Exc. 2 rechazo → vuelve al inicio; Exc. 3 falla al registrar → 500 <code>TIMESTAMP_FALLIDO</code> y el triaje no se habilita.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Agregar "una aceptación por ciclo de entrevista" en la poscondición.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU23</span><span class="nombre">Ejecutando entrevista clínica automatizada de triaje</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Entrevista previa · <code>GET /clinica/triaje/estado|arbol</code>, <code>PUT /clinica/triaje/respuestas</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Árbol de decisión determinista en el servidor (sin IA): motivo → rama dolor/lesión (zona, intensidad), respiratoria, nutricional (objetivo, hábitos) u otro; tramo común: tiempo de evolución, antecedentes patológicos, quirúrgicos y alergias.</li>
+<li>Se accede desde el inicio del paciente cuando quiera; no depende de tener una cita ni de un enlace.</li>
+<li>Exc. 3: cada respuesta se guarda en <code>Triaje.respuestas</code>; al volver, la entrevista se reanuda. Exc. 2 → 500 <code>FALLA_REGLAS</code>; Exc. 4 → 500 <code>PERSISTENCIA_FALLIDA</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Precondición: "paciente autenticado con disclaimer aceptado en este ciclo" (no "primera sesión programada").</li>
+<li>Exc. 1 (enlace expirado) no aplica; reemplazar por "disclaimer pendiente → 403".</li>
+<li>Resumen/RF23: quitar la mención a IA si se quiere ser exacto ("árbol de decisión").</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU24</span><span class="nombre">Estructurando datos de sintomatología a ficha clínica</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Automático al completar la entrevista · <code>POST /clinica/triaje/completar</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Lo dispara el <b>sistema</b> al terminar la entrevista, sin intervención del profesional. Si el paciente no tiene ficha, se crea (plantilla "General").</li>
+<li>El resumen se anexa al final de la anamnesis entre "── TRIAJE AUTOMATIZADO ──" y "── FIN TRIAJE ──" (sin pisar lo escrito por el profesional; máximo 2000 caracteres); alergias y antecedentes se insertan en sus tablas sin duplicar.</li>
+<li>Exc. 2 formato inválido → 400 <code>FALLA_INTEGRIDAD</code>; Exc. 4 claves desconocidas → sección "sin clasificar" dentro del texto; Exc. 6 → 500 con las respuestas conservadas para reintentar.</li>
+<li>El paciente ve una vista previa en el aviso final; el profesional lo revisa en Anamnesis.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actor: Sistema (disparado por el paciente). Reescribir los 6 pasos en 4: completar, estructurar, integrar, confirmar.</li>
+<li>Exc. 1, 3 y 5 no aplican (no hay búsqueda de ficha por RUT, ni panel de progreso, ni vista preliminar renderizada).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU77</span><span class="nombre">Renderizando plantillas dinámicas de evaluación</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Anamnesis · <code>GET /clinica/plantilla-evaluacion</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Plantillas por especialidad (Kinesiología, Kinesiología Respiratoria, Nutricionista; General por defecto) con campos obligatorios y opcionales.</li>
+<li>Se renderiza en la <b>anamnesis</b> (no en la evolución). Los valores se guardan dentro de <code>Ficha_Clinica.anamnesis</code> entre "═══ EVALUACIÓN ESTRUCTURADA ═══" y "═══ FIN EVALUACIÓN ═══"; la app los vuelve a separar en campos al cargar.</li>
+<li>Exc. 2 sin especialidad → 409 <code>SIN_ESPECIALIDAD</code>; Exc. 3 obligatorios en rojo; Exc. 4 borrador local y sincronización.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Resumen/RF77: "Anamnesis y Evolución" → "Anamnesis".</li>
+<li>Indicar que los campos se persisten como bloque estructurado dentro de la anamnesis (no columnas propias).</li>
+</ul></div></div></div>
+
+<h3 id="inc2-pautas">Pautas de ejercicio</h3>
+
+<div class="cu"><header><span class="id">CU46</span><span class="nombre">Seleccionando material en biblioteca centralizada</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Pautas (selector por ejercicio) · <code>GET /clinica/materiales?buscar=</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Búsqueda por nombre, categoría o tipo; solo material disponible. Exc. 2 si falla el filtro se entrega el catálogo completo. Exc. 4 material obsoleto al prescribir → 409 <code>MATERIAL_OBSOLETO</code>.</li>
+<li>No hay visor ni descarga del material de biblioteca (las URL son de referencia); Exc. 3 no aplica.</li>
+<li>La selección es opcional y se asocia a cada ejercicio de la pauta.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 3: "visualiza en el visor" → "selecciona el recurso para el ejercicio".</li>
+<li>Retirar Exc. 3 o dejarla como pendiente.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU47</span><span class="nombre">Prescribiendo pautas de ejercicio técnico</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Pautas · <code>POST /clinica/pautas</code>, <code>GET /clinica/pautas/paciente/:id</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Pauta: nombre, fecha de inicio y expiración, episodio, lista de ejercicios con nombre, series, repeticiones, frecuencia (DIARIA/SEMANAL) y material opcional. No se registra "carga" en kilos.</li>
+<li>Exc. 2 frecuencia inválida → DIARIA; Exc. 3 series/repeticiones enteros mayores a 0; Exc. 4 episodio inexistente o ajeno → 404 <code>EPISODIO_NO_ENCONTRADO</code>.</li>
+<li>Exc. 1 (sin material seleccionado) no aplica: el material es opcional.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Precondición: quitar "material seleccionado en memoria"; agregar "episodio clínico abierto del profesional".</li>
+<li>Paso 3: quitar "controles de carga física" o cambiar a "series, repeticiones y frecuencia".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU48</span><span class="nombre">Registrando cumplimiento diario de tareas</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Mis ejercicios (paciente) · <code>GET /clinica/pautas/mis-pautas</code>, <code>POST|DELETE /clinica/pautas/ejercicios/:id/cumplimiento</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Marca y desmarca solo el día de hoy (fecha del servidor). Exc. 3 imposible marcar futuro. Exc. 1 pauta no vigente → 409 <code>PAUTA_EXPIRADA</code> / <code>PAUTA_NO_INICIADA</code>.</li>
+<li>Exc. 4 anti-rebote por clave única (ejercicio, fecha). Exc. 2 caché local (AsyncStorage): sin señal se muestra la última carga en solo lectura.</li>
+<li>Se guarda en <code>Pauta_Cumplimiento</code>, no en la ficha clínica.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 4: "persiste en la Ficha Clínica" → "en el registro de cumplimiento de la pauta".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU49</span><span class="nombre">Controlando vigencia y ciclo de vida de pautas</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Evaluado al consultar pautas (paciente y profesional)</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>No hay tarea diaria en el servidor: el estado se calcula al consultar (PROGRAMADA / VIGENTE / EXPIRADA) según las fechas y se persiste EXPIRADA en modo mejor esfuerzo (Exc. 4).</li>
+<li>Una pauta expirada viaja sin su material asociado (revocación de contenido) y no admite marcas.</li>
+<li>Exc. 3 (cuenta inactiva) no está implementada: no existe un estado de cuenta que revoque pautas.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Frecuencia: "diaria, mediante rutinas del servidor" → "en cada consulta".</li>
+<li>Retirar la Exc. 3 o marcarla pendiente.</li>
+</ul></div></div></div>
+
+<h3 id="inc2-evidencia">Evidencia de atención</h3>
+
+<div class="cu"><header><span class="id">CU39</span><span class="nombre">Validando presencialidad mediante coordenadas GPS</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pantalla: Evidencia de sesión (paciente desde Mis citas, profesional desde Historial) · <code>POST /citas/:id/checkin-gps</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Validación <b>cruzada entre los dos dispositivos</b> (distancia Haversine ≤ <code>RADIO_PRESENCIALIDAD_METROS</code>, 200 m), no contra la dirección del paciente (no hay coordenadas del domicilio).</li>
+<li>Cada actor registra INICIO y TERMINO; se guarda en <code>Cita.evidencia_presencial</code> y el par lat,lng del inicio en <code>coordenadas_gps_*</code>. Solo citas confirmadas o en curso.</li>
+<li>Exc. 1 GPS apagado: la app bloquea. Exc. 2 inicio fuera del radio → 409 <code>PRESENCIALIDAD_NO_COINCIDENTE</code> + bitácora. Exc. 4 profesional fuera del radio al término → se guarda con bandera <code>BANDERA_FUGA_RADIO</code>. Exc. 3 (paciente sin energía) → cierre manual en CU41.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 2: "coincidencia con la dirección domiciliaria" → "coincidencia entre las coordenadas de ambos actores".</li>
+<li>Exc. 2: "los actores declaran el cambio de ubicación" → "se rechaza el check-in y queda en bitácora".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU41</span><span class="nombre">Validando sesión mediante protocolo multi-factor</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Historial → "Validar sesión" (profesional) · <code>POST /citas/:id/validar-sesion</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Solo el profesional, sobre una cita <code>REALIZADA</code>; una sola vez (409 <code>SESION_YA_CERTIFICADA</code>).</li>
+<li>Factores: marca de inicio del profesional, presencia del paciente, diferencia ≤ <code>TOLERANCIA_MULTIFACTOR_MINUTOS</code> (15), GPS ≤ radio (domiciliaria).</li>
+<li>Exc. 1 sin término del paciente → <code>requiere_cierre_manual</code> con justificación. Exc. 2 factores fallidos → 409 <code>VALIDACION_SUSPENDIDA</code>, la cita queda suspendida y se deriva a todos los administradores (app + correo con contactos) (D11). Exc. 3 resumen → el profesional confirma. Exc. 4 → 500 <code>CIERRE_ENCOLADO</code>.</li>
+<li>Resultado: <code>Cita.sesion_certificada_en</code> y <code>certificacion_tipo</code> (MULTIFACTOR / MANUAL); la cita <b>no cambia de estado</b>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actores: solo Profesional (el paciente aporta marcas por CU39; el administrador no interviene).</li>
+<li>Precondición: "cita realizada con marcas registradas".</li>
+<li>Exc. 2: derivación al Administrador con bandeja de sesiones suspendidas (D11). No existen los estados "Validada" ni "Auditable": la certificación queda en la cita.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU42</span><span class="nombre">Capturando firma manuscrita de conformidad</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Firma de conformidad (en el teléfono del profesional) · <code>GET /citas/:id/declaracion-conformidad</code>, <code>POST /citas/:id/firma</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Lienzo táctil; los trazos se guardan como JSON en <code>Cita.firma_conformidad_datos</code> (no como imagen). Citas en curso o realizadas.</li>
+<li>Exc. 1 sin pantalla táctil → conformidad por correo (Brevo). Exc. 2 sin declaración → sin lienzo. Exc. 3 rechazo con observación obligatoria. Exc. 4 trazo vacío → 400 <code>TRAZO_VACIO</code>.</li>
+<li>Una vez firmada queda bloqueada (409 <code>FIRMA_YA_REGISTRADA</code>) y la app muestra "Firma verificada".</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 4: "almacena la imagen" → "almacena los trazos como registro inalterable".</li>
+<li>Poscondición: agregar que no se puede firmar dos veces.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU43</span><span class="nombre">Registrando evidencia técnica de teleconsulta</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Pantalla: Evidencia de sesión (modalidad virtual) · <code>POST /citas/:id/evidencia-teleconsulta</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>La app <b>no hace videollamada</b>: registra eventos INICIO, RECONEXIÓN y TÉRMINO con IP (vista por el servidor), latencia (promedio de tres pings a <code>/health</code>), dispositivo y permisos de cámara/micrófono.</li>
+<li>Cada evento es un segmento en <code>Cita.metadatos_teleconsulta</code>. Exc. 2: cada reconexión es un segmento más. Exc. 4: si falla el envío se guarda localmente y se reintenta al volver.</li>
+<li>Exc. 1: permisos denegados se registran como tal (no bloquean).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 1 y 3: "activan la cámara estableciendo la videollamada" → "declaran el inicio/término de la videollamada externa desde la app".</li>
+<li>Exc. 3 (corte de energía) → se cubre con la reconexión.</li>
+</ul></div></div></div>
+
+<h3 id="inc2-docs">Documentos y versionado</h3>
+
+<div class="cu"><header><span class="id">CU31</span><span class="nombre">Gestionando versionado de correcciones auditadas</span><span class="chip igual">Coincide</span><span class="pantalla">Historial → desplegable "Correcciones" en cada evolución · <code>GET/POST /clinica/evolucion/:id/versiones</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Solo sobre evoluciones cerradas (409 <code>REGISTRO_NO_FINALIZADO</code> si aún está abierta). Tabla <code>Evolucion_Version</code>; el original no se toca.</li>
+<li>Exc. 1 solo el autor → 403 <code>SIN_PERMISO_AUTORIA</code> + bitácora; Exc. 2 tope <code>MAX_VERSIONES_CORRECCION</code> (5) → 409; Exc. 3 texto vacío → 400; Exc. 4 → reversión y 500 <code>VINCULACION_FALLIDA</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Exc. 1: "solicita acceso al Supervisor" → "al administrador" (no hay rol Supervisor).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU33</span><span class="nombre">Almacenando archivos en repositorio multimedia</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Documentos del paciente (profesional) · <code>POST /clinica/pacientes/:id/documentos</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Selección desde archivos o galería; el binario va a Cloudinary; la base guarda URL y metadatos en <code>Documento_Clinico</code> (paciente, episodio opcional, profesional que carga).</li>
+<li>Exc. 1 tamaño sobre <code>MAX_TAMANO_ARCHIVO_MB</code> → 413; Exc. 2 extensión no permitida → 400 (DOCX ya permitido, D5); Exc. 4 falla en la transferencia → 502 sin persistir nada.</li>
+<li>Si Cloudinary no está configurado → 503 <code>REPOSITORIO_NO_CONFIGURADO</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Formatos: imágenes, PDF, DOCX y video (D5). Agregar la excepción "repositorio no configurado".</li>
+<li>Paso 4: "persiste en el servidor" → "en el repositorio en la nube (Cloudinary) y registra los metadatos".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU34</span><span class="nombre">Categorizando documentos mediante metadatos</span><span class="chip igual">Coincide</span><span class="pantalla">Documentos del paciente · <code>GET /clinica/documentos/categorias</code>, <code>PUT /clinica/documentos/:id/categoria</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Siete categorías fijas (imagenológico, laboratorio, informe externo, receta, consentimiento, otro, sin clasificar). Se elige al cargar o después; omitir → SIN_CLASIFICAR (Exc. 2). Filtro por categoría en el listado.</li>
+<li>Exc. 3 (motor de indexación) no aplica: el filtro es una consulta SQL.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Listar las categorías; retirar Exc. 3 o simplificarla.</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU35</span><span class="nombre">Visualizando archivos con visor embebido</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantallas: Mis documentos (paciente), Documentos del paciente (profesional), Visor · <code>GET /clinica/documentos/:id/ver</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Permisos: paciente dueño, profesional con episodio o cita vigente, administrador. Exc. 2 → 403 y bitácora <code>VISUALIZACION_DENEGADA</code>. Cada visualización queda en bitácora (RNF19).</li>
+<li>Visor por tipo: imagen nativa; PDF convertido página a página en imágenes por Cloudinary; video en visor web. Enlace opcional de descarga (para PDF requiere habilitar la entrega en Cloudinary).</li>
+<li>Exc. 1 (archivo corrupto) no se detecta al seleccionar; se cubre por Exc. 4 al renderizar.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actores: Paciente, Profesional, Administrador.</li>
+<li>Paso 4: describir los tres modos de visor.</li>
+</ul></div></div></div>
+
+<h3 id="inc2-pagos">Bonos y copagos</h3>
+
+<div class="cu"><header><span class="id">CU66</span><span class="nombre">Registrando y validando bonos de cobertura</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Pagos y bonos (paciente) · <code>POST /pagos/citas/:id/bono</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Folio con formato <code>BON-XXXXXX</code> (Exc. 1) y financiador con convenio (FONASA e Isapre simulados). Solo citas agendadas o confirmadas.</li>
+<li>La validación viaja por la capa adaptadora (CU68) hasta el financiador simulado; cobertura 60% del arancel (<code>ARANCEL_ESPECIALIDAD</code>).</li>
+<li>Exc. 2 rechazo biométrico → bono <code>NO_VALIDADO</code> (409, se puede reintentar con otro folio). Exc. 3 sin respuesta tras los reintentos → 503 (no hay formulario de contingencia, CU72 fuera del incremento). Exc. 4 reintento de escritura ante bloqueos.</li>
+<li>La cita <b>no cambia de estado</b> comercial.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 4 y poscondición: quitar "transiciona el estado de la cita" y "habilita el check-in": el bono solo determina el copago.</li>
+<li>Exc. 3: "despliega el formulario de contingencia" → "informa que debe reintentar más tarde".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU67</span><span class="nombre">Registrando transacciones y copagos</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pantalla: Pagos y bonos · <code>GET /pagos/resumen</code>, <code>POST /pagos/citas/:id/pagar</code>, <code>POST /pagos/paquetes</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Copago = arancel menos cobertura del bono validado (o arancel completo sin bono). Pasarela simulada según el método elegido.</li>
+<li>Exc. 2 cobertura mayor al arancel → 409 <code>FLUJO_CONGELADO</code> + traza. Exc. 3 tarjeta rechazada → transacción RECHAZADA y 402. Exc. 4 pago "en tránsito" → el siguiente intento lo concilia sin volver a cobrar.</li>
+<li>Además: compra de planes de 4, 8 o 12 sesiones (10% de descuento) que crea <code>Paquete_Sesiones</code> ACTIVO (alimenta CU76), auditada en bitácora, sin fila en <code>Transaccion</code>.</li>
+<li>El pago no condiciona la confirmación de la cita (CU73 fuera del incremento).</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Agregar la compra de planes como paso alternativo.</li>
+<li>Poscondición: quitar "panel de liquidación del profesional" (CU75 no existe).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU69</span><span class="nombre">Registrando en bitácora de transacciones externas</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Automático en la capa adaptadora</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>No hay tabla propia: se usa <code>Bitacora_Auditoria</code> con acción <code>INTEGRACION_EXTERNA</code>, entidad = proveedor y datos con operación, estado, código HTTP, latencia, intentos, payload enviado y recibido.</li>
+<li>Estados: EXITOSA, LATENCIA_CRITICA (más de 5 s), FALLO_SINTAXIS, ESQUEMA_INVALIDO, RECHAZO_FORMATO, LIMITE_REINTENTOS, INCONSISTENCIA_CONSOLIDACION.</li>
+<li>Exc. 1: sin <code>X-Api-Key</code> el financiador responde 401 y queda registrado.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Poscondición/RF69: "bitácora de transacciones" → "registro en la bitácora de auditoría con acción INTEGRACION_EXTERNA".</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU71</span><span class="nombre">Sincronizando y validando sesiones bonificables</span><span class="chip cambio">Cambia el flujo</span><span class="pantalla">Historial → tarjeta "Cuadratura de coberturas" (profesional) · <code>GET /pagos/cuadratura/:paciente</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Es una <b>consulta</b>: compara sesiones autorizadas (suma de paquetes) con las realizadas por ese profesional y lista los bonos por cita. No deduce sesiones: eso lo hace CU76 al finalizar.</li>
+<li>Exc. 1 sesiones realizadas sin bono → lista <code>realizadas_sin_bono</code>; Exc. 2 realizadas mayor que autorizadas → <code>discrepancia_saldo</code>; Exc. 3 el profesional puede descartar la alerta; Exc. 4 → 500 <code>SINCRONIZACION_PENDIENTE</code>.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Pasos 3–4: quitar "confirma la asignación del cupo" y "deduce la sesión"; reemplazar por "revisa la cuadratura y las alertas".</li>
+<li>Poscondición: "el profesional conoce las discrepancias" (no modifica datos).</li>
+</ul></div></div></div>
+
+<h3 id="inc2-otros">Episodio y segregación</h3>
+
+<div class="cu"><header><span class="id">CU78</span><span class="nombre">Agrupando registros bajo entidad episodio clínico</span><span class="chip ajuste">Ajustes</span><span class="pantalla">Pestaña Episodios · <code>POST /clinica/episodio</code>, <code>PUT /clinica/episodio/:id</code></span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>El episodio se crea desde la pestaña con motivo de consulta; el profesional sale de la sesión (no se digita). Estado y fecha de término editables.</li>
+<li>Al iniciar una atención la cita queda ligada al episodio abierto más reciente (CU38); pautas y documentos exigen episodio del profesional.</li>
+<li>Exc. 2 sin episodio → la app guía a crearlo. Exc. 3 episodio cerrado <b>se valida</b> (409 <code>EPISODIO_CERRADO</code>, D12); la superposición temporal no.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Paso 3: el episodio se elige desde el selector de la ficha (una vez por sesión) y la cita lo hereda.</li>
+<li>Exc. 3: episodio cerrado o ajeno; Exc. 4: fallo de persistencia (D12).</li>
+</ul></div></div></div>
+
+<div class="cu"><header><span class="id">CU79</span><span class="nombre">Segregando interfaces según rol de acceso</span><span class="chip ajuste">Ajustes</span><span class="pantalla"><code>AppNavigator</code>: pilas Pública, Paciente, Profesional, Administrador</span></header>
+<div class="dos"><div><h4>Implementado así</h4><ul>
+<li>Cuatro pilas de navegación según el rol del token; pantallas comunes (Seguridad, Evidencia, Documentos, Visor) registradas en cada pila que las usa.</li>
+<li>Exc. 3: rutas del servidor protegidas por rol; Exc. 4: token expira a las 8 h; además una sesión revocada expulsa al dispositivo (CU08).</li>
+<li>No hay pila para Supervisor.</li>
+</ul></div><div><h4>Corregir en la ficha</h4><ul>
+<li>Actores: quitar Supervisor. Exc. 3: "modificando la URL" no aplica en app móvil; "la app no ofrece rutas ajenas y el servidor rechaza con 403".</li>
+</ul></div></div></div>
+
+<!-- ═══════════════════════════════════════════════════════════════ -->
+<h2 id="bd">C · Base de datos</h2>
+<p>Comparación del MR y la 3FN documentados en el Incremento 1 contra <code>schema.sql</code> más las migraciones automáticas (<code>scripts/migrar-db.js</code>), que son lo que realmente está en Aiven.</p>
+
+<h3 id="bd-nuevas">Clases (tablas) nuevas</h3>
+<div class="tabla-wrap"><table>
+<tr><th>Tabla</th><th>Atributos</th><th>Para qué</th><th>Relaciones</th></tr>
+<tr><td class="mono">Sesion_Usuario</td><td><code>sesion_usuario_id</code> PK, <code>jti</code> (único), <code>dispositivo</code>, <code>dispositivo_id</code>, <code>ip_origen</code>, <code>momento_inicio</code>, <code>activa</code>, <code>usuario_id</code> FK</td><td>CU05/CU08: sesiones por dispositivo, revocables</td><td>Usuario 1 — N Sesion_Usuario</td></tr>
+<tr><td class="mono">Triaje</td><td><code>triaje_id</code> PK, <code>estado</code> (EN_PROGRESO / COMPLETADO), <code>respuestas</code> JSON, <code>momento_inicio</code>, <code>momento_completado</code>, <code>integrado</code>, <code>paciente_id</code> FK</td><td>CU23/CU24: entrevista reanudable e integración a ficha</td><td>Paciente 1 — N Triaje</td></tr>
+<tr><td class="mono">Evolucion_Version</td><td><code>version_id</code> PK, <code>numero_version</code>, <code>texto_correccion</code>, <code>fecha_creacion</code>, <code>evolucion_clinica_id</code> FK, <code>profesional_id</code> FK</td><td>CU31: correcciones sobre evoluciones cerradas</td><td>Evolucion_Clinica 1 — N Evolucion_Version; Profesional 1 — N Evolucion_Version</td></tr>
+<tr><td class="mono">Documento_Clinico</td><td><code>documento_id</code> PK, <code>nombre_original</code>, <code>categoria</code>, <code>formato</code>, <code>tamano_bytes</code>, <code>tipo_recurso</code>, <code>url_publica</code>, <code>public_id_cloud</code>, <code>paginas</code>, <code>fecha_carga</code>, <code>paciente_id</code> FK, <code>episodio_clinico_id</code> FK (opcional), <code>profesional_id</code> FK</td><td>CU33/34/35: repositorio multimedia (binario en Cloudinary)</td><td>Paciente 1 — N; Profesional 1 — N; Episodio_Clinico 0..1 — N</td></tr>
+<tr><td class="mono">Pauta_Cumplimiento</td><td><code>pauta_cumplimiento_id</code> PK, <code>fecha</code>, <code>momento_registro</code>, <code>pauta_ejercicio_id</code> FK; único (ejercicio, fecha)</td><td>CU48: una marca por ejercicio y día</td><td>Pauta_Ejercicio 1 — N Pauta_Cumplimiento</td></tr>
+</table></div>
+
+<h3 id="bd-atributos">Atributos nuevos en clases existentes</h3>
+<div class="tabla-wrap"><table>
+<tr><th>Tabla</th><th>Atributo</th><th>Tipo</th><th>CU</th><th>Nota</th></tr>
+<tr><td class="mono">Paciente</td><td class="mono">privacidad_contacto</td><td>JSON {mostrar_direccion, mostrar_telefono}</td><td>CU09</td><td>NULL = todo visible (D9)</td></tr>
+<tr><td class="mono">Profesional_Disponibilidad</td><td class="mono">modalidad</td><td>ENUM DOMICILIO / ONLINE / AMBOS</td><td>CU02, CU14</td><td>Modalidad por bloque horario</td></tr>
+<tr><td class="mono">Pauta_Ejercicio</td><td class="mono">pauta_ejercicio_id</td><td>INT PK autoincremental</td><td>CU47</td><td>Antes la PK era compuesta (pauta, nombre); ahora es única (UNIQUE)</td></tr>
+<tr><td class="mono">Pauta_Ejercicio</td><td class="mono">series, repeticiones, frecuencia</td><td>INT, INT, VARCHAR (DIARIA/SEMANAL)</td><td>CU47</td><td></td></tr>
+<tr><td class="mono">Pauta_Ejercicio</td><td class="mono">material_terapeutico_id</td><td>INT FK opcional</td><td>CU46</td><td>Reemplaza a Pauta_Material, eliminada (D8)</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">modalidad</td><td>ENUM DOMICILIO / ONLINE</td><td>CU14, CU39, CU43</td><td>NULL en citas antiguas → se hereda del profesional</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">evidencia_presencial</td><td>JSON {paciente:{inicio,termino}, profesional:{inicio,termino}} con lat, lng, momento</td><td>CU39</td><td>D9</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">firma_conformidad_datos</td><td>JSON {tipo, trazos, observacion, momento, declaracion_version}</td><td>CU42</td><td>Sustituye a <code>firma_conformidad_url</code> (D10)</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">sesion_certificada_en, certificacion_tipo</td><td>DATETIME, VARCHAR (MULTIFACTOR / MANUAL)</td><td>CU41</td><td>Certificación de la sesión</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">sesion_suspendida_en, motivo_suspension</td><td>DATETIME, JSON {factores}</td><td>CU41</td><td>Derivación al Administrador (D11)</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">estado</td><td>VARCHAR(30)</td><td>CU20</td><td>Ya existía; se amplía para CANCELADA_PACIENTE / CANCELADA_PROFESIONAL (D2)</td></tr>
+<tr><td class="mono">Profesional</td><td class="mono">areas_experticia</td><td>VARCHAR(255)</td><td>CU10</td><td>D1</td></tr>
+<tr><td class="mono">Episodio_Clinico</td><td class="mono">estado</td><td>VARCHAR, por defecto ABIERTO</td><td>CU78</td><td>Ya existía sin valor por defecto; ahora ABIERTO / CERRADO (D12)</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">episodio_clinico_id</td><td>INT FK opcional</td><td>CU38, CU78</td><td>Relación nueva Cita N — 1 Episodio_Clinico</td></tr>
+<tr><td class="mono">Cita</td><td class="mono">metadatos_teleconsulta</td><td>JSON {segmentos:[…]}</td><td>CU43</td><td>Ya existía la columna; ahora tiene estructura definida</td></tr>
+<tr><td class="mono">Parametro_Global</td><td colspan="2">6 filas nuevas (no es cambio de estructura)</td><td>CU17/18/39/41/33/31</td><td>Ver CU59</td></tr>
+</table></div>
+
+<h3 id="bd-sinuso">Columnas y tablas que existen pero ningún flujo usa</h3>
+<ul class="lista">
+<li><code>Cita.checkin_paciente</code>: la presencia del paciente vive en <code>evidencia_presencial</code>. <code>Cita.firma_conformidad_url</code>: la firma vive en <code>firma_conformidad_datos</code>. <code>Cita.coordenadas_gps_*</code>: se siguen escribiendo por compatibilidad (par lat,lng del inicio).</li>
+<li><code>Evolucion_Clinica.porcentaje_objetivo</code>: siempre 0; el avance está en <code>Objetivo_Terapeutico.valor_actual</code>.</li>
+<li><code>Profesional.foto_url</code>, <code>calificacion_promedio</code>: valores por defecto (sin CU10 ni CU58).</li>
+<li><code>Pauta_Material</code>: eliminada del esquema (D8).</li>
+<li>Reservadas para CU fuera del incremento: <code>Lista_Espera</code> (solo se lee), <code>Mensaje_Chat</code>, <code>Ticket_Soporte</code>, <code>Derivacion_Interna</code>, <code>Sede_Online</code>, <code>Sede_Presencial</code>, <code>Sede_Horario</code>, <code>Evaluacion_Satisfaccion</code>. <code>Notificacion</code> sí se escribe (agenda).</li>
+</ul>
+
+<h3 id="bd-mere">Cómo reflejarlo en el MERE</h3>
+<p>El MERE del Incremento 1 no cambia de estilo: entidades en rectángulo, atributos en óvalos con la clave subrayada, relaciones en rombo con cardinalidad. Lo que hay que agregar o mover:</p>
+<div class="tabla-wrap"><table>
+<tr><th>Elemento</th><th>Qué dibujar</th></tr>
+<tr><td>Entidad <b>Sesion_Usuario</b></td><td>Óvalos: <u>sesion_usuario_id</u>, jti, dispositivo, dispositivo_id, ip_origen, momento_inicio, activa. Rombo "Abre" entre Usuario (1) y Sesion_Usuario (N).</td></tr>
+<tr><td>Entidad <b>Triaje</b></td><td>Óvalos: <u>triaje_id</u>, estado, respuestas, momento_inicio, momento_completado, integrado. Rombo "Responde" entre Paciente (1) y Triaje (N). Se puede agregar un rombo "Alimenta" entre Triaje y Ficha_Clinica (N — 1) para el CU24.</td></tr>
+<tr><td>Entidad <b>Evolucion_Version</b></td><td>Óvalos: <u>version_id</u>, numero_version, texto_correccion, fecha_creacion. Rombo "Corrige" entre Evolucion_Clinica (1) y Evolucion_Version (N); rombo "Redacta" entre Profesional (1) y Evolucion_Version (N).</td></tr>
+<tr><td>Entidad <b>Documento_Clinico</b></td><td>Óvalos: <u>documento_id</u>, nombre_original, categoria, formato, tamano_bytes, tipo_recurso, url_publica, public_id_cloud, paginas, fecha_carga. Rombos: "Adjunta" Paciente (1) — Documento (N); "Carga" Profesional (1) — Documento (N); "Contiene" Episodio_Clinico (1, opcional) — Documento (N).</td></tr>
+<tr><td>Entidad <b>Pauta_Ejercicio</b> (nueva como entidad)</td><td>En el MERE actual "ejercicios" es un atributo multivaluado de Pauta_Tratamiento. Pasa a entidad: <u>pauta_ejercicio_id</u>, nombre_ejercicio, series, repeticiones, frecuencia. Rombo "Compone" Pauta_Tratamiento (1) — Pauta_Ejercicio (N); rombo "Ilustra" Material_Terapeutico (1, opcional) — Pauta_Ejercicio (N). El rombo "Usa" (Pauta_Tratamiento — Material_Terapeutico, con cantidad y frecuencia) se elimina (D8).</td></tr>
+<tr><td>Entidad <b>Pauta_Cumplimiento</b></td><td>Óvalos: <u>pauta_cumplimiento_id</u>, fecha, momento_registro. Rombo "Registra" Pauta_Ejercicio (1) — Pauta_Cumplimiento (N). Alternativa: atributo multivaluado "fechas_cumplidas" en Pauta_Ejercicio y dejar la extracción para la 1FN.</td></tr>
+<tr><td>Atributos en <b>Paciente</b></td><td>Óvalo compuesto privacidad_contacto (mostrar_direccion, mostrar_telefono).</td></tr>
+<tr><td>Atributos en <b>Cita</b></td><td>Óvalos nuevos: modalidad, evidencia_presencial (compuesto), firma_conformidad_datos (compuesto), sesion_certificada_en, certificacion_tipo. Rombo nuevo "Genera" Cita (N) — Episodio_Clinico (1, opcional).</td></tr>
+<tr><td>Atributo en la relación <b>Profesional — disponibilidad</b></td><td>"disponibilidad_horaria" (multivaluado de Profesional en el MERE) ahora incluye modalidad por bloque: óvalo compuesto (dia_semana, hora_inicio, hora_fin, modalidad).</td></tr>
+<tr><td><b>Sede</b></td><td>Se mantiene, pero conviene una nota: solo existe "Sede Principal" y la modalidad de atención vive en Cita y en la disponibilidad.</td></tr>
+<tr><td>Entidad <b>Profesional</b></td><td>Atributo nuevo <i>areas_experticia</i> (D1).</td></tr>
+<tr><td>Entidad <b>Cita</b></td><td>Atributos nuevos <i>sesion_suspendida_en</i> y <i>motivo_suspension</i> (D11). El atributo <i>estado</i> pasa a admitir siete valores (D2).</td></tr>
+<tr><td>Entidad <b>Episodio_Clinico</b></td><td>El atributo <i>estado</i> toma los valores ABIERTO / CERRADO, por defecto ABIERTO (D12).</td></tr>
+<tr><td>Relación <b>Usa</b> (Pauta_Tratamiento — Material_Terapeutico)</td><td>Se elimina junto con sus atributos cantidad y frecuencia (D8); el material queda ligado a cada ejercicio por "Ilustra".</td></tr>
+</table></div>
+
+<h3 id="bd-mr">MR y normalización con los cambios incorporados</h3>
+<p>Misma convención del Incremento 1: clave primaria <b>subrayada</b>, claves foráneas al final. Marco en <i>verde</i> lo nuevo respecto al documento y en <span class="n">ámbar</span> lo que cambió de forma. Las tablas sin marca son idénticas al Incremento 1.</p>
+
+<details open><summary>MR (esquema relacional previo a normalizar)</summary><div>
+<div class="esquema">Usuario (<b>usuario_id</b>, rut, nombre_completo, email, telefono, contraseña_hash, rol_acceso, cuenta_activo, hora_creacion, otp_codigo, otp_expiracion)
+<i>Sesion_Usuario (<b>sesion_usuario_id</b>, jti, dispositivo, dispositivo_id, ip_origen, momento_inicio, activa, usuario_id)</i>
+Paciente (<b>paciente_id</b>, sexo_clinico, direccion, comuna, contacto_emergencia_nombre, contacto_emergencia_telefono, contacto_emergencia_parentesco, <i>privacidad_contacto</i>, usuario_id)
+Profesional (<b>profesional_id</b>, num_registro_salud, reseña_curricular, <i>areas_experticia</i>, <span class="n">disponibilidad_horaria {dia, inicio, fin, modalidad}</span>, calificacion_promedio, foto_url, tipo_sede, usuario_id, especialidad_id)
+Bloqueo_Agenda (<b>bloqueo_id</b>, fecha_inicio, fecha_fin, motivo, profesional_id)
+Profesional_Autorizado (<b>rut_autorizado</b>, habilitado, administrador_id)
+Especialidad (<b>especialidad_id</b>, nombre, descripcion)
+Sede (<b>sede_id</b>, nombre, horario_operacion, estado_sede)
+Sede_Online (<b>sede_id</b>, link, contraseña, codigo)
+Sede_Presencial (<b>sede_id</b>, direccion, comuna, infraestructura)
+<i>Triaje (<b>triaje_id</b>, estado, respuestas, momento_inicio, momento_completado, integrado, paciente_id)</i>
+Ficha_Clinica (<b>ficha_clinica_id</b>, ultima_actualizacion, antecedentes_quirurgicos, antecedentes_patologicos, anamnesis, plantilla_especialidad, alergias, paciente_id)
+Episodio_Clinico (<b>episodio_clinico_id</b>, motivo_consulta, fecha_inicio, fecha_terminado, estado, paciente_id, profesional_id)
+Evolucion_Clinica (<b>evolucion_clinica_id</b>, inalterable, hora_firma_digital, firma_digital, porcentaje_objetivo, respuesta_fisiologica, tecnicas_aplicadas, <span class="n">correcciones {numero, texto, fecha, profesional}</span>, episodio_clinico_id, profesional_id)
+<i>Documento_Clinico (<b>documento_id</b>, nombre_original, categoria, formato, tamano_bytes, tipo_recurso, url_publica, public_id_cloud, paginas, fecha_carga, paciente_id, episodio_clinico_id, profesional_id)</i>
+Cita (<b>cita_id</b>, fecha_hora_inicio, fecha_hora_fin, checkin_profesional, checkin_paciente, estado, motivo_cancelacion, coordenadas_gps_paciente, coordenadas_gps_profesional, <i>modalidad, evidencia_presencial, firma_conformidad_datos, sesion_certificada_en, certificacion_tipo, sesion_suspendida_en, motivo_suspension</i>, firma_conformidad_url, metadatos_teleconsulta, paciente_id, profesional_id, sede_id, <i>episodio_clinico_id</i>)
+Lista_Espera (<b>lista_espera_id</b>, momento_inscripcion, posicion, notificado, paciente_id, cita_id)
+Pauta_Tratamiento (<b>pauta_tratamiento_id</b>, nombre, estado, fecha_inicio, fecha_expiracion, <span class="n">ejercicios {nombre, series, repeticiones, frecuencia, material, fechas_cumplidas}</span>, episodio_clinico_id)
+Material_Terapeutico (<b>material_terapeutico_id</b>, nombre, tipo, url_archivo, categoria, formato, disponibilidad)
+Financiador (<b>financiador_id</b>, nombre_institucion, rut_institucion, convenio_activo)
+Bono (<b>bono_id</b>, folio, financiador, monto_cobertura, copago, estado_validacion, payload_respuesta, cita_id, financiador_id)
+Transaccion (<b>transaccion_id</b>, monto_total, monto_diferencial, tipo, estado, momento_pago, metodo_pago, cita_id)
+Evaluacion_Satisfaccion (<b>evaluacion_satisfaccion_id</b>, puntuacion, reseña, estado_moderacion, momento_creacion, cita_id)
+Notificacion (<b>notificacion_id</b>, canal, tipo, contenido, momento_envio, leida, usuario_id)
+Ticket_Soporte (<b>ticket_soporte_id</b>, categoria, descripcion, estado, momento_creacion, momento_resuelto, usuario_id)
+Bitacora_Auditoria (<b>bitacora_auditoria_id</b>, accion, entidad_afectada, ip_origen, momento_evento, datos_adicionales, usuario_id)
+Mensaje_Chat (<b>mensaje_id</b>, contenido_cifrado, bloqueado, momento_envio, episodio_clinico_id)
+Objetivo_Terapeutico (<b>objetivo_terapeutico_id</b>, descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
+Derivacion_Interna (<b>derivacion_interna_id</b>, estado, justificacion, momento_creacion, episodio_clinico_id, profesional_origen_id, profesional_destino_id)
+Paquete_Sesiones (<b>paquete_sesiones_id</b>, sesiones_total, sesiones_usadas, estado, precio_total, momento_adquisicion, paciente_id)
+Disclaimer (<b>disclaimer_id</b>, momento_aceptacion, version_disclaimer, paciente_id)
+Parametro_Global (<b>parametro_id</b>, clave, valor, descripcion, ultima_modificacion, administrador_id)</div></div></details>
+
+<details><summary>Primera Forma Normal (1FN)</summary><div>
+<p style="font-size:.92rem;color:var(--texto3)">Se eliminan los grupos repetitivos: teléfonos, dirección, antecedentes, alergias, jornada semanal, horarios de sede, <b>ejercicios de la pauta, cumplimientos por día y correcciones de una evolución</b>. Las columnas JSON de Cita, Triaje y Paciente se tratan como atributos de tipo JSON (un único valor, documento) según D9.</p>
+<div class="esquema">Usuario (<b>usuario_id</b>, rut, nombres, apellido_paterno, apellido_materno, email, contraseña_hash, rol_acceso, cuenta_activo, hora_creacion, otp_codigo, otp_expiracion)
+Usuario_Telefono (<b>usuario_id, telefono</b>)
+<i>Sesion_Usuario (<b>sesion_usuario_id</b>, jti, dispositivo, dispositivo_id, ip_origen, momento_inicio, activa, usuario_id)</i>
+Comuna (<b>comuna_id</b>, nombre_comuna)
+Paciente (<b>paciente_id</b>, sexo_clinico, calle, numero_calle, departamento, contacto_emergencia_nombre, contacto_emergencia_telefono, contacto_emergencia_parentesco, <i>privacidad_contacto</i>, usuario_id, comuna_id)
+Profesional (<b>profesional_id</b>, num_registro_salud, reseña_curricular, <i>areas_experticia</i>, calificacion_promedio, foto_url, tipo_sede, usuario_id, especialidad_id)
+Bloqueo_Agenda (<b>bloqueo_id</b>, fecha_inicio, fecha_fin, motivo, profesional_id)
+Profesional_Autorizado (<b>rut_autorizado</b>, habilitado, administrador_id)
+Profesional_Disponibilidad (<b>profesional_id, dia_semana, hora_inicio</b>, hora_fin, <i>modalidad</i>)
+Especialidad (<b>especialidad_id</b>, nombre, descripcion)
+Sede (<b>sede_id</b>, nombre, estado_sede)
+Sede_Horario (<b>sede_id</b>, dia_semana, hora_apertura, hora_cierre)
+Sede_Online (<b>sede_id</b>, link, contraseña, codigo)
+Sede_Presencial (<b>sede_id</b>, calle, numero_calle, departamento, infraestructura, comuna_id)
+<i>Triaje (<b>triaje_id</b>, estado, respuestas, momento_inicio, momento_completado, integrado, paciente_id)</i>
+Ficha_Clinica (<b>ficha_clinica_id</b>, ultima_actualizacion, anamnesis, plantilla_especialidad, paciente_id)
+Ficha_Alergia (<b>ficha_clinica_id, alergia</b>)
+Ficha_Antecedente_Quirurgico (<b>ficha_clinica_id, antecedente</b>)
+Ficha_Antecedente_Patologico (<b>ficha_clinica_id, antecedente</b>)
+Episodio_Clinico (<b>episodio_clinico_id</b>, motivo_consulta, fecha_inicio, fecha_terminado, estado, paciente_id, profesional_id)
+Evolucion_Clinica (<b>evolucion_clinica_id</b>, inalterable, hora_firma_digital, firma_digital, porcentaje_objetivo, respuesta_fisiologica, tecnicas_aplicadas, episodio_clinico_id, profesional_id)
+<i>Evolucion_Version (<b>version_id</b>, numero_version, texto_correccion, fecha_creacion, evolucion_clinica_id, profesional_id)</i>
+<i>Documento_Clinico (<b>documento_id</b>, nombre_original, categoria, formato, tamano_bytes, tipo_recurso, url_publica, public_id_cloud, paginas, fecha_carga, paciente_id, episodio_clinico_id, profesional_id)</i>
+Cita (<b>cita_id</b>, fecha_hora_inicio, fecha_hora_fin, checkin_profesional, checkin_paciente, estado, motivo_cancelacion, coordenadas_gps_paciente, coordenadas_gps_profesional, <i>modalidad, evidencia_presencial, firma_conformidad_datos, sesion_certificada_en, certificacion_tipo, sesion_suspendida_en, motivo_suspension</i>, firma_conformidad_url, metadatos_teleconsulta, paciente_id, profesional_id, sede_id, <i>episodio_clinico_id</i>)
+Lista_Espera (<b>lista_espera_id</b>, momento_inscripcion, posicion, notificado, paciente_id, cita_id)
+Pauta_Tratamiento (<b>pauta_tratamiento_id</b>, nombre, estado, fecha_inicio, fecha_expiracion, episodio_clinico_id)
+<span class="n">Pauta_Ejercicio (<b>pauta_ejercicio_id</b>, nombre_ejercicio, series, repeticiones, frecuencia, pauta_tratamiento_id, material_terapeutico_id)</span>
+<i>Pauta_Cumplimiento (<b>pauta_cumplimiento_id</b>, fecha, momento_registro, pauta_ejercicio_id)</i>
+Material_Terapeutico (<b>material_terapeutico_id</b>, nombre, tipo, url_archivo, categoria, formato, disponibilidad)
+Financiador (<b>financiador_id</b>, nombre_institucion, rut_institucion, convenio_activo)
+Bono (<b>bono_id</b>, folio, financiador, monto_cobertura, copago, estado_validacion, payload_respuesta, cita_id)
+Transaccion (<b>transaccion_id</b>, monto_total, monto_diferencial, tipo, estado, momento_pago, metodo_pago, cita_id, financiador_id)
+Evaluacion_Satisfaccion (<b>evaluacion_satisfaccion_id</b>, puntuacion, reseña, estado_moderacion, momento_creacion, cita_id)
+Notificacion (<b>notificacion_id</b>, canal, tipo, contenido, momento_envio, leida, usuario_id)
+Ticket_Soporte (<b>ticket_soporte_id</b>, categoria, descripcion, estado, momento_creacion, momento_resuelto, usuario_id)
+Bitacora_Auditoria (<b>bitacora_auditoria_id</b>, accion, entidad_afectada, ip_origen, momento_evento, datos_adicionales, usuario_id)
+Mensaje_Chat (<b>mensaje_id</b>, contenido_cifrado, bloqueado, momento_envio, episodio_clinico_id)
+Objetivo_Terapeutico (<b>objetivo_terapeutico_id</b>, descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
+Derivacion_Interna (<b>derivacion_interna_id</b>, estado, justificacion, momento_creacion, episodio_clinico_id, profesional_origen_id, profesional_destino_id)
+Paquete_Sesiones (<b>paquete_sesiones_id</b>, sesiones_total, sesiones_usadas, estado, precio_total, momento_adquisicion, paciente_id)
+Disclaimer (<b>disclaimer_id</b>, momento_aceptacion, version_disclaimer, paciente_id)
+Parametro_Global (<b>parametro_id</b>, clave, valor, descripcion, ultima_modificacion, administrador_id)</div></div></details>
+
+<details><summary>Segunda Forma Normal (2FN)</summary><div>
+<p style="font-size:.92rem;color:var(--texto3)">Se verifica que ningún atributo dependa de parte de una clave compuesta. Con la clave propia de <code>Pauta_Ejercicio</code> ya no hay dependencia parcial en los ejercicios; en <code>Pauta_Cumplimiento</code> la clave es simple y (ejercicio, fecha) queda como restricción de unicidad. Las tablas nuevas no cambian respecto a 1FN. El resto es igual al Incremento 1.</p>
+<div class="esquema">Usuario (<b>usuario_id</b>, rut, nombres, apellido_paterno, apellido_materno, email, contraseña_hash, rol_acceso, cuenta_activo, hora_creacion, otp_codigo, otp_expiracion)
+Usuario_Telefono (<b>usuario_id, telefono</b>)
+<i>Sesion_Usuario (<b>sesion_usuario_id</b>, jti, dispositivo, dispositivo_id, ip_origen, momento_inicio, activa, usuario_id)</i>
+Comuna (<b>comuna_id</b>, nombre_comuna)
+Paciente (<b>paciente_id</b>, sexo_clinico, calle, numero_calle, departamento, contacto_emergencia_nombre, contacto_emergencia_telefono, contacto_emergencia_parentesco, <i>privacidad_contacto</i>, usuario_id, comuna_id)
+Profesional (<b>profesional_id</b>, num_registro_salud, reseña_curricular, <i>areas_experticia</i>, calificacion_promedio, foto_url, tipo_sede, usuario_id, especialidad_id)
+Bloqueo_Agenda (<b>bloqueo_id</b>, fecha_inicio, fecha_fin, motivo, profesional_id)
+Profesional_Autorizado (<b>rut_autorizado</b>, habilitado, administrador_id)
+Profesional_Disponibilidad (<b>profesional_id, dia_semana, hora_inicio</b>, hora_fin, <i>modalidad</i>)
+Especialidad (<b>especialidad_id</b>, nombre, descripcion)
+Sede (<b>sede_id</b>, nombre, estado_sede)
+Sede_Horario (<b>sede_id</b>, dia_semana, hora_apertura, hora_cierre)
+Sede_Online (<b>sede_id</b>, link, contraseña, codigo)
+Sede_Presencial (<b>sede_id</b>, calle, numero_calle, departamento, infraestructura, comuna_id)
+<i>Triaje (<b>triaje_id</b>, estado, respuestas, momento_inicio, momento_completado, integrado, paciente_id)</i>
+Ficha_Clinica (<b>ficha_clinica_id</b>, ultima_actualizacion, anamnesis, plantilla_especialidad, paciente_id)
+Ficha_Alergia (<b>ficha_clinica_id, alergia</b>)
+Ficha_Antecedente_Quirurgico (<b>ficha_clinica_id, antecedente</b>)
+Ficha_Antecedente_Patologico (<b>ficha_clinica_id, antecedente</b>)
+Episodio_Clinico (<b>episodio_clinico_id</b>, motivo_consulta, fecha_inicio, fecha_terminado, estado, paciente_id, profesional_id)
+Evolucion_Clinica (<b>evolucion_clinica_id</b>, inalterable, hora_firma_digital, firma_digital, porcentaje_objetivo, respuesta_fisiologica, tecnicas_aplicadas, episodio_clinico_id, profesional_id)
+<i>Evolucion_Version (<b>version_id</b>, numero_version, texto_correccion, fecha_creacion, evolucion_clinica_id, profesional_id)</i>
+<i>Documento_Clinico (<b>documento_id</b>, nombre_original, categoria, formato, tamano_bytes, tipo_recurso, url_publica, public_id_cloud, paginas, fecha_carga, paciente_id, episodio_clinico_id, profesional_id)</i>
+Cita (<b>cita_id</b>, fecha_hora_inicio, fecha_hora_fin, checkin_profesional, checkin_paciente, estado, motivo_cancelacion, coordenadas_gps_paciente, coordenadas_gps_profesional, <i>modalidad, evidencia_presencial, firma_conformidad_datos, sesion_certificada_en, certificacion_tipo, sesion_suspendida_en, motivo_suspension</i>, firma_conformidad_url, metadatos_teleconsulta, paciente_id, profesional_id, sede_id, <i>episodio_clinico_id</i>)
+Lista_Espera (<b>lista_espera_id</b>, momento_inscripcion, posicion, notificado, paciente_id, cita_id)
+Pauta_Tratamiento (<b>pauta_tratamiento_id</b>, nombre, estado, fecha_inicio, fecha_expiracion, episodio_clinico_id)
+<span class="n">Pauta_Ejercicio (<b>pauta_ejercicio_id</b>, nombre_ejercicio, series, repeticiones, frecuencia, pauta_tratamiento_id, material_terapeutico_id)</span>
+<i>Pauta_Cumplimiento (<b>pauta_cumplimiento_id</b>, fecha, momento_registro, pauta_ejercicio_id)</i>
+Material_Terapeutico (<b>material_terapeutico_id</b>, nombre, tipo, url_archivo, categoria, formato, disponibilidad)
+Financiador (<b>financiador_id</b>, nombre_institucion, rut_institucion, convenio_activo)
+Bono (<b>bono_id</b>, folio, financiador, monto_cobertura, copago, estado_validacion, payload_respuesta, cita_id)
+Transaccion (<b>transaccion_id</b>, monto_total, monto_diferencial, tipo, estado, momento_pago, metodo_pago, cita_id, financiador_id)
+Evaluacion_Satisfaccion (<b>evaluacion_satisfaccion_id</b>, puntuacion, reseña, estado_moderacion, momento_creacion, cita_id)
+Notificacion (<b>notificacion_id</b>, canal, tipo, contenido, momento_envio, leida, usuario_id)
+Ticket_Soporte (<b>ticket_soporte_id</b>, categoria, descripcion, estado, momento_creacion, momento_resuelto, usuario_id)
+Bitacora_Auditoria (<b>bitacora_auditoria_id</b>, accion, entidad_afectada, ip_origen, momento_evento, datos_adicionales, usuario_id)
+Mensaje_Chat (<b>mensaje_id</b>, contenido_cifrado, bloqueado, momento_envio, episodio_clinico_id)
+Objetivo_Terapeutico (<b>objetivo_terapeutico_id</b>, descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
+Derivacion_Interna (<b>derivacion_interna_id</b>, estado, justificacion, momento_creacion, episodio_clinico_id, profesional_origen_id, profesional_destino_id)
+Paquete_Sesiones (<b>paquete_sesiones_id</b>, sesiones_total, sesiones_usadas, estado, precio_total, momento_adquisicion, paciente_id)
+Disclaimer (<b>disclaimer_id</b>, momento_aceptacion, version_disclaimer, paciente_id)
+Parametro_Global (<b>parametro_id</b>, clave, valor, descripcion, ultima_modificacion, administrador_id)</div></div></details>
+
+<details open><summary>Tercera Forma Normal (3FN) — coincide con el esquema físico actual</summary><div>
+<p style="font-size:.92rem;color:var(--texto3)">Se eliminan dependencias transitivas (Rol, Contacto_Emergencia, financiador en Bono, monto diferencial en Transacción), igual que en el Incremento 1. Las tablas nuevas ya cumplen 3FN: en <code>Documento_Clinico</code>, <code>formato</code> y <code>tipo_recurso</code> son propiedades del archivo, no derivan de otro atributo no clave; en <code>Cita</code>, <code>certificacion_tipo</code> describe el evento de certificación y no depende de otro atributo. Este listado es exactamente lo que crea <code>schema.sql</code> más las migraciones.</p>
+<div class="esquema">Rol (<b>rol_id</b>, nombre_rol)
+Usuario (<b>usuario_id</b>, rut, nombres, apellido_paterno, apellido_materno, email, contraseña_hash, cuenta_activo, hora_creacion, otp_codigo, otp_expiracion, rol_id)
+Usuario_Telefono (<b>usuario_id, telefono</b>)
+<i>Sesion_Usuario (<b>sesion_usuario_id</b>, jti, dispositivo, dispositivo_id, ip_origen, momento_inicio, activa, usuario_id)</i>
+Comuna (<b>comuna_id</b>, nombre_comuna)
+Contacto_Emergencia (<b>contacto_emergencia_id</b>, nombre, telefono, parentesco)
+Paciente (<b>paciente_id</b>, sexo_clinico, calle, numero_calle, departamento, <i>privacidad_contacto</i>, contacto_emergencia_id, usuario_id, comuna_id)
+Profesional (<b>profesional_id</b>, num_registro_salud, reseña_curricular, <i>areas_experticia</i>, calificacion_promedio, foto_url, tipo_sede, usuario_id, especialidad_id)
+Bloqueo_Agenda (<b>bloqueo_id</b>, fecha_inicio, fecha_fin, motivo, profesional_id)
+Profesional_Autorizado (<b>rut_autorizado</b>, habilitado, administrador_id)
+Profesional_Disponibilidad (<b>profesional_id, dia_semana, hora_inicio</b>, hora_fin, <i>modalidad</i>)
+Especialidad (<b>especialidad_id</b>, nombre, descripcion)
+Sede (<b>sede_id</b>, nombre, estado_sede)
+Sede_Horario (<b>sede_id</b>, dia_semana, hora_apertura, hora_cierre)
+Sede_Online (<b>sede_id</b>, link, contraseña, codigo)
+Sede_Presencial (<b>sede_id</b>, calle, numero_calle, departamento, infraestructura, comuna_id)
+<i>Triaje (<b>triaje_id</b>, estado, respuestas, momento_inicio, momento_completado, integrado, paciente_id)</i>
+Ficha_Clinica (<b>ficha_clinica_id</b>, ultima_actualizacion, anamnesis, plantilla_especialidad, paciente_id)
+Ficha_Alergia (<b>ficha_clinica_id, alergia</b>)
+Ficha_Antecedente_Quirurgico (<b>ficha_clinica_id, antecedente</b>)
+Ficha_Antecedente_Patologico (<b>ficha_clinica_id, antecedente</b>)
+Episodio_Clinico (<b>episodio_clinico_id</b>, motivo_consulta, fecha_inicio, fecha_terminado, estado, paciente_id, profesional_id)
+Evolucion_Clinica (<b>evolucion_clinica_id</b>, inalterable, hora_firma_digital, firma_digital, porcentaje_objetivo, respuesta_fisiologica, tecnicas_aplicadas, episodio_clinico_id, profesional_id)
+<i>Evolucion_Version (<b>version_id</b>, numero_version, texto_correccion, fecha_creacion, evolucion_clinica_id, profesional_id)</i>
+<i>Documento_Clinico (<b>documento_id</b>, nombre_original, categoria, formato, tamano_bytes, tipo_recurso, url_publica, public_id_cloud, paginas, fecha_carga, paciente_id, episodio_clinico_id, profesional_id)</i>
+Cita (<b>cita_id</b>, fecha_hora_inicio, fecha_hora_fin, checkin_profesional, checkin_paciente, estado, motivo_cancelacion, coordenadas_gps_paciente, coordenadas_gps_profesional, <i>modalidad, evidencia_presencial, firma_conformidad_datos, sesion_certificada_en, certificacion_tipo, sesion_suspendida_en, motivo_suspension</i>, firma_conformidad_url, metadatos_teleconsulta, paciente_id, profesional_id, sede_id, <i>episodio_clinico_id</i>)
+Lista_Espera (<b>lista_espera_id</b>, momento_inscripcion, posicion, notificado, paciente_id, cita_id)
+Pauta_Tratamiento (<b>pauta_tratamiento_id</b>, nombre, estado, fecha_inicio, fecha_expiracion, episodio_clinico_id)
+<span class="n">Pauta_Ejercicio (<b>pauta_ejercicio_id</b>, nombre_ejercicio, series, repeticiones, frecuencia, pauta_tratamiento_id, material_terapeutico_id)</span>
+<i>Pauta_Cumplimiento (<b>pauta_cumplimiento_id</b>, fecha, momento_registro, pauta_ejercicio_id)</i>
+Material_Terapeutico (<b>material_terapeutico_id</b>, nombre, tipo, url_archivo, categoria, formato, disponibilidad)
+Financiador (<b>financiador_id</b>, nombre_institucion, rut_institucion, convenio_activo)
+Bono (<b>bono_id</b>, folio, monto_cobertura, copago, estado_validacion, payload_respuesta, cita_id, financiador_id)
+Transaccion (<b>transaccion_id</b>, monto_total, tipo, estado, momento_pago, metodo_pago, cita_id)
+Evaluacion_Satisfaccion (<b>evaluacion_satisfaccion_id</b>, puntuacion, reseña, estado_moderacion, momento_creacion, cita_id)
+Notificacion (<b>notificacion_id</b>, canal, tipo, contenido, momento_envio, leida, usuario_id)
+Ticket_Soporte (<b>ticket_soporte_id</b>, categoria, descripcion, estado, momento_creacion, momento_resuelto, usuario_id)
+Bitacora_Auditoria (<b>bitacora_auditoria_id</b>, accion, entidad_afectada, ip_origen, momento_evento, datos_adicionales, usuario_id)
+Mensaje_Chat (<b>mensaje_id</b>, contenido_cifrado, bloqueado, momento_envio, episodio_clinico_id)
+Objetivo_Terapeutico (<b>objetivo_terapeutico_id</b>, descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
+Derivacion_Interna (<b>derivacion_interna_id</b>, estado, justificacion, momento_creacion, episodio_clinico_id, profesional_origen_id, profesional_destino_id)
+Paquete_Sesiones (<b>paquete_sesiones_id</b>, sesiones_total, sesiones_usadas, estado, precio_total, momento_adquisicion, paciente_id)
+Disclaimer (<b>disclaimer_id</b>, momento_aceptacion, version_disclaimer, paciente_id)
+Parametro_Global (<b>parametro_id</b>, clave, valor, descripcion, ultima_modificacion, administrador_id)</div></div></details>
+
+<h3 id="bd-nombres">Diferencias de nombres entre el documento y el esquema físico</h3>
+<p>Detalles que conviene alinear en el Modelo Físico (<code>Modelo_Físico.drawio.png</code>) para que coincida letra por letra con la base:</p>
+<div class="tabla-wrap"><table>
+<tr><th>Documento</th><th>Esquema real</th><th>Dónde</th></tr>
+<tr><td class="mono">contraseña_hash</td><td class="mono">contrasena_hash</td><td>Usuario</td></tr>
+<tr><td class="mono">reseña</td><td class="mono">resena</td><td>Evaluacion_Satisfaccion</td></tr>
+<tr><td class="mono">evolucion_clinica_id</td><td class="mono">Evolucion_clinica_id</td><td>Evolucion_Clinica (con E mayúscula en la columna PK; las FK sí van en minúscula)</td></tr>
+<tr><td class="mono">nombre_comuna</td><td class="mono">nombre</td><td>Comuna</td></tr>
+<tr><td class="mono">Sede_Horario PK (sede_id, dia_semana)</td><td class="mono">PK (sede_id)</td><td>El esquema admite un solo horario por sede; conviene corregir el esquema, no el documento</td></tr>
+<tr><td>Bloqueo_Agenda: DATETIME</td><td>DATETIME (hora de pared)</td><td>Coincide; el resto de fechas son TIMESTAMP</td></tr>
+</table></div>
+
+<p style="margin-top:3rem;color:var(--texto3);font-size:.9rem">Preparado con el código en <code>ed760555</code> y la documentación en <code>5f2775d</code>. Decisiones D1–D13 resueltas. Siguiente paso: árbol de navegación y diagramas de secuencia del Incremento 2.</p>
+</main>
+</div>
