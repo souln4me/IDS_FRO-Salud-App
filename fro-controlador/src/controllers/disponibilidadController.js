@@ -1,9 +1,13 @@
 const pool = require('../config/database');
 
-// Convierte DD/MM/AAAA a formato MySQL YYYY-MM-DD
-const convertirFecha = (fechaStr) => {
+// Convierte DD/MM/AAAA a formato MySQL YYYY-MM-DD.
+// La fecha de inicio parte a las 00:00:00 y la de término cierra a las
+// 23:59:59: así el ÚLTIMO día del bloqueo también queda inhabilitado
+// completo (antes "del 5 al 10" dejaba el día 10 disponible).
+const convertirFecha = (fechaStr, esFechaFin = false) => {
     const [d, m, y] = fechaStr.split('/');
-    return `${y}-${m}-${d} 00:00:00`;
+    const hora = esFechaFin ? '23:59:59' : '00:00:00';
+    return `${y}-${m}-${d} ${hora}`;
 };
 
 exports.restringirDisponibilidad = async (req, res) => {
@@ -26,7 +30,7 @@ exports.restringirDisponibilidad = async (req, res) => {
 
         const idRealProfesional = profesionales[0].profesional_id;
         const inicioSQL = convertirFecha(fecha_inicio);
-        const finSQL = convertirFecha(fecha_fin);
+        const finSQL = convertirFecha(fecha_fin, true);
 
         // 2. VALIDACIÓN 1: Verificar superposición con CITAS
         const [citas] = await connection.execute(

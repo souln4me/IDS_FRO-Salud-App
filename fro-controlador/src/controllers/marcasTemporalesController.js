@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { descontarSesionPaquete } = require('../services/agenda/agendaService');
 
 function obtenerIP(req) {
   return (
@@ -28,6 +29,7 @@ async function obtenerCitaProfesional(connection, citaId, usuarioId, bloquear = 
         c.estado,
         c.paciente_id,
         c.profesional_id,
+        c.episodio_clinico_id,
         COALESCE(
           NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellido_paterno, u.apellido_materno)), ''),
           CONCAT('Paciente #', c.paciente_id)
@@ -68,6 +70,8 @@ exports.listarCitasProfesional = async (req, res) => {
           c.fecha_hora_fin,
           c.checkin_profesional,
           c.estado,
+          -- Necesario para abrir la ficha del paciente desde la jornada.
+          c.paciente_id,
           COALESCE(
             NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellido_paterno, u.apellido_materno)), ''),
             CONCAT('Paciente #', c.paciente_id)
@@ -170,12 +174,37 @@ exports.iniciarAtencion = async (req, res) => {
       });
     }
 
+    // Vínculo cita ↔ episodio (opción C). Hasta ahora la cita no sabía qué
+    // trabajo clínico generaba, y el sistema tenía que adivinarlo buscando
+    // una cita en curso del mismo paciente y profesional: con dos episodios
+    // abiertos, ambos apuntaban a la misma cita.
+    //
+    // Se ata al episodio abierto más reciente del paciente con este
+    // profesional. Si no hay ninguno NO se crea uno automáticamente: un
+    // episodio sin motivo real ensucia la ficha, así que la app guía al
+    // profesional a crearlo.
+    let episodioVinculado = cita.episodio_clinico_id || null;
+    if (!episodioVinculado) {
+      // D12: solo un episodio abierto puede recibir la atención.
+      const [episodios] = await connection.execute(
+        `SELECT episodio_clinico_id
+           FROM Episodio_Clinico
+          WHERE paciente_id = ? AND profesional_id = ?
+            AND (estado IS NULL OR UPPER(estado) <> 'CERRADO')
+          ORDER BY episodio_clinico_id DESC
+          LIMIT 1`,
+        [cita.paciente_id, cita.profesional_id]
+      );
+      episodioVinculado = episodios[0]?.episodio_clinico_id || null;
+    }
+
     await connection.execute(
       `UPDATE Cita
        SET checkin_profesional = ?,
-           estado = 'EN_CURSO'
+           estado = 'EN_CURSO',
+           episodio_clinico_id = COALESCE(episodio_clinico_id, ?)
        WHERE cita_id = ?`,
-      [marcaInicio, cita_id]
+      [marcaInicio, episodioVinculado, cita_id]
     );
 
     await registrarAuditoria(connection, req, 'INICIAR_ATENCION_CU38', {
@@ -197,7 +226,10 @@ exports.iniciarAtencion = async (req, res) => {
       cita_id: Number(cita_id),
       estado: 'EN_CURSO',
       marca_inicio: marcaInicio,
-      inicio_anticipado: inicioAnticipado
+      inicio_anticipado: inicioAnticipado,
+      // Para que la app lleve directo al registro de la sesión. En null
+      // significa que el paciente no tiene episodios y hay que crear uno.
+      episodio_clinico_id: episodioVinculado
     });
   } catch (error) {
     await connection.rollback();
@@ -293,6 +325,14 @@ exports.finalizarAtencion = async (req, res) => {
       [marcaTermino, cita_id]
     );
 
+    // CU76 — Al concretarse la sesión, se descuenta del paquete del paciente
+    // (mismo efecto que finalizar por la máquina de estados).
+    const inventario = await descontarSesionPaquete(
+      connection,
+      cita.paciente_id,
+      'SESION_REALIZADA'
+    );
+
     await registrarAuditoria(connection, req, 'FINALIZAR_ATENCION_CU38', {
       cita_id: Number(cita_id),
       marca_inicio: marcaInicio.toISOString(),
@@ -302,7 +342,8 @@ exports.finalizarAtencion = async (req, res) => {
       origen_marca: marcaManual ? 'MANUAL_JUSTIFICADA' : 'SERVIDOR',
       justificacion_manual: marcaManual
         ? String(justificacion_manual).trim()
-        : null
+        : null,
+      inventario
     });
 
     await connection.commit();
@@ -313,7 +354,8 @@ exports.finalizarAtencion = async (req, res) => {
       estado: 'REALIZADA',
       marca_inicio: marcaInicio,
       marca_termino: marcaTermino,
-      duracion_minutos: duracionMinutos
+      duracion_minutos: duracionMinutos,
+      inventario
     });
   } catch (error) {
     await connection.rollback();
@@ -324,5 +366,42 @@ exports.finalizarAtencion = async (req, res) => {
     });
   } finally {
     connection.release();
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Atención en curso del profesional (opción C)
+// ─────────────────────────────────────────────────────────────────────────────
+// Alimenta la barra que sigue al profesional por la app mientras está
+// atendiendo. Devuelve null cuando no hay ninguna, para que la barra
+// simplemente no se muestre.
+exports.atencionEnCurso = async (req, res) => {
+  try {
+    const [filas] = await pool.execute(
+      `SELECT
+          c.cita_id,
+          c.fecha_hora_inicio,
+          c.checkin_profesional,
+          c.paciente_id,
+          c.episodio_clinico_id,
+          COALESCE(
+            CONCAT(u.nombres, ' ', u.apellido_paterno),
+            CONCAT('Paciente #', c.paciente_id)
+          ) AS paciente
+       FROM Cita c
+       JOIN Profesional p ON p.profesional_id = c.profesional_id
+       LEFT JOIN Paciente pa ON pa.paciente_id = c.paciente_id
+       LEFT JOIN Usuario u ON u.usuario_id = pa.usuario_id
+       WHERE p.usuario_id = ?
+         AND UPPER(REPLACE(TRIM(c.estado), ' ', '_')) = 'EN_CURSO'
+       ORDER BY c.checkin_profesional DESC, c.fecha_hora_inicio DESC
+       LIMIT 1`,
+      [req.user?.usuario_id]
+    );
+
+    return res.status(200).json({ atencion: filas[0] || null });
+  } catch (error) {
+    console.error('[atencionEnCurso]', error);
+    return res.status(500).json({ error: 'No se pudo consultar la atencion en curso.' });
   }
 };

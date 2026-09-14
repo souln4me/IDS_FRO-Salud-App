@@ -1,371 +1,302 @@
 // Ruta: fro-vista/src/screens/Profesional/DashboardProfesional.js
+//
+// Panel principal del profesional. La lista de pacientes asignados es el núcleo
+// de la vista: al entrar se ve de inmediato, y desde cada paciente se abre su
+// ficha clínica completa. Las herramientas transversales (trazabilidad del
+// documento y disponibilidad) quedan como accesos secundarios.
 
-import React, { useContext } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import React, { useContext, useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  ActivityIndicator,
+  RefreshControl,
+  StyleSheet,
+} from 'react-native';
+
 import { AuthContext } from '../../context/AuthContext';
+import apiClient from '../../api/client';
+import { colores, espacio, radio, tipografia, piezas, interaccion } from '../../theme';
+import BarraAtencionEnCurso from '../../components/BarraAtencionEnCurso';
 
 export default function DashboardProfesional({ navigation }) {
-  const { userData, logoutSession } = useContext(AuthContext);
+  const { userData, confirmarCierreSesion } = useContext(AuthContext);
 
-  const handleLogout = async () => {
-    await logoutSession();
-    navigation.replace('Login');
+  const [pacientes, setPacientes] = useState([]);
+  const [buscar, setBuscar] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState('');
+
+  const cargarPacientes = async (isRefresh = false) => {
+    try {
+      if (isRefresh) {
+        setRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError('');
+
+      const usuarioId = userData?.usuario_id;
+      if (!usuarioId) {
+        setError('No se encontró la sesión del profesional');
+        return;
+      }
+
+      const response = await apiClient.get(
+        `/profesionales/usuario/${usuarioId}/pacientes`,
+        { params: { buscar } }
+      );
+
+      const data = response.data;
+      if (data.ok) {
+        setPacientes(data.pacientes);
+      } else {
+        setError(data.message || 'Error al recuperar registros clínicos');
+      }
+    } catch (err) {
+      console.error('ERROR PACIENTES:', err?.response?.data || err.message);
+      setError('Error al recuperar registros clínicos');
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
   };
 
-  return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>
-        Dr(a). {userData?.apellido_paterno}
-      </Text>
+  useEffect(() => {
+    cargarPacientes();
+  }, []);
 
-      <Text style={styles.subtitle}>
-        Panel Interno de Gestión
-      </Text>
+  const abrirFicha = (paciente) => {
+    navigation.navigate('FichaClinica', {
+      pacienteId: paciente.paciente_id,
+      nombrePaciente: paciente.nombre_completo,
+    });
+  };
 
-      {/* CU13 */}
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => navigation.navigate('Episodio')}
-      >
-        <Text style={styles.cardIcon}>📁</Text>
-        <Text style={styles.cardTitle}>Episodios Clínicos</Text>
-        <Text style={styles.cardText}>
-          Consultar y registrar episodios de pacientes.
-        </Text>
-      </TouchableOpacity>
+  const renderPaciente = ({ item }) => (
+    <TouchableOpacity style={styles.card} onPress={() => abrirFicha(item)}>
+      <Text style={styles.nombre}>{item.nombre_completo}</Text>
+      <Text style={styles.dato}>RUT: {item.rut}</Text>
+      <Text style={styles.dato}>Sexo clínico: {item.sexo_clinico || 'No informado'}</Text>
+      <Text style={styles.dato}>Total atenciones: {item.total_atenciones}</Text>
+      <Text style={styles.dato}>Última atención: {item.ultima_atencion || 'Sin registros'}</Text>
 
-      {/* CU32 */}
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => navigation.navigate('EvolucionClinica')}
-      >
-        <Text style={styles.cardIcon}>📈</Text>
-        <Text style={styles.cardTitle}>Evolución Clínica</Text>
-        <Text style={styles.cardText}>
-          Definir metas terapéuticas y registrar el avance del paciente.
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.boton}>
+        <Text style={styles.botonSecundarioTexto}>Abrir ficha clínica</Text>
+      </View>
+    </TouchableOpacity>
+  );
 
-      {/* CU38 */}
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => navigation.navigate('MarcasTemporales')}
-      >
-        <View style={styles.timeIcon}>
-          <View style={styles.clockFace}>
-            <View style={styles.clockHour} />
-            <View style={styles.clockMinute} />
-            <View style={styles.clockCenter} />
-          </View>
+  const Encabezado = (
+    <View>
+      <Text style={styles.title}>Dr(a). {userData?.apellido_paterno}</Text>
+      <Text style={styles.subtitle}>Pacientes asignados</Text>
+
+      <View style={styles.filaBuscador}>
+        <TextInput
+          style={styles.input}
+          placeholder="Buscar por nombre o RUT"
+          placeholderTextColor={colores.textoTenue}
+          value={buscar}
+          onChangeText={setBuscar}
+          onSubmitEditing={() => cargarPacientes(false)}
+          returnKeyType="search"
+        />
+        <TouchableOpacity
+          style={styles.botonBuscar}
+          onPress={() => cargarPacientes(false)}
+          activeOpacity={interaccion.opacidadActiva}
+        >
+          <Text style={styles.botonTexto}>Buscar</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading && <ActivityIndicator size="large" color={colores.primario} style={styles.cargando} />}
+
+      {error !== '' && (
+        <View style={styles.errorCaja}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity style={styles.botonReintentar} onPress={() => cargarPacientes(false)}>
+            <Text style={styles.botonTexto}>Reintentar</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.cardTitle}>Marcas Temporales</Text>
-        <Text style={styles.cardText}>
-          Registrar inicio, termino y duracion de cada atencion.
-        </Text>
-      </TouchableOpacity>
+      )}
 
-      {/* CU40 */}
+      {!loading && !error && pacientes.length === 0 && (
+        <Text style={styles.sinResultados}>Sin resultados encontrados</Text>
+      )}
+    </View>
+  );
+
+  const PieDeLista = (
+    <View style={styles.pie}>
+      <Text style={styles.seccion}>Herramientas</Text>
+
       <TouchableOpacity
-        style={styles.card}
-        onPress={() => navigation.navigate('Intervencion')}
+        style={styles.herramienta}
+        onPress={() => navigation.navigate('MiJornada')}
       >
-        <View style={styles.interventionIcon}>
-          <View style={styles.interventionClip} />
-          <View style={styles.interventionSheet}>
-            <View style={styles.interventionLineLong} />
-            <View style={styles.interventionLineShort} />
-            <View style={styles.pulseRow}>
-              <View style={styles.pulseLine} />
-              <View style={styles.pulsePeak} />
-              <View style={styles.pulseLine} />
-            </View>
-          </View>
+        <Text style={styles.herramientaIcono}>📅</Text>
+        <View style={styles.herramientaTexto}>
+          <Text style={styles.herramientaTitulo}>Mi Jornada</Text>
+          <Text style={styles.herramientaSub}>Tus citas del día, con acceso directo a cada ficha.</Text>
         </View>
-        <Text style={styles.cardTitle}>Intervención Clínica</Text>
-        <Text style={styles.cardText}>
-          Documentar técnicas aplicadas y respuesta fisiológica.
-        </Text>
-      </TouchableOpacity>
-
-      {/* CU11 */}
-      <TouchableOpacity
-        style={styles.patientCard}
-        onPress={() => navigation.navigate('PacientesAsignados')}
-      >
-        <Text style={styles.cardIcon}>👥</Text>
-        <Text style={styles.patientTitle}>Pacientes Asignados</Text>
-        <Text style={styles.cardText}>
-          Consultar la lista de pacientes asignados al profesional.
-        </Text>
-      </TouchableOpacity>
-
-      {/* CU30 */}
-      <TouchableOpacity
-        style={styles.securityBtn}
-        onPress={() => navigation.navigate('Inalterabilidad')}
-      >
-        <Text style={styles.securityIcon}>🔒</Text>
-        <Text style={styles.securityTitle}>
-          Asegurar Inalterabilidad
-        </Text>
-        <Text style={styles.securityText}>
-          Finalizar registros clínicos y protegerlos contra modificaciones.
-        </Text>
       </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.securityBtn}
+        style={styles.herramienta}
         onPress={() => navigation.navigate('GestionDisponibilidad')}
       >
-        <Text style={styles.securityIcon}>📅</Text>
-        <Text style={styles.securityTitle}>
-          Gestionar Disponibilidad
-        </Text>
-        <Text style={styles.securityText}>
-          Bloquear rangos horarios por vacaciones, licencias o eventos administrativos.
-        </Text>
+        <Text style={styles.herramientaIcono}>📅</Text>
+        <View style={styles.herramientaTexto}>
+          <Text style={styles.herramientaTitulo}>Gestionar Disponibilidad</Text>
+          <Text style={styles.herramientaSub}>Bloquear horarios por vacaciones o licencias.</Text>
+        </View>
       </TouchableOpacity>
 
-      
+      {/* CU10: catálogo público del profesional (foto, reseña, áreas, modalidad) */}
+      <TouchableOpacity
+        style={styles.herramienta}
+        onPress={() => navigation.navigate('MiPerfil')}
+      >
+        <Text style={styles.herramientaIcono}>🪪</Text>
+        <View style={styles.herramientaTexto}>
+          <Text style={styles.herramientaTitulo}>Mi perfil público</Text>
+          <Text style={styles.herramientaSub}>Foto, reseña, áreas de experticia y modalidad que ven los pacientes.</Text>
+        </View>
+      </TouchableOpacity>
 
       <TouchableOpacity
-        style={styles.logoutBtn}
-        onPress={handleLogout}
+        style={styles.herramienta}
+        onPress={() => navigation.navigate('Seguridad')}
       >
-        <Text style={styles.logoutText}>
-          Cerrar Sesión
-        </Text>
+        <Text style={styles.herramientaIcono}>🔐</Text>
+        <View style={styles.herramientaTexto}>
+          <Text style={styles.herramientaTitulo}>Seguridad de la Cuenta</Text>
+          <Text style={styles.herramientaSub}>Contraseña y sesiones activas.</Text>
+        </View>
       </TouchableOpacity>
-    </ScrollView>
+
+    </View>
+  );
+
+  return (
+    <View style={styles.pantalla}>
+      {/* Opción C: si hay una atención abierta, se ve y se retoma desde aquí. */}
+      <BarraAtencionEnCurso navigation={navigation} />
+
+      <FlatList
+        style={styles.container}
+        contentContainerStyle={styles.content}
+        data={pacientes}
+        keyExtractor={(item) => item.paciente_id.toString()}
+        renderItem={renderPaciente}
+        ListHeaderComponent={Encabezado}
+        ListFooterComponent={PieDeLista}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => cargarPacientes(true)}
+            colors={[colores.primario]}
+          />
+        }
+      />
+
+      {/* Fijo al borde inferior, igual que en la vista de Paciente. */}
+      <TouchableOpacity
+        style={styles.logoutBtn}
+        onPress={confirmarCierreSesion}
+        activeOpacity={interaccion.opacidadActiva}
+      >
+        <Text style={styles.logoutText}>Cerrar sesión</Text>
+      </TouchableOpacity>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#e8f5e9',
-  },
+  container: { flex: 1, backgroundColor: colores.fondo },
+  content: { padding: espacio.lg, paddingBottom: espacio.xxl },
 
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-    flexGrow: 1,
-  },
+  title: { ...tipografia.display, color: colores.textoTitulo },
+  subtitle: { ...tipografia.cuerpo, color: colores.textoSuave, marginBottom: espacio.base },
 
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 5,
-  },
+  // Buscador en una sola fila: campo ancho y acción al costado.
+  filaBuscador: { flexDirection: 'row', gap: espacio.sm, marginBottom: espacio.base },
+  input: { ...piezas.campo, flex: 1 },
+  botonBuscar: { ...piezas.botonPrimario, paddingHorizontal: espacio.lg, paddingVertical: espacio.md },
+  botonReintentar: { ...piezas.botonPrimario, marginTop: espacio.sm },
+  botonTexto: { ...tipografia.cuerpoFuerte, color: colores.textoInverso },
 
-  subtitle: {
-    fontSize: 16,
-    color: '#555',
-    marginBottom: 30,
-  },
-
-  card: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
+  cargando: { marginBottom: espacio.base },
+  errorCaja: {
+    backgroundColor: colores.errorSuave,
     borderWidth: 1,
-    borderColor: '#c8e6c9',
-    marginBottom: 16,
-    alignItems: 'center',
+    borderColor: colores.errorBorde,
+    borderRadius: radio.md,
+    padding: espacio.base,
+    marginBottom: espacio.md,
+  },
+  error: { ...tipografia.meta, color: colores.error, marginBottom: espacio.sm },
+  sinResultados: {
+    ...tipografia.meta,
+    textAlign: 'center',
+    marginVertical: espacio.xl,
+    color: colores.textoTenue,
   },
 
-  cardIcon: {
-    fontSize: 36,
-    marginBottom: 8,
+  card: { ...piezas.tarjeta, marginBottom: espacio.md },
+  nombre: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.xs },
+  dato: { ...tipografia.meta, color: colores.textoSuave },
+  // Botón delineado: el texto va en verde, no en blanco (quedaba invisible).
+  boton: { ...piezas.botonSecundario, marginTop: espacio.md, paddingVertical: espacio.md },
+  botonSecundarioTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
+
+  pie: { marginTop: espacio.lg },
+  seccion: {
+    ...tipografia.micro,
+    color: colores.textoTenue,
+    marginBottom: espacio.md,
+    marginTop: espacio.sm,
   },
 
-  timeIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: '#e8f5e9',
-    borderWidth: 1,
-    borderColor: '#a5d6a7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-
-  clockFace: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    borderWidth: 3,
-    borderColor: '#2e7d32',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  clockHour: {
-    position: 'absolute',
-    width: 3,
-    height: 9,
-    borderRadius: 2,
-    backgroundColor: '#2e7d32',
-    top: 7,
-  },
-
-  clockMinute: {
-    position: 'absolute',
-    width: 10,
-    height: 3,
-    borderRadius: 2,
-    backgroundColor: '#2e7d32',
-    left: 15,
-    top: 15,
-  },
-
-  clockCenter: {
-    width: 5,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#ef5350',
-  },
-
-  interventionIcon: {
-    width: 54,
-    height: 54,
-    borderRadius: 16,
-    backgroundColor: '#e8f5e9',
-    borderWidth: 1,
-    borderColor: '#a5d6a7',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 10,
-  },
-
-  interventionClip: {
-    position: 'absolute',
-    top: 7,
-    width: 18,
-    height: 7,
-    borderRadius: 4,
-    backgroundColor: '#2e7d32',
-    zIndex: 2,
-  },
-
-  interventionSheet: {
-    width: 32,
-    height: 38,
-    borderRadius: 5,
-    backgroundColor: '#fff',
-    borderWidth: 2,
-    borderColor: '#2e7d32',
-    paddingHorizontal: 5,
-    paddingTop: 9,
-  },
-
-  interventionLineLong: {
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#81c784',
-    marginBottom: 4,
-  },
-
-  interventionLineShort: {
-    width: 13,
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: '#81c784',
-    marginBottom: 6,
-  },
-
-  pulseRow: {
+  // Herramientas: mismas fichas que el resto, con el ícono en pastilla verde.
+  herramienta: {
+    ...piezas.tarjeta,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    marginBottom: espacio.md,
   },
-
-  pulseLine: {
-    width: 6,
-    height: 2,
-    backgroundColor: '#ef5350',
-  },
-
-  pulsePeak: {
-    width: 8,
-    height: 8,
-    borderLeftWidth: 2,
-    borderBottomWidth: 2,
-    borderColor: '#ef5350',
-    transform: [{ rotate: '135deg' }],
-  },
-
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2e7d32',
-    marginBottom: 4,
-  },
-
-  cardText: {
-    color: '#666',
+  herramientaIcono: {
+    fontSize: 22,
+    marginRight: espacio.base,
+    width: 46,
+    height: 46,
+    borderRadius: radio.md,
+    backgroundColor: colores.primarioSuave,
     textAlign: 'center',
-    fontStyle: 'italic',
+    textAlignVertical: 'center',
+    lineHeight: 46,
+    overflow: 'hidden',
   },
+  herramientaTexto: { flex: 1 },
+  herramientaTitulo: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginBottom: 2 },
+  herramientaSub: { ...tipografia.meta, color: colores.textoSuave },
 
-  patientCard: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#90caf9',
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-
-  patientTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#2563eb',
-    marginBottom: 4,
-  },
-
-  securityBtn: {
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#ff9800',
-    marginBottom: 16,
-    alignItems: 'center',
-  },
-
-  securityIcon: {
-    fontSize: 36,
-    marginBottom: 8,
-  },
-
-  securityTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#ef6c00',
-    marginBottom: 4,
-  },
-
-  securityText: {
-    color: '#666',
-    textAlign: 'center',
-    fontStyle: 'italic',
-  },
-
+  pantalla: { flex: 1, backgroundColor: colores.fondo },
   logoutBtn: {
-    backgroundColor: '#d32f2f',
-    padding: 15,
-    borderRadius: 8,
+    marginHorizontal: espacio.lg,
+    marginBottom: espacio.lg,
+    paddingVertical: espacio.md,
+    borderRadius: radio.md,
+    borderWidth: 1.5,
+    borderColor: colores.error,
+    backgroundColor: 'transparent',
     alignItems: 'center',
-    marginTop: 10,
   },
-
-  logoutText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  logoutText: { ...tipografia.cuerpoFuerte, color: colores.error },
 });
