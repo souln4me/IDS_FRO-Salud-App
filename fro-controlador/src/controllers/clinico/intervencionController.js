@@ -1,4 +1,5 @@
-const pool = require('../config/database');
+const pool = require('../../config/database');
+const { rechazarSiCerrado, estaCerrado } = require('../../services/clinico/episodioService');
 
 const PATRON_ALERTA_PRIORITARIA =
   /\b(dolor\s+(intenso|severo|insoportable)|dificultad\s+respiratoria|p[eé]rdida\s+de\s+conciencia|desmayo|convulsi[oó]n|deterioro\s+(grave|severo)|signos?\s+vitales?\s+inestables?)\b/i;
@@ -20,6 +21,7 @@ async function obtenerContexto(connection, episodioId, usuarioId, bloquear = fal
     `SELECT
         ec.episodio_clinico_id,
         ec.motivo_consulta,
+        ec.estado AS estado_episodio,
         ec.paciente_id,
         ec.profesional_id,
         p.usuario_id AS profesional_usuario_id,
@@ -41,6 +43,9 @@ async function obtenerContexto(connection, episodioId, usuarioId, bloquear = fal
        ON c.paciente_id = ec.paciente_id
       AND c.profesional_id = ec.profesional_id
       AND UPPER(REPLACE(TRIM(c.estado), ' ', '_')) = 'EN_CURSO'
+      -- El vinculo real manda; la coincidencia por paciente y profesional
+      -- queda solo para las citas anteriores a que existiera la columna.
+      AND (c.episodio_clinico_id = ec.episodio_clinico_id OR c.episodio_clinico_id IS NULL)
      WHERE ec.episodio_clinico_id = ?
        AND p.usuario_id = ?
      ORDER BY c.fecha_hora_inicio DESC
@@ -184,6 +189,15 @@ exports.guardarIntervencion = async (req, res) => {
       return res.status(409).json({
         error: 'SESION_NO_EN_CURSO',
         mensaje: 'La intervención solo puede modificarse mientras la cita está EN CURSO.'
+      });
+    }
+
+    // CU78 Exc.3 (D12): el episodio cerrado no recibe más intervenciones.
+    if (estaCerrado(contexto.estado_episodio)) {
+      await connection.rollback();
+      return res.status(409).json({
+        error: 'EPISODIO_CERRADO',
+        mensaje: 'Este episodio clínico está cerrado. Registra la sesión en un episodio abierto.'
       });
     }
 

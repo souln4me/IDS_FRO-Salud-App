@@ -3,7 +3,7 @@ const router = express.Router();
 
 const { verifyToken } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
-const inalterabilidadController = require('../controllers/InalterabilidadController');
+const inalterabilidadController = require('../controllers/inalterabilidadController');
 
 router.post(
   '/finalizar/:evolucionId',

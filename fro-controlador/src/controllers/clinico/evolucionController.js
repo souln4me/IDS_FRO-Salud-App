@@ -1,4 +1,5 @@
-const pool = require('../config/database');
+const pool = require('../../config/database');
+const { rechazarSiCerrado, estaCerrado } = require('../../services/clinico/episodioService');
 
 // CU32
 
@@ -130,6 +131,9 @@ exports.crearEvolucionEnBlanco = async (req, res) => {
     }
 
     const profesional_id = profesionales[0].profesional_id;
+
+    // CU78 Exc.3 (D12): un episodio cerrado no abre sesiones nuevas.
+    if (await rechazarSiCerrado(connection, episodio_id, res)) return;
 
     // 2. Insertar la evolución clínica en blanco, ligada al episodio
     const [result] = await connection.query(`

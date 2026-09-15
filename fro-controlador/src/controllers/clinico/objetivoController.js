@@ -1,4 +1,5 @@
-const pool = require('../config/database');
+const pool = require('../../config/database');
+const { rechazarSiCerrado, estaCerrado } = require('../../services/clinico/episodioService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CU32 - Paso 1.1: Objetivos Terapéuticos
@@ -73,6 +74,9 @@ exports.crearObjetivo = async (req, res) => {
   }
 
   try {
+    // CU78 Exc.3 (D12): sin metas nuevas sobre un episodio cerrado.
+    if (await rechazarSiCerrado(pool, episodio_clinico_id, res)) return;
+
     const [result] = await pool.query(
       `INSERT INTO Objetivo_Terapeutico (descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
        VALUES (?, ?, ?, ?, ?)`,

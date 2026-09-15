@@ -1,4 +1,4 @@
-const pool = require('../config/database');
+const pool = require('../../config/database');
 
 // Límites de campos según RF28/RF29 (Excepción 1)
 const LIMITES = {

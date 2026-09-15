@@ -5,7 +5,7 @@ const registrarAuditoria = async (connection, req, accion, entidad, datos) => {
   const ip = req.ip || req.connection?.remoteAddress || 'IP_NO_DETECTADA';
 
   await connection.execute(
-    `INSERT INTO bitacora_auditoria
+    `INSERT INTO Bitacora_Auditoria
       (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
      VALUES (?, ?, ?, ?, ?)`,
     [accion, entidad, ip, JSON.stringify(datos), usuarioId]
@@ -24,8 +24,8 @@ exports.finalizarEvolucion = async (req, res) => {
     // 1. CU36 - Flujo Principal: Capturar datos del autor desde su perfil
     const [profData] = await connection.execute(
       `SELECT u.nombres, u.apellido_paterno, u.apellido_materno, u.rut, p.num_registro_salud 
-       FROM usuario u
-       INNER JOIN profesional p ON p.usuario_id = u.usuario_id
+       FROM Usuario u
+       INNER JOIN Profesional p ON p.usuario_id = u.usuario_id
        WHERE u.usuario_id = ?`,
       [usuarioId]
     );
@@ -48,7 +48,7 @@ exports.finalizarEvolucion = async (req, res) => {
     // 4. Verificar el estado de la evolución
     const [rows] = await connection.execute(
       `SELECT evolucion_clinica_id, inalterable
-       FROM evolucion_clinica
+       FROM Evolucion_Clinica
        WHERE evolucion_clinica_id = ?
        FOR UPDATE`,
       [evolucionId]
@@ -75,7 +75,7 @@ exports.finalizarEvolucion = async (req, res) => {
 
     // 5. CU36 - Generar Timestamp automático y vincular firma
     await connection.execute(
-      `UPDATE evolucion_clinica
+      `UPDATE Evolucion_Clinica
        SET inalterable = 1,
            firma_digital = ?,
            hora_firma_digital = CURRENT_TIMESTAMP
@@ -125,7 +125,7 @@ exports.editarEvolucion = async (req, res) => {
 
     const [rows] = await connection.execute(
       `SELECT evolucion_clinica_id, inalterable
-       FROM evolucion_clinica
+       FROM Evolucion_Clinica
        WHERE evolucion_clinica_id = ?
        FOR UPDATE`,
       [evolucionId]
@@ -154,7 +154,7 @@ exports.editarEvolucion = async (req, res) => {
     }
 
     await connection.execute(
-      `UPDATE evolucion_clinica
+      `UPDATE Evolucion_Clinica
        SET porcentaje_objetivo = ?,
            respuesta_fisiologica = ?,
            tecnicas_aplicadas = ?
@@ -199,7 +199,7 @@ exports.eliminarEvolucion = async (req, res) => {
 
     const [rows] = await connection.execute(
       `SELECT evolucion_clinica_id, inalterable
-       FROM evolucion_clinica
+       FROM Evolucion_Clinica
        WHERE evolucion_clinica_id = ?
        FOR UPDATE`,
       [evolucionId]
@@ -227,7 +227,7 @@ exports.eliminarEvolucion = async (req, res) => {
     }
 
     await connection.execute(
-      `DELETE FROM evolucion_clinica
+      `DELETE FROM Evolucion_Clinica
        WHERE evolucion_clinica_id = ?`,
       [evolucionId]
     );
