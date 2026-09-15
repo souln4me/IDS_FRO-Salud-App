@@ -66,6 +66,18 @@ const ESQUEMAS = {
     salida:  { rut_paciente: { tipo: 'string', requerido: true }, codigo_bono: { tipo: 'string', requerido: true } },
     entrada: { estado: { tipo: 'string', requerido: true }, monto_bono: { tipo: 'number', requerido: true } }
   },
+  FINANCIADOR: {
+    salida: {
+      folio: { tipo: 'string', requerido: true },
+      rut_institucion: { tipo: 'string', requerido: true },
+      monto_prestacion: { tipo: 'number', requerido: true }
+    },
+    entrada: {
+      estado: { tipo: 'string', requerido: true },
+      monto_cobertura: { tipo: 'number', requerido: true },
+      copago: { tipo: 'number', requerido: true }
+    }
+  },
   PASARELA_PAGO: {
     salida:  { monto: { tipo: 'number', requerido: true }, token_tarjeta: { tipo: 'string', requerido: true } },
     entrada: { transaccion_id: { tipo: 'string', requerido: true }, aprobado: { tipo: 'boolean', requerido: true } }

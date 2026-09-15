@@ -1,20 +1,19 @@
 const pool = require('../config/database');
 const ParametroModel = require('../models/parametroModel');
-const fs = require('fs');
-const path = require('path');
 
-// FUNCIÓN AUXILIAR: BITÁCORA DE AUDITORÍA
-const registrarAuditoria = (mensaje) => {
-    const timestamp = new Date().toISOString();
-    const logMessage = `[${timestamp}] ⚙️ PARAMETROS | ${mensaje}\n`;
-    
-    const logPath = path.join(__dirname, '../../logs/audit.log');
-    const logsDir = path.dirname(logPath);
-    
-    if (!fs.existsSync(logsDir)) {
-        fs.mkdirSync(logsDir, { recursive: true });
+// D6: antes esto escribía en logs/audit.log, que Render borra en cada
+// despliegue. Ahora cada evento queda en Bitacora_Auditoria (RNF20).
+// Mejor esfuerzo: un fallo al auditar no anula el cambio ya confirmado.
+const registrarAuditoria = async (accion, administradorId, datos, ip) => {
+    try {
+        await pool.query(
+            `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+             VALUES (?, 'Parametro_Global', ?, ?, ?)`,
+            [accion, ip || null, JSON.stringify(datos), administradorId || null]
+        );
+    } catch (error) {
+        console.error('[parametros] No se pudo registrar en bitácora:', error.message);
     }
-    fs.appendFileSync(logPath, logMessage, 'utf8');
 };
 
 
@@ -61,7 +60,7 @@ exports.actualizarParametro = async (req, res) => {
             // Abortamos formalmente y liberamos la BD
             await connection.rollback(); 
             
-            registrarAuditoria(`⚠️ CONFLICTO DE CONCURRENCIA | Admin ID: ${administradorId} | Intentó pisar la clave: ${clave}`);
+            await registrarAuditoria('PARAMETRO_CONFLICTO_CONCURRENCIA', administradorId, { clave, valor_intentado: valor }, req.ip);
             
             return res.status(409).json({ 
                 error: 'Los datos han sido modificados por otro usuario recientemente. Por favor, recargue el panel para resincronizar la interfaz y reintente la mutación.' 
@@ -70,7 +69,7 @@ exports.actualizarParametro = async (req, res) => {
 
         // FLUJO NORMAL: COMMIT EXITOSO
         await connection.commit();
-        registrarAuditoria(`✅ CAMBIO APLICADO | Admin ID: ${administradorId} | Clave: ${clave} | Nuevo Valor: ${valor}`);
+        await registrarAuditoria('PARAMETRO_MODIFICADO', administradorId, { clave, nuevo_valor: valor }, req.ip);
 
         res.status(200).json({ mensaje: 'Parámetro actualizado exitosamente.' });
 
@@ -79,7 +78,7 @@ exports.actualizarParametro = async (req, res) => {
         await connection.rollback(); 
         
         console.error(" Error grave en la transacción de parámetros:", error);
-        registrarAuditoria(` FALLO DE PERSISTENCIA | Admin ID: ${administradorId} | Clave: ${clave} | Error: ${error.message}`);
+        await registrarAuditoria('PARAMETRO_FALLO_PERSISTENCIA', administradorId, { clave, error: error.message }, req.ip);
         
         res.status(500).json({ 
             error: 'Ocurrió un error en el servidor al intentar guardar los cambios. La transacción ha sido deshecha.' 

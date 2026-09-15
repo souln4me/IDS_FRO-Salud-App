@@ -22,6 +22,16 @@ const PROVIDERS = {
     method: 'POST',
     buildHeaders: () => ({ 'X-Api-Key': process.env.IMED_API_KEY || '' })
   },
+  // Financiador de bonos (CU66). Por defecto apunta al simulador interno del
+  // propio servidor; con FINANCIADOR_URL se conecta un financiador real sin
+  // tocar código.
+  FINANCIADOR: {
+    baseUrl:
+      process.env.FINANCIADOR_URL ||
+      `http://127.0.0.1:${process.env.PORT || 3000}/api/financiador-simulado/validar-bono`,
+    method: 'POST',
+    buildHeaders: () => ({ 'X-Api-Key': process.env.FINANCIADOR_API_KEY || 'demo-financiador' })
+  },
   PASARELA_PAGO: {
     baseUrl: process.env.PAGO_URL || '',
     method: 'POST',

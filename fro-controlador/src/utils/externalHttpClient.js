@@ -2,7 +2,8 @@ const audit = require('../services/audit/transactionAuditService');
 const retryState = require('./retryState');
 
 const TIMEOUT_MS      = parseInt(process.env.EXTERNAL_TIMEOUT_MS      || '5000', 10);
-const MAX_INTENTOS    = parseInt(process.env.EXTERNAL_MAX_INTENTOS    || '3', 10);
+// RF70: como máximo 4 intentos ante fallos de conectividad (D3).
+const MAX_INTENTOS    = parseInt(process.env.EXTERNAL_MAX_INTENTOS    || '4', 10);
 const BACKOFF_BASE_MS = parseInt(process.env.EXTERNAL_BACKOFF_BASE_MS || '300', 10);
 const BACKOFF_MAX_MS  = parseInt(process.env.EXTERNAL_BACKOFF_MAX_MS  || '10000', 10);
 
