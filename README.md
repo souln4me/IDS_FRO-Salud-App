@@ -1,15 +1,5 @@
 # Guía de Instalación y Despliegue - FRO Salud (Incremento 1)
 
-> ### ⚡ ¿Solo quieres probar la app?
-> Ya no hace falta instalar MySQL ni levantar el backend: **están en la nube**.
-> Sigue la [**Guía de la nube**](GUIA-NUBE.md) (Parte 2) y en 5 minutos tienes la
-> app andando. Son tres pasos: clonar, crear un archivo `.env` con la dirección
-> del servidor, y `npx expo start -c`.
->
-> Esta guía de abajo sirve si necesitas montar **todo el entorno local**
-> (backend + base de datos en tu propio computador), por ejemplo para
-> desarrollar el servidor.
-
 Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el entorno de desarrollo local de la aplicación FRO Salud (Vista y Controlador).
 
 [Video guía de instalación del Sistema](https://drive.google.com/file/d/1eLFtI8UtEgKLBEWcWh41RKkWUYzGCzV2/view?usp=sharing)
