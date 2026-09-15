@@ -4,7 +4,7 @@ Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el 
 
 [Video guía de instalación del Sistema - Incremento 1](https://drive.google.com/file/d/1eLFtI8UtEgKLBEWcWh41RKkWUYzGCzV2/view?usp=sharing)
 
-Video guía de instalación del Sistema - Incremento 2
+[Video guía de instalación del Sistema - Incremento 2](https://drive.google.com/file/d/1_xMmd3us80S_haojx5Ob2dhY5-8mHdj7/view?usp=sharing)
 
 ## 1. Requisitos Previos (Herramientas necesarias)
 Antes de comenzar, asegúrese de tener instalados los siguientes programas en su computador:
