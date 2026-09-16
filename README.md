@@ -19,10 +19,10 @@ Antes de comenzar, asegúrese de tener instalados los siguientes programas en su
 
 ## 2. Configuración del Servidor (Controlador)
 
-El controlador está construido con Node.js y Express, y es el encargado de gestionar la lógica de negocio. La base de datos, el envío de correos y el almacenamiento de archivos **ya viven en la nube**, por lo que no es necesario instalar MySQL, generar contraseñas de aplicación en Gmail, ni ejecutar scripts de creación de base de datos. Aun así, es necesario instalar sus dependencias localmente para poder trabajar sobre el código; la aplicación móvil, por su parte, se conecta directamente al backend ya desplegado en la nube (Render.com).
+El controlador está construido con Node.js y Express, y es el encargado de gestionar la lógica de negocio. La base de datos, el envío de correos y el almacenamiento de archivos **ya viven en la nube**, por lo que no es necesario instalar MySQL, generar contraseñas de aplicación en Gmail, ni ejecutar scripts de creación de base de datos. Aun así, es necesario instalar sus dependencias localmente para poder trabajar sobre el código; la aplicación móvil, por su parte, se conecta directamente al controlador ya desplegado en la nube (Render.com).
 
 - **Aiven.io**: aloja la base de datos en la nube.
-- **Render.com**: aloja las APIs y el backend (controlador) en su versión desplegada.
+- **Render.com**: aloja las APIs y el controlador en su versión desplegada.
 - **Brevo.com**: gestiona el envío de correos (OTP y notificaciones).
 - **Cloudinary**: almacena los archivos e imágenes subidos desde la app.
 
@@ -61,7 +61,7 @@ SMTP_PASS=xxxxxxxxxxxxxxxx
 
 ## 3. Configuración de la Aplicación Móvil (Vista)
 
-La vista está construida con React Native y Expo. Para que la aplicación en el celular pueda hablar con el backend desplegado en la nube (Render.com), solo necesita apuntar al `.env` a la URL correspondiente.
+La vista está construida con React Native y Expo. Para que la aplicación en el celular pueda hablar con el controlador desplegado en la nube (Render.com), solo necesita apuntar al `.env` a la URL correspondiente.
 
 ### Paso 3.1: Configurar la conexión (archivo .env)
 
