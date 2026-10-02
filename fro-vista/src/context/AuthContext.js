@@ -3,6 +3,7 @@ import DialogoConfirmacion from '../components/DialogoConfirmacion';
 import DialogoAviso from '../components/DialogoAviso';
 import * as SecureStore from 'expo-secure-store';
 import apiClient, { setUnauthorizedHandler } from '../api/client';
+import { registrarPush, olvidarPush } from '../utils/push';
 
 export const AuthContext = createContext();
 
@@ -35,6 +36,11 @@ export const AuthProvider = ({ children }) => {
     setUserData(usuario);
     await SecureStore.setItemAsync('userToken', token);
     await SecureStore.setItemAsync('userData', JSON.stringify(usuario));
+
+    // CU52: el teléfono queda registrado para recibir alertas push. En Expo Go
+    // esto no llega a completarse (Android bloquea el push remoto) y no pasa
+    // nada: los avisos siguen llegando al centro de notificaciones y al correo.
+    registrarPush().catch(() => {});
   };
 
   /**
@@ -57,6 +63,9 @@ export const AuthProvider = ({ children }) => {
     // CU08: se avisa al servidor para que la sesión deje de figurar como
     // activa. Mejor esfuerzo: si falla, el cierre local ocurre igual.
     apiClient.post('/auth/logout').catch(() => {});
+    // El token push deja de apuntar a esta cuenta: si otro usuario inicia
+    // sesión en el mismo teléfono, no debe recibir avisos del anterior.
+    olvidarPush();
 
     setUserToken(null);
     setUserData(null);

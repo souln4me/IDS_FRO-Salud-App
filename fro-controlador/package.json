@@ -1,7 +1,7 @@
 {
   "name": "fro-controlador",
   "version": "1.0.0",
-  "description": "API REST de FRO Salud (Express + MySQL)",
+  "description": "API REST de Punto Paz Salud (Express + MySQL)",
   "main": "server.js",
   "engines": {
     "node": ">=20"
@@ -19,10 +19,12 @@
     "cloudinary": "^2.10.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.2.0",
     "mysql2": "^3.22.4",
-    "nodemailer": "^8.0.11"
+    "nodemailer": "^8.0.11",
+    "pdfkit": "^0.20.2"
   }
 }

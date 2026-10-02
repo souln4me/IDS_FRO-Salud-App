@@ -83,7 +83,7 @@ export default function BarraAtencionEnCurso({ onAbrir, navigation, recargarEn }
 }
 
 const estilos = StyleSheet.create({
-  // Ámbar, no verde: es un estado temporal que pide acción, no una
+  // Ámbar, no el azul de marca: es un estado temporal que pide acción, no una
   // confirmación. Así se distingue del resto de la interfaz de un vistazo.
   barra: {
     flexDirection: 'row',

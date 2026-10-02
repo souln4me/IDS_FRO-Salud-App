@@ -310,7 +310,7 @@ async function derivarAAdministracion(req, citaId, fallidos) {
 
   const html =
     `<div style="font-family:sans-serif;max-width:520px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:8px;">
-       <h2 style="color:#004639">Sesión derivada a revisión</h2>
+       <h2 style="color:#003B4D">Sesión derivada a revisión</h2>
        <p>La validación multi-factor de la sesión <b>#${citaId}</b> (${formatearFechaHoraCL(contactos?.fecha_hora_inicio)}) fue suspendida.</p>
        <p><b>Discrepancias:</b></p><ul>${factores.map((f) => `<li>${f}</li>`).join('')}</ul>
        <p><b>Paciente:</b> ${contactos?.paciente_nombre} · RUT ${contactos?.paciente_rut}<br>
@@ -323,7 +323,7 @@ async function derivarAAdministracion(req, citaId, fallidos) {
   for (const admin of administradores) {
     await notificarUsuario(pool, admin.usuario_id, 'SESION_SUSPENDIDA', resumen);
     // El correo es mejor esfuerzo: sin proveedor configurado, queda el aviso en la app.
-    enviarCorreo(admin.email, `Sesión #${citaId} derivada a revisión - Fro Salud`, html).catch((error) => {
+    enviarCorreo(admin.email, `Sesión #${citaId} derivada a revisión - Punto Paz Salud`, html).catch((error) => {
       console.error('[derivarAAdministracion] correo no enviado:', error.message);
     });
   }
@@ -566,7 +566,7 @@ exports.guardarFirma = async (req, res) => {
       try {
         await enviarCorreo(
           cita.email_paciente,
-          'Conformidad de atención - Fro Salud',
+          'Conformidad de atención - Punto Paz Salud',
           `<div style="font-family:sans-serif;max-width:460px;margin:auto;padding:24px;border:1px solid #e5e7eb;border-radius:8px;">
              <h2 style="color:#0f172a">Conformidad de atención</h2>
              <p style="color:#475569">${DECLARACION_CONFORMIDAD.texto}</p>

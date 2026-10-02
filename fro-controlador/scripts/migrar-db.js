@@ -546,6 +546,570 @@ const MIGRACIONES = [
     },
   },
   {
+    nombre: 'Episodio_Clinico.fecha_terminado sin valor por defecto (CU78)',
+    descripcion: 'El episodio abierto no tiene fecha de termino: antes nacia terminado en el mismo instante',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT IS_NULLABLE AS nulos FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Episodio_Clinico' AND COLUMN_NAME = 'fecha_terminado'`,
+        [baseDatos]
+      );
+      return String(filas[0]?.nulos || '').toUpperCase() === 'YES';
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `ALTER TABLE Episodio_Clinico
+           MODIFY COLUMN fecha_terminado TIMESTAMP NULL DEFAULT NULL`
+      );
+      // Los episodios ya creados arrastran una fecha de termino falsa (la de su
+      // creacion). Solo los cerrados tienen un termino real.
+      await conexion.query(
+        `UPDATE Episodio_Clinico
+            SET fecha_terminado = NULL
+          WHERE UPPER(TRIM(COALESCE(estado, ''))) <> 'CERRADO'`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Profesional_Comuna (CU10/CU14)',
+    descripcion: 'Comunas en las que atiende cada profesional, para filtrar la busqueda del paciente',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Profesional_Comuna'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Profesional_Comuna (
+            profesional_id INT NOT NULL,
+            comuna_id INT NOT NULL,
+            PRIMARY KEY (profesional_id, comuna_id),
+            FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+            FOREIGN KEY (comuna_id) REFERENCES Comuna(comuna_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Notificacion con titulo y datos (CU52)',
+    descripcion: 'Titulo del aviso y carga util para abrir la pantalla correcta al tocarlo',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Notificacion' AND COLUMN_NAME = 'datos'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(`ALTER TABLE Notificacion ADD COLUMN titulo VARCHAR(120) NULL AFTER tipo`);
+      await conexion.query(`ALTER TABLE Notificacion ADD COLUMN datos JSON NULL AFTER contenido`);
+    },
+  },
+  {
+    nombre: 'Tabla Preferencia_Notificacion (CU52)',
+    descripcion: 'Canales de salida que acepta cada usuario: push y correo',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Preferencia_Notificacion'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Preferencia_Notificacion (
+            usuario_id INT PRIMARY KEY,
+            canal_push BOOLEAN NOT NULL DEFAULT TRUE,
+            canal_email BOOLEAN NOT NULL DEFAULT TRUE,
+            ultima_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Dispositivo_Push (CU52)',
+    descripcion: 'Tokens de notificacion push por dispositivo, listos para cuando exista build propia',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Dispositivo_Push'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Dispositivo_Push (
+            dispositivo_push_id INT PRIMARY KEY AUTO_INCREMENT,
+            token VARCHAR(255) NOT NULL UNIQUE,
+            plataforma VARCHAR(20) NOT NULL DEFAULT 'DESCONOCIDA',
+            activo BOOLEAN NOT NULL DEFAULT TRUE,
+            momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            usuario_id INT NOT NULL,
+            FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Solicitud_Confirmacion (CU21)',
+    descripcion: 'Solicitud de confirmacion de asistencia con token de un solo uso y vencimiento',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Solicitud_Confirmacion'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Solicitud_Confirmacion (
+            solicitud_confirmacion_id INT PRIMARY KEY AUTO_INCREMENT,
+            token VARCHAR(64) NOT NULL UNIQUE,
+            momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            momento_expira TIMESTAMP NOT NULL,
+            momento_respuesta TIMESTAMP NULL,
+            respuesta VARCHAR(20) NULL,
+            canal_respuesta VARCHAR(20) NULL,
+            cita_id INT NOT NULL UNIQUE,
+            FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Lista_Espera secuencial con plazo (CU19)',
+    descripcion: 'Estado del turno, momento de aviso y vencimiento para ofrecer el cupo de a uno',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Lista_Espera' AND COLUMN_NAME = 'estado'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion, baseDatos) => {
+      await conexion.query(
+        `ALTER TABLE Lista_Espera
+           ADD COLUMN estado VARCHAR(20) NOT NULL DEFAULT 'ESPERANDO' AFTER notificado,
+           ADD COLUMN momento_notificacion TIMESTAMP NULL AFTER estado,
+           ADD COLUMN momento_expira TIMESTAMP NULL AFTER momento_notificacion`
+      );
+      // Las inscripciones anteriores ya avisadas se dan por atendidas: con la
+      // regla nueva habrian quedado esperando un turno que nadie les ofrece.
+      await conexion.query(
+        `UPDATE Lista_Espera SET estado = 'VENCIDO' WHERE notificado = TRUE`
+      );
+      // Un paciente no puede estar dos veces en la misma lista.
+      const [duplicados] = await conexion.query(
+        `SELECT 1 FROM information_schema.STATISTICS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Lista_Espera'
+            AND INDEX_NAME = 'uq_espera_cita_paciente' LIMIT 1`,
+        [baseDatos]
+      );
+      if (duplicados.length === 0) {
+        await conexion.query(
+          `DELETE le FROM Lista_Espera le
+             JOIN Lista_Espera otra
+               ON otra.cita_id = le.cita_id
+              AND otra.paciente_id = le.paciente_id
+              AND otra.lista_espera_id < le.lista_espera_id`
+        );
+        await conexion.query(
+          `ALTER TABLE Lista_Espera
+             ADD UNIQUE KEY uq_espera_cita_paciente (cita_id, paciente_id)`
+        );
+      }
+    },
+  },
+  {
+    nombre: 'Parametros de avisos, confirmacion y lista de espera (CU19/CU21/CU52)',
+    descripcion: 'Plazos del bloque de notificaciones y agenda del Incremento 3',
+    yaAplicada: async (conexion) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM Parametro_Global WHERE clave = 'MAX_PACIENTES_LISTA_ESPERA' LIMIT 1`
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUES
+         ('ANTICIPACION_SOLICITUD_CONFIRMACION_HORAS', '24', 'Horas antes de la cita en que se pide al paciente confirmar su asistencia.', 1),
+         ('VIGENCIA_ENLACE_CONFIRMACION_HORAS', '48', 'Horas que dura el enlace de confirmacion enviado por correo.', 1),
+         ('MAX_PACIENTES_LISTA_ESPERA', '5', 'Cantidad maxima de pacientes inscritos en la lista de espera de un mismo bloque.', 1),
+         ('PLAZO_RESPUESTA_LISTA_ESPERA_MINUTOS', '30', 'Minutos que tiene el primero de la lista para tomar el cupo antes de cederlo al siguiente.', 1)`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Reporte_Preclinico (CU25/CU26)',
+    descripcion: 'Sintesis del triaje con banderas rojas y especialidad sugerida',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Reporte_Preclinico'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Reporte_Preclinico (
+            reporte_preclinico_id INT PRIMARY KEY AUTO_INCREMENT,
+            resumen TEXT NOT NULL,
+            banderas JSON,
+            etiquetas JSON,
+            suficiente BOOLEAN NOT NULL DEFAULT TRUE,
+            especialidad_sugerida_id INT NULL,
+            momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            triaje_id INT NOT NULL UNIQUE,
+            paciente_id INT NOT NULL,
+            FOREIGN KEY (triaje_id) REFERENCES Triaje(triaje_id),
+            FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+            FOREIGN KEY (especialidad_sugerida_id) REFERENCES Especialidad(especialidad_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Reporte_Sintoma (CU50)',
+    descripcion: 'Reportes de evolucion que el paciente envia entre sesiones',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Reporte_Sintoma'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Reporte_Sintoma (
+            reporte_sintoma_id INT PRIMARY KEY AUTO_INCREMENT,
+            nivel_dolor TINYINT NOT NULL,
+            limitacion_funcional TINYINT NOT NULL,
+            comentario VARCHAR(500),
+            clave_envio VARCHAR(64) NOT NULL UNIQUE,
+            momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            paciente_id INT NOT NULL,
+            episodio_clinico_id INT NULL,
+            FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+            FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Alerta_Clinica (CU50)',
+    descripcion: 'Banderas rojas que llegan al panel del profesional',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Alerta_Clinica'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Alerta_Clinica (
+            alerta_clinica_id INT PRIMARY KEY AUTO_INCREMENT,
+            tipo VARCHAR(40) NOT NULL,
+            severidad VARCHAR(20) NOT NULL,
+            motivo VARCHAR(255) NOT NULL,
+            datos JSON,
+            estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA',
+            momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            momento_revision TIMESTAMP NULL,
+            paciente_id INT NOT NULL,
+            profesional_id INT NULL,
+            reporte_sintoma_id INT NULL,
+            FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+            FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+            FOREIGN KEY (reporte_sintoma_id) REFERENCES Reporte_Sintoma(reporte_sintoma_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Parametros de triaje inteligente y deterioro (CU25/CU50)',
+    descripcion: 'Umbrales del reporte pre-clinico y de las alertas por deterioro',
+    yaAplicada: async (conexion) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM Parametro_Global WHERE clave = 'UMBRAL_DOLOR_CRITICO' LIMIT 1`
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUES
+         ('UMBRAL_DOLOR_CRITICO', '8', 'Nivel de dolor (0-10) desde el cual el reporte del paciente levanta una alerta.', 1),
+         ('UMBRAL_ALZA_DOLOR', '3', 'Puntos de aumento del dolor respecto al reporte anterior que levantan una alerta.', 1),
+         ('MINIMO_RESPUESTAS_PRECLINICO', '4', 'Respuestas minimas del triaje para generar un reporte util; bajo eso se marca Informacion Insuficiente.', 1),
+         ('LATENCIA_MAXIMA_REPORTE_MS', '2000', 'Milisegundos sobre los cuales la carga del reporte pre-clinico queda anotada como lenta en la bitacora.', 1)`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Indicador_Adherencia (CU44)',
+    descripcion: 'Indice de adherencia por dia, base de la curva de progreso del paciente',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Indicador_Adherencia'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Indicador_Adherencia (
+            indicador_adherencia_id INT PRIMARY KEY AUTO_INCREMENT,
+            fecha DATE NOT NULL,
+            porcentaje TINYINT NOT NULL,
+            tareas_programadas INT NOT NULL,
+            tareas_cumplidas INT NOT NULL,
+            momento_calculo TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            paciente_id INT NOT NULL,
+            UNIQUE KEY uq_adherencia_dia (paciente_id, fecha),
+            FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Parametros de adherencia (CU44)',
+    descripcion: 'Umbral de adherencia critica y minimo de tareas para alertar',
+    yaAplicada: async (conexion) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM Parametro_Global WHERE clave = 'UMBRAL_ADHERENCIA_CRITICA' LIMIT 1`
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUES
+         ('UMBRAL_ADHERENCIA_CRITICA', '50', 'Porcentaje de adherencia bajo el cual se levanta una bandera roja al profesional.', 1),
+         ('MINIMO_TAREAS_PARA_ALERTA_ADHERENCIA', '5', 'Tareas programadas minimas antes de poder alertar por adherencia baja.', 1)`
+      );
+    },
+  },
+  {
+    nombre: 'Mensaje_Chat con remitente y lectura (CU53)',
+    descripcion: 'Quien escribe cada mensaje del chat clinico y si la otra parte ya lo leyo',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Mensaje_Chat'
+            AND COLUMN_NAME = 'remitente_usuario_id'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      // La tabla nunca se uso: si hubiera filas antiguas no tendrian remitente,
+      // asi que se limpian antes de exigir la columna.
+      await conexion.query(`DELETE FROM Mensaje_Chat`);
+      await conexion.query(
+        `ALTER TABLE Mensaje_Chat
+           ADD COLUMN remitente_usuario_id INT NOT NULL AFTER momento_envio,
+           ADD COLUMN leido BOOLEAN NOT NULL DEFAULT FALSE AFTER remitente_usuario_id,
+           ADD KEY idx_chat_episodio (episodio_clinico_id, mensaje_id),
+           ADD CONSTRAINT fk_chat_remitente
+               FOREIGN KEY (remitente_usuario_id) REFERENCES Usuario(usuario_id)`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Palabra_Restringida (CU57)',
+    descripcion: 'Diccionario de terminos no permitidos, con siembra inicial',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Palabra_Restringida'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Palabra_Restringida (
+            palabra_restringida_id INT PRIMARY KEY AUTO_INCREMENT,
+            termino VARCHAR(80) NOT NULL UNIQUE,
+            categoria VARCHAR(40) NOT NULL DEFAULT 'GENERAL',
+            activa BOOLEAN NOT NULL DEFAULT TRUE,
+            momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            administrador_id INT NULL,
+            FOREIGN KEY (administrador_id) REFERENCES Usuario(usuario_id)
+         )`
+      );
+      // Siembra minima para que el filtro exista desde el primer arranque. El
+      // administrador la edita desde su panel; son terminos de ejemplo, no una
+      // lista definitiva.
+      await conexion.query(
+        `INSERT INTO Palabra_Restringida (termino, categoria, administrador_id) VALUES
+         ('idiota', 'OFENSA', 1),
+         ('estupido', 'OFENSA', 1),
+         ('imbecil', 'OFENSA', 1),
+         ('tarado', 'OFENSA', 1),
+         ('charlatan', 'DESCALIFICACION', 1),
+         ('curandero', 'DESCALIFICACION', 1)`
+      );
+    },
+  },
+  {
+    nombre: 'Evaluacion_Satisfaccion con moderacion (CU55/CU56)',
+    descripcion: 'Estado de moderacion con causal y responsable, en vez de un booleano',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Evaluacion_Satisfaccion'
+            AND COLUMN_NAME = 'motivo_rechazo'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `ALTER TABLE Evaluacion_Satisfaccion
+           MODIFY COLUMN estado_moderacion VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+           ADD COLUMN motivo_rechazo VARCHAR(255) NULL AFTER estado_moderacion,
+           ADD COLUMN moderador_id INT NULL AFTER motivo_rechazo,
+           ADD COLUMN momento_moderacion TIMESTAMP NULL AFTER moderador_id,
+           ADD CONSTRAINT fk_evaluacion_moderador
+               FOREIGN KEY (moderador_id) REFERENCES Usuario(usuario_id)`
+      );
+      // El booleano anterior queda como '0'/'1' al cambiar de tipo: se
+      // normaliza a los estados nuevos.
+      await conexion.query(
+        `UPDATE Evaluacion_Satisfaccion
+            SET estado_moderacion = CASE WHEN estado_moderacion = '1' THEN 'APROBADA' ELSE 'PENDIENTE' END
+          WHERE estado_moderacion IN ('0', '1')`
+      );
+    },
+  },
+  {
+    nombre: 'Ticket_Soporte con enrutamiento y adjunto (CU60/CU61)',
+    descripcion: 'Operador asignado, momento de enrutamiento, adjunto y resolucion',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Ticket_Soporte'
+            AND COLUMN_NAME = 'asignado_a'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `ALTER TABLE Ticket_Soporte
+           ADD COLUMN asignado_a INT NULL AFTER momento_resuelto,
+           ADD COLUMN momento_enrutamiento TIMESTAMP NULL AFTER asignado_a,
+           ADD COLUMN adjunto_url VARCHAR(500) NULL AFTER momento_enrutamiento,
+           ADD COLUMN resolucion VARCHAR(500) NULL AFTER adjunto_url,
+           ADD CONSTRAINT fk_ticket_operador
+               FOREIGN KEY (asignado_a) REFERENCES Usuario(usuario_id)`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Area_Soporte_Operador (CU61)',
+    descripcion: 'Areas que atiende cada operador; sin operador, el ticket va a supervision general',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Area_Soporte_Operador'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Area_Soporte_Operador (
+            usuario_id INT NOT NULL,
+            categoria VARCHAR(50) NOT NULL,
+            PRIMARY KEY (usuario_id, categoria),
+            FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Parametros de soporte y reportes (CU60/CU63)',
+    descripcion: 'Limite del adjunto de un ticket y tope de filas por tomo de informe',
+    yaAplicada: async (conexion) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM Parametro_Global WHERE clave = 'MAX_ADJUNTO_TICKET_MB' LIMIT 1`
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUES
+         ('MAX_ADJUNTO_TICKET_MB', '5', 'Peso maximo en MB de la imagen que se adjunta a un ticket de soporte.', 1),
+         ('MAX_FILAS_POR_TOMO_INFORME', '2000', 'Filas por tomo al exportar un informe; sobre eso se divide en partes.', 1)`
+      );
+    },
+  },
+  {
+    nombre: 'Tabla Liquidacion (CU75)',
+    descripcion: 'Historial mensual de liquidaciones por profesional, inalterable',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.TABLES
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Liquidacion'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `CREATE TABLE Liquidacion (
+            liquidacion_id INT PRIMARY KEY AUTO_INCREMENT,
+            anio SMALLINT NOT NULL,
+            mes TINYINT NOT NULL,
+            sesiones_validadas INT NOT NULL DEFAULT 0,
+            monto_prestaciones INT NOT NULL DEFAULT 0,
+            bonificacion INT NOT NULL DEFAULT 0,
+            monto_total INT NOT NULL DEFAULT 0,
+            observacion VARCHAR(255) NULL,
+            momento_emision TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            profesional_id INT NOT NULL,
+            emitida_por INT NOT NULL,
+            UNIQUE KEY uq_liquidacion_periodo (profesional_id, anio, mes),
+            FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+            FOREIGN KEY (emitida_por) REFERENCES Usuario(usuario_id)
+         )`
+      );
+    },
+  },
+  {
+    nombre: 'Parametros de comercializacion y liquidacion (CU73/CU74/CU75)',
+    descripcion: 'Descuento de los planes, ventana de actualizacion y honorario del profesional',
+    yaAplicada: async (conexion) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM Parametro_Global WHERE clave = 'DESCUENTO_PAQUETE_PORCENTAJE' LIMIT 1`
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUES
+         ('DESCUENTO_PAQUETE_PORCENTAJE', '10', 'Descuento porcentual al comprar un plan de sesiones en vez de sesiones sueltas.', 1),
+         ('HORAS_ANTICIPACION_DEVOLUCION', '24', 'Anticipacion minima de una cancelacion para que corresponda devolucion total.', 1),
+         ('PORCENTAJE_HONORARIO_PROFESIONAL', '70', 'Porcentaje del arancel que se liquida al profesional por cada prestacion validada.', 1),
+         ('LATENCIA_MAXIMA_LIQUIDACION_MS', '2000', 'Milisegundos sobre los cuales el calculo de la liquidacion queda anotado como lento.', 1)`
+      );
+    },
+  },
+  {
     nombre: 'Eliminar Pauta_Material (D8)',
     descripcion: 'La tabla no la usa ningun flujo: el material se asocia por ejercicio',
     yaAplicada: async (conexion, baseDatos) => {
@@ -558,6 +1122,42 @@ const MIGRACIONES = [
     },
     aplicar: async (conexion) => {
       await conexion.query(`DROP TABLE IF EXISTS Pauta_Material`);
+    },
+  },
+  {
+    nombre: 'Lista_Espera.token_cupo (CU19 desde el correo)',
+    descripcion: 'Enlace seguro para tomar el cupo liberado directamente desde el correo',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Lista_Espera' AND COLUMN_NAME = 'token_cupo'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `ALTER TABLE Lista_Espera
+           ADD COLUMN token_cupo VARCHAR(64) NULL,
+           ADD UNIQUE KEY uq_lista_espera_token (token_cupo)`
+      );
+    },
+  },
+  {
+    nombre: 'Paciente.resena_anonima (CU58)',
+    descripcion: 'El paciente decide si su nombre aparece bajo sus calificaciones escritas',
+    yaAplicada: async (conexion, baseDatos) => {
+      const [filas] = await conexion.query(
+        `SELECT 1 FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'Paciente' AND COLUMN_NAME = 'resena_anonima'`,
+        [baseDatos]
+      );
+      return filas.length > 0;
+    },
+    aplicar: async (conexion) => {
+      await conexion.query(
+        `ALTER TABLE Paciente ADD COLUMN resena_anonima BOOLEAN NOT NULL DEFAULT FALSE`
+      );
     },
   },
 ];

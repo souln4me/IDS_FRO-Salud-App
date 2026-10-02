@@ -27,6 +27,9 @@ export default function DialogoConfirmacion({
   onCancelar,
 }) {
   const peligro = tono === 'peligro';
+  // Si alguna etiqueta no cabe en media fila, los botones van uno sobre otro,
+  // con la acción principal arriba.
+  const apilados = Math.max(etiquetaConfirmar.length, etiquetaCancelar.length) > 12;
 
   return (
     <Modal
@@ -41,9 +44,9 @@ export default function DialogoConfirmacion({
           <Text style={estilos.titulo}>{titulo}</Text>
           {mensaje ? <Text style={estilos.mensaje}>{mensaje}</Text> : null}
 
-          <View style={estilos.acciones}>
+          <View style={[estilos.acciones, apilados && estilos.accionesApiladas]}>
             <TouchableOpacity
-              style={estilos.botonCancelar}
+              style={[estilos.botonCancelar, apilados && estilos.botonApilado]}
               onPress={onCancelar}
               activeOpacity={interaccion.opacidadActiva}
             >
@@ -51,7 +54,7 @@ export default function DialogoConfirmacion({
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[estilos.botonConfirmar, peligro && estilos.botonPeligro]}
+              style={[estilos.botonConfirmar, peligro && estilos.botonPeligro, apilados && estilos.botonApilado]}
               onPress={onConfirmar}
               activeOpacity={interaccion.opacidadActiva}
             >
@@ -81,6 +84,9 @@ const estilos = StyleSheet.create({
   mensaje: { ...tipografia.cuerpo, color: colores.textoSuave, marginBottom: espacio.xl },
 
   acciones: { flexDirection: 'row', gap: espacio.md },
+  // column-reverse: la acción principal queda arriba sin cambiar el orden del código.
+  accionesApiladas: { flexDirection: 'column-reverse', gap: espacio.sm },
+  botonApilado: { flex: 0, alignSelf: 'stretch' },
   botonCancelar: {
     flex: 1,
     paddingVertical: espacio.md,

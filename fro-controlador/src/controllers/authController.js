@@ -226,7 +226,9 @@ exports.validarProfesional = async (req, res) => {
 exports.registrarProfesional = async (req, res) => {
     const {
         rut, nombres, apellido_paterno, apellido_materno, email, telefono, contrasena,
-        num_registro_salud, especialidad_id, tipo_sede, resena_curricular, disponibilidad
+        num_registro_salud, especialidad_id, tipo_sede, resena_curricular, disponibilidad,
+        // CU14: comunas en las que el profesional atiende a domicilio.
+        comunas
     } = req.body;
 
     if (rechazoPorContrasenaDebil(res, contrasena)) return;
@@ -265,6 +267,26 @@ exports.registrarProfesional = async (req, res) => {
             [num_registro_salud, resena_curricular, 0.00, 'default.jpg', tipo_sede, usuario_id, especialidad_id]
         );
         const profesional_id = profResult.insertId;
+
+        // Las comunas de atención se guardan con el mismo criterio que el perfil:
+        // la lista que llega es la definitiva, y las inexistentes se descartan.
+        const comunasPedidas = [...new Set(
+            (Array.isArray(comunas) ? comunas : [])
+                .map((valor) => Number(valor))
+                .filter((valor) => Number.isInteger(valor) && valor > 0)
+        )];
+        if (comunasPedidas.length > 0) {
+            const [comunasValidas] = await connection.query(
+                `SELECT comuna_id FROM Comuna WHERE comuna_id IN (${comunasPedidas.map(() => '?').join(',')})`,
+                comunasPedidas
+            );
+            for (const fila of comunasValidas) {
+                await connection.execute(
+                    `INSERT INTO Profesional_Comuna (profesional_id, comuna_id) VALUES (?, ?)`,
+                    [profesional_id, fila.comuna_id]
+                );
+            }
+        }
 
         if (disponibilidad && disponibilidad.length > 0) {
             const MODALIDADES_VALIDAS = ['DOMICILIO', 'ONLINE', 'AMBOS'];
@@ -860,7 +882,7 @@ const PRIVACIDAD_POR_DEFECTO = { mostrar_direccion: true, mostrar_telefono: true
 exports.obtenerPrivacidad = async (req, res) => {
     try {
         const [filas] = await pool.query(
-            `SELECT privacidad_contacto FROM Paciente WHERE usuario_id = ? LIMIT 1`,
+            `SELECT privacidad_contacto, resena_anonima FROM Paciente WHERE usuario_id = ? LIMIT 1`,
             [req.user.usuario_id]
         );
         if (filas.length === 0) {
@@ -872,7 +894,12 @@ exports.obtenerPrivacidad = async (req, res) => {
             try { guardada = JSON.parse(guardada); } catch { guardada = null; }
         }
 
-        return res.status(200).json({ ...PRIVACIDAD_POR_DEFECTO, ...(guardada || {}) });
+        return res.status(200).json({
+            ...PRIVACIDAD_POR_DEFECTO,
+            ...(guardada || {}),
+            // CU58: si su nombre aparece bajo sus calificaciones escritas.
+            nombre_en_resenas: !Number(filas[0].resena_anonima),
+        });
     } catch (error) {
         console.error('[obtenerPrivacidad]', error);
         return res.status(500).json({ error: 'No se pudo leer la configuración de privacidad.' });
@@ -893,10 +920,23 @@ exports.actualizarPrivacidad = async (req, res) => {
         preferencias[campo] = valor;
     }
 
+    // CU58: opcional (las versiones anteriores de la app no lo envían).
+    const nombreEnResenas = req.body?.nombre_en_resenas;
+    if (nombreEnResenas !== undefined && typeof nombreEnResenas !== 'boolean') {
+        return res.status(400).json({
+            error: 'CONFIGURACION_INVALIDA',
+            mensaje: 'El campo "nombre_en_resenas" debe ser verdadero o falso.'
+        });
+    }
+
     try {
         const [resultado] = await pool.query(
-            `UPDATE Paciente SET privacidad_contacto = ? WHERE usuario_id = ?`,
-            [JSON.stringify(preferencias), req.user.usuario_id]
+            nombreEnResenas === undefined
+                ? `UPDATE Paciente SET privacidad_contacto = ? WHERE usuario_id = ?`
+                : `UPDATE Paciente SET privacidad_contacto = ?, resena_anonima = ? WHERE usuario_id = ?`,
+            nombreEnResenas === undefined
+                ? [JSON.stringify(preferencias), req.user.usuario_id]
+                : [JSON.stringify(preferencias), !nombreEnResenas, req.user.usuario_id]
         );
         if (resultado.affectedRows === 0) {
             return res.status(404).json({ error: 'No se encontró el perfil de paciente.' });
@@ -912,7 +952,11 @@ exports.actualizarPrivacidad = async (req, res) => {
             console.error('[actualizarPrivacidad] Sin registro en bitácora:', errorBitacora.message);
         }
 
-        return res.status(200).json({ mensaje: 'Preferencias de privacidad guardadas.', ...preferencias });
+        return res.status(200).json({
+            mensaje: 'Preferencias de privacidad guardadas.',
+            ...preferencias,
+            ...(nombreEnResenas === undefined ? {} : { nombre_en_resenas: nombreEnResenas }),
+        });
     } catch (error) {
         console.error('[actualizarPrivacidad]', error);
         return res.status(500).json({ error: 'No se pudieron guardar los cambios.' });

@@ -174,7 +174,7 @@ const estilos = StyleSheet.create({
   contenedor: { flex: 1, backgroundColor: colores.neutro[900] },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24, backgroundColor: colores.fondo },
 
-  cabecera: { padding: 12, backgroundColor: colores.secundario },
+  cabecera: { padding: 12, backgroundColor: colores.primarioFuerte },
   nombre: { color: colores.superficie, fontWeight: 'bold' },
   detalle: { color: colores.textoTenue, fontSize: 13, marginTop: 2 },
 

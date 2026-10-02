@@ -10,6 +10,11 @@ const parametroRoutes = require('./routes/parametroRoutes');
 
 const integracionDemoRoutes = require('./routes/integracionDemoRoutes');
 const pagoRoutes = require('./routes/pagoRoutes');
+const notificacionRoutes = require('./routes/notificacionRoutes');
+const evaluacionRoutes = require('./routes/evaluacionRoutes');
+const soporteRoutes = require('./routes/soporteRoutes');
+const gestionRoutes = require('./routes/gestionRoutes');
+const finanzasRoutes = require('./routes/finanzasRoutes');
 const pagoController = require('./controllers/pagoController');
 
 const app = express();
@@ -47,6 +52,9 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/diagnostico', (req, res) => {
     const definida = (clave) => Boolean(process.env[clave]);
+    // CU53: si la clave del chat no está configurada, el servidor la deriva del
+    // JWT_SECRET. Funciona, pero conviene saberlo.
+    const { estadoClave } = require('./services/clinico/cifradoService');
 
     const ahora = new Date();
     const p = (n) => String(n).padStart(2, '0');
@@ -86,6 +94,10 @@ app.get('/api/diagnostico', (req, res) => {
                 definida('CLOUDINARY_API_KEY') &&
                 definida('CLOUDINARY_API_SECRET'),
         },
+        // CU53: el chat clínico se guarda cifrado. Sin CLAVE_CIFRADO_CHAT la
+        // clave se deriva del JWT_SECRET: funciona, pero si ese secreto cambia
+        // los mensajes ya guardados dejan de poder leerse.
+        mensajeria_cifrada: estadoClave(),
     });
 });
 
@@ -179,6 +191,11 @@ app.use('/api/parametros', parametroRoutes);
 
 app.use('/api/integracion-demo', integracionDemoRoutes);
 app.use('/api/pagos', pagoRoutes);
+app.use('/api/notificaciones', notificacionRoutes);
+app.use('/api/evaluaciones', evaluacionRoutes);
+app.use('/api/soporte', soporteRoutes);
+app.use('/api/gestion', gestionRoutes);
+app.use('/api/finanzas', finanzasRoutes);
 
 // Simulador del financiador externo (CU66/CU69). Sin autenticación de la app:
 // representa al proveedor foráneo; exige su propia credencial X-Api-Key.

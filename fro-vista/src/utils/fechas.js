@@ -29,6 +29,14 @@ function interpretar(valor) {
 
   const texto = String(valor).trim();
 
+  // Marca en milisegundos desde 1970 (p. ej. la versión de un parámetro
+  // global, que viaja como número para el control de concurrencia). new
+  // Date("1758650000000") es inválido: hay que convertirla como número.
+  if (/^\d{11,}(\.\d+)?$/.test(texto)) {
+    const fecha = new Date(Number(texto));
+    return Number.isNaN(fecha.getTime()) ? null : { fecha, esInstante: true };
+  }
+
   const pared = texto.match(PATRON_HORA_PARED);
   if (pared) {
     const [, anio, mes, dia, hora, minuto, segundo] = pared;
@@ -83,6 +91,17 @@ function partes({ fecha, esInstante }) {
     hora: dosDigitos(fecha.getHours()),
     minuto: dosDigitos(fecha.getMinutes()),
   };
+}
+
+/**
+ * "2026-09-22": el día calendario chileno al que pertenece el valor. Sirve para
+ * agrupar citas por día sin que el huso del teléfono las corra de fecha.
+ */
+export function claveDia(valor) {
+  const v = interpretar(valor);
+  if (!v) return null;
+  const p = partes(v);
+  return `${p.anio}-${p.mes}-${p.dia}`;
 }
 
 /** "05/09/2026" */

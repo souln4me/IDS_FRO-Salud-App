@@ -114,6 +114,10 @@ exports.actualizarEpisodio = async (req, res) => {
 
         // Cerrar fija la fecha de término si no viene explícita.
         const cierre = estado === ESTADO_CERRADO;
+        // mysql2 rechaza los parámetros undefined: el cierre manda solo el
+        // estado, así que el resto tiene que viajar como NULL explícito.
+        const motivo = motivo_consulta ?? null;
+        const terminado = fecha_terminado ?? null;
         const [result] = await pool.query(
             `UPDATE Episodio_Clinico
                 SET motivo_consulta = COALESCE(?, motivo_consulta),
@@ -123,7 +127,7 @@ exports.actualizarEpisodio = async (req, res) => {
                         WHEN ? THEN NOW()
                         ELSE fecha_terminado END
               WHERE episodio_clinico_id = ?`,
-            [motivo_consulta, estado, fecha_terminado, fecha_terminado, cierre, episodio_id]
+            [motivo, estado, terminado, terminado, cierre, episodio_id]
         );
 
         if (result.affectedRows === 0) {

@@ -24,6 +24,7 @@ export const ESTADOS = {
   PAGADA:       { color: colores.exito,       etiqueta: 'Pagada',       orden: 3 },
   PENDIENTE:    { color: colores.advertencia, etiqueta: 'Pendiente',    orden: 2 },
   EN_TRANSITO:  { color: colores.primario,    etiqueta: 'En tránsito',  orden: 1 },
+  DEVOLUCION:   { color: colores.primario,    etiqueta: 'Devolución',   orden: 3 },
   VALIDADO:     { color: colores.exito,       etiqueta: 'Validado',     orden: 3 },
   RECHAZADO:    { color: colores.error,       etiqueta: 'Rechazado',    orden: 5 },
 

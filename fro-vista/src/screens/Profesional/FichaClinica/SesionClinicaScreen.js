@@ -21,7 +21,7 @@ import {
 import { Picker } from '@react-native-picker/picker';
 import * as SecureStore from 'expo-secure-store';
 
-import apiClient, { getIntervencion, guardarIntervencion } from '../../../api/client';
+import apiClient, { getIntervencion, guardarIntervencion, trasladarAtencion } from '../../../api/client';
 import VistaConTeclado from '../../../components/VistaConTeclado';
 import ErrorRetry from '../../../components/ErrorRetry';
 import DialogoAviso from '../../../components/DialogoAviso';
@@ -48,7 +48,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   const [contexto, setContexto] = useState(null);
   const [evolucion, setEvolucion] = useState(null);
   const [cargando, setCargando] = useState(false);
-  const [errorCarga, setErrorCarga] = useState(false);
+  const [errorCarga, setErrorCarga] = useState(null);
 
   // ── 1. Qué se hizo ───────────────────────────────────────────────────────
   const [tecnicas, setTecnicas] = useState('');
@@ -65,8 +65,17 @@ export default function SesionClinicaScreen({ route, navigation }) {
 
   // ── 3. Cierre ────────────────────────────────────────────────────────────
   const [firmando, setFirmando] = useState(false);
+  const [trasladando, setTrasladando] = useState(false);
 
   const editable = contexto?.editable === true;
+  // El episodio de otro profesional y el episodio cerrado se consultan, pero no
+  // reciben registros. La cabecera de la ficha ya avisa de lo primero.
+  const deOtroProfesional = contexto?.de_otro_profesional === true;
+  const episodioCerrado =
+    String(contexto?.estado_episodio || '').trim().toUpperCase() === 'CERRADO';
+  const puedeDefinirMetas = Boolean(contexto) && !deOtroProfesional && !episodioCerrado;
+  // Atención en curso amarrada a otro episodio propio: se puede traer aquí.
+  const atencionOtroEpisodio = contexto?.atencion_otro_episodio || null;
   const especialidad = contexto?.especialidad || 'General';
   const posibleDeterioro = useMemo(
     () => PATRON_ALERTA_PRIORITARIA.test(`${tecnicas} ${respuesta}`),
@@ -89,7 +98,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   const cargar = async () => {
     if (!episodioId) return;
     setCargando(true);
-    setErrorCarga(false);
+    setErrorCarga(null);
     try {
       const datos = await getIntervencion(episodioId);
       setContexto(datos.contexto);
@@ -109,7 +118,13 @@ export default function SesionClinicaScreen({ route, navigation }) {
       }
       await cargarMetas();
     } catch (error) {
-      setErrorCarga(true);
+      // Distinguir el motivo real evita el "servicio no disponible" genérico.
+      setErrorCarga(
+        error.response?.data?.mensaje ||
+          (error.response
+            ? `No se pudo cargar la sesión de este episodio (${error.response.status}).`
+            : 'Sin conexión con el servidor. Revisa tu red e inténtalo de nuevo.')
+      );
     } finally {
       setCargando(false);
     }
@@ -286,6 +301,31 @@ export default function SesionClinicaScreen({ route, navigation }) {
     }
   };
 
+  // ── Traer la atención en curso a este episodio ───────────────────────────
+  const moverAtencionAqui = async () => {
+    setTrasladando(true);
+    try {
+      const datos = await trasladarAtencion(episodioId);
+      setAviso({
+        tono: 'ok',
+        titulo: 'Atención trasladada',
+        mensaje: datos.mensaje || 'Ya puedes registrar la sesión en este episodio.',
+      });
+      await cargar();
+    } catch (error) {
+      setAviso({
+        tono: 'error',
+        titulo: 'No se pudo trasladar',
+        mensaje:
+          error.response?.data?.mensaje ||
+          error.response?.data?.error ||
+          'Intenta nuevamente.',
+      });
+    } finally {
+      setTrasladando(false);
+    }
+  };
+
   // ── 3. Cerrar y firmar ───────────────────────────────────────────────────
   // Antes esto vivía en Trazabilidad y había que teclear el número del
   // registro que uno acababa de escribir.
@@ -351,7 +391,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   if (errorCarga) {
     return (
       <View style={estilos.centrado}>
-        <ErrorRetry mensaje="No se pudo cargar la sesión de este episodio." onRetry={cargar} />
+        <ErrorRetry mensaje={errorCarga} onRetry={cargar} />
       </View>
     );
   }
@@ -360,7 +400,9 @@ export default function SesionClinicaScreen({ route, navigation }) {
   return (
     <VistaConTeclado style={estilos.fondo} contentContainerStyle={estilos.contenido}>
       {/* Estado de la sesión: dice si se puede escribir y por qué */}
-      {contexto && (
+      {/* CU28: del episodio ajeno avisa la cabecera de la ficha, que se ve en
+          todas las pestañas; repetirlo aquí era el mismo mensaje dos veces. */}
+      {contexto && !deOtroProfesional && (
         editable ? (
           <View style={[estilos.estado, estilos.estadoActivo]}>
             <Text style={[estilos.estadoTexto, estilos.estadoTextoActivo]}>
@@ -373,20 +415,50 @@ export default function SesionClinicaScreen({ route, navigation }) {
           // pedía "guarda primero" y nada decía que faltaba iniciar la
           // atención. Ahora se explica y se ofrece el camino.
           <View style={[estilos.estado, estilos.estadoInactivo]}>
-            <Text style={[estilos.estadoTexto, estilos.estadoTextoInactivo]}>
-              Para registrar en esta sesión, primero inicia la atención
-            </Text>
-            <Text style={estilos.estadoAyuda}>
-              La hora de inicio queda auditada, así que se marca sobre la cita
-              concreta que vas a atender.
-            </Text>
-            <TouchableOpacity
-              style={estilos.botonGuia}
-              onPress={() => navigation.navigate('HistorialPaciente')}
-              activeOpacity={interaccion.opacidadActiva}
-            >
-              <Text style={estilos.botonGuiaTexto}>Ir a las citas del paciente →</Text>
-            </TouchableOpacity>
+            {atencionOtroEpisodio && !episodioCerrado ? (
+              // El paciente llegó por un motivo nuevo: la atención se inició
+              // sobre el episodio anterior y hay que traerla a este.
+              <>
+                <Text style={[estilos.estadoTexto, estilos.estadoTextoInactivo]}>
+                  Tu atención en curso está registrada en el episodio #
+                  {atencionOtroEpisodio.episodio_clinico_id}
+                </Text>
+                <Text style={estilos.estadoAyuda}>
+                  {atencionOtroEpisodio.motivo_episodio
+                    ? `Ese episodio es por "${atencionOtroEpisodio.motivo_episodio}". `
+                    : ''}
+                  Si el paciente viene por un motivo distinto, pasa la sesión de hoy
+                  a este episodio: el traslado queda auditado.
+                </Text>
+                <TouchableOpacity
+                  style={[estilos.botonGuia, trasladando && estilos.deshabilitado]}
+                  onPress={moverAtencionAqui}
+                  disabled={trasladando}
+                  activeOpacity={interaccion.opacidadActiva}
+                >
+                  <Text style={estilos.botonGuiaTexto}>
+                    {trasladando ? 'Trasladando…' : 'Atender esta sesión en este episodio →'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={[estilos.estadoTexto, estilos.estadoTextoInactivo]}>
+                  Para registrar en esta sesión, primero inicia la atención
+                </Text>
+                <Text style={estilos.estadoAyuda}>
+                  La hora de inicio queda auditada, así que se marca sobre la cita
+                  concreta que vas a atender.
+                </Text>
+                <TouchableOpacity
+                  style={estilos.botonGuia}
+                  onPress={() => navigation.navigate('HistorialPaciente')}
+                  activeOpacity={interaccion.opacidadActiva}
+                >
+                  <Text style={estilos.botonGuiaTexto}>Ir a las citas del paciente →</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )
       )}
@@ -527,6 +599,17 @@ export default function SesionClinicaScreen({ route, navigation }) {
         )}
       </View>
 
+      {/* Una meta es un registro del episodio: solo su profesional la define, y
+          solo mientras el episodio siga abierto (CU28 / CU78 Exc.3). */}
+      {!puedeDefinirMetas ? (
+        <View style={estilos.tarjeta}>
+          <Text style={estilos.ayuda}>
+            {deOtroProfesional
+              ? `Las metas de este episodio las define ${contexto?.profesional_responsable}. Para fijar las tuyas, trabaja en un episodio propio.`
+              : 'Este episodio está cerrado: no admite metas nuevas. Crea un episodio nuevo para continuar el tratamiento.'}
+          </Text>
+        </View>
+      ) : (
       <View style={estilos.tarjeta}>
         <Text style={estilos.etiqueta}>Definir una meta nueva</Text>
         <TextInput
@@ -564,6 +647,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
           </Text>
         </TouchableOpacity>
       </View>
+      )}
 
       {/* ── Paso 3 ── */}
       <Text style={estilos.paso}>{pasoTresListo ? "✓" : "3"} · Cerrar la sesión</Text>
@@ -593,6 +677,25 @@ export default function SesionClinicaScreen({ route, navigation }) {
                 : <Text style={estilos.botonPrimarioTexto}>🔒 Cerrar y firmar</Text>}
             </TouchableOpacity>
           </>
+        )}
+
+        {/* Firmar sella el registro clínico; la ATENCIÓN se cierra sobre la
+            cita, en el historial. Había que buscarla a mano entre las citas:
+            este atajo lleva directo a ella y la deja señalada. */}
+        {editable && contexto?.cita_id && (
+          <TouchableOpacity
+            style={estilos.botonFinalizar}
+            onPress={() =>
+              navigation.navigate('HistorialPaciente', {
+                resaltarCitaId: contexto.cita_id,
+                // Fuerza el reenvío aunque se pulse dos veces sobre la misma cita.
+                resaltarEn: Date.now(),
+              })
+            }
+            activeOpacity={interaccion.opacidadActiva}
+          >
+            <Text style={estilos.botonFinalizarTexto}>✅ Finalizar sesión</Text>
+          </TouchableOpacity>
         )}
       </View>
 
@@ -708,7 +811,17 @@ const estilos = StyleSheet.create({
   botonPrimarioTexto: { ...tipografia.cuerpoFuerte, color: colores.textoInverso },
   botonSecundario: { ...piezas.botonSecundario, paddingVertical: espacio.md },
   botonSecundarioTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
-  botonFirmar: { ...piezas.botonPrimario, backgroundColor: colores.secundario, marginTop: espacio.sm },
+  // El sello de la firma usa el café de la marca, en su tono oscuro para
+  // que el texto blanco encima se lea.
+  botonFirmar: { ...piezas.botonPrimario, backgroundColor: colores.secundarioFuerte, marginTop: espacio.sm },
+  botonFinalizar: {
+    marginTop: espacio.base,
+    backgroundColor: colores.primario,
+    borderRadius: radio.md,
+    paddingVertical: espacio.base,
+    alignItems: 'center',
+  },
+  botonFinalizarTexto: { ...tipografia.cuerpoFuerte, color: colores.textoInverso },
   deshabilitado: { opacity: interaccion.opacidadDeshabilitada },
 
   cerrado: { ...tipografia.meta, color: colores.textoSuave, lineHeight: 20 },

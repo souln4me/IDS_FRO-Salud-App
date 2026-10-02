@@ -96,7 +96,7 @@ async function enviarPorBrevo({ destinatario, asunto, html }) {
       accept: "application/json",
     },
     body: JSON.stringify({
-      sender: { name: "Fro Salud", email: remitente() },
+      sender: { name: "Punto Paz Salud", email: remitente() },
       to: [{ email: destinatario }],
       subject: asunto,
       htmlContent: html,
@@ -137,7 +137,7 @@ function crearTransporter() {
 
 async function enviarPorSMTP({ destinatario, asunto, html }) {
   await crearTransporter().sendMail({
-    from: `"Fro Salud" <${process.env.SMTP_USER}>`,
+    from: `"Punto Paz Salud" <${process.env.SMTP_USER}>`,
     to: destinatario,
     subject: asunto,
     html,
@@ -163,13 +163,13 @@ async function enviarCorreo(destinatario, asunto, html) {
 // contraseña es confuso y parece phishing.
 const PLANTILLAS_OTP = {
   VERIFICACION: {
-    asunto: "Código de verificación - Fro Salud",
+    asunto: "Código de verificación - Punto Paz Salud",
     titulo: "Verificación de cuenta",
     bajada: "Ingresa este código en la aplicación para activar tu cuenta:",
     cierre: "Si no creaste esta cuenta, ignora este correo.",
   },
   RECUPERACION: {
-    asunto: "Recuperación de contraseña - Fro Salud",
+    asunto: "Recuperación de contraseña - Punto Paz Salud",
     titulo: "Recuperación de contraseña",
     bajada: "Ingresa este código en la aplicación para crear una contraseña nueva:",
     cierre:
@@ -210,20 +210,20 @@ async function enviarPorEmail(destinatario, codigo, proposito = "VERIFICACION") 
     <head>
         <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
     </head>
-    <body style="font-family: 'Geist', -apple-system, BlinkMacSystemFont, Arial, sans-serif; background-color: #f4f5f4; margin: 0; padding: 40px 20px;">
+    <body style="font-family: 'Geist', -apple-system, BlinkMacSystemFont, Arial, sans-serif; background-color: #faf8f5; margin: 0; padding: 40px 20px;">
         <div style="max-width: 600px; margin: 0 auto; background-color: #FFFFFF; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 24px rgba(0,0,0,0.06);">
             
             <!-- Barra superior decorativa con el degradado -->
-            <div style="background: radial-gradient(120% 120% at 50% -10%, #004639 0%, #002b23 100%); height: 12px; width: 100%;"></div>
+            <div style="background: radial-gradient(120% 120% at 50% -10%, #003B4D 0%, #00212C 100%); height: 12px; width: 100%;"></div>
 
             <!-- Cuerpo del mensaje -->
             <div style="padding: 48px 40px 32px 40px; color: #1a1a1a; line-height: 1.6;">
-                <h2 style="color: #004639; font-size: 22px; margin-top: 0; font-weight: 600; letter-spacing: -0.5px;">${plantilla.titulo}</h2>
+                <h2 style="color: #003B4D; font-size: 22px; margin-top: 0; font-weight: 600; letter-spacing: -0.5px;">${plantilla.titulo}</h2>
                 <p style="font-size: 15px; color: #4a4a4a; margin-bottom: 12px;">${plantilla.bajada}</p>
                 
                 <!-- Caja Destacada Código OTP -->
                 <div style="text-align: center; margin: 40px 0;">
-                    <span style="display: inline-block; padding: 20px 48px; background-color: #FFFFFF; color: #004639; font-size: 32px; font-weight: 700; letter-spacing: 12px; border: 2px solid #004639; border-radius: 12px;">
+                    <span style="display: inline-block; padding: 20px 48px; background-color: #FFFFFF; color: #003B4D; font-size: 32px; font-weight: 700; letter-spacing: 12px; border: 2px solid #003B4D; border-radius: 12px;">
                         ${codigo}
                     </span>
                 </div>
@@ -236,10 +236,15 @@ async function enviarPorEmail(destinatario, codigo, proposito = "VERIFICACION") 
             </div>
             
             <!-- Pie de página con el Logo -->
-            <div style="background-color: #f9f9f9; padding: 32px 20px; text-align: center; border-top: 1px solid #eeeeee;">
-                <img src="https://res.cloudinary.com/nh9pk4h8/image/upload/v1788834473/logo-fro.png" alt="FRO Salud" style="height: 160px; width: auto; margin: 0 auto 16px auto; display: block; border: 0;">
+            <div style="background-color: #faf8f5; padding: 32px 20px; text-align: center; border-top: 1px solid #ece8e3;">
+                <p style="font-size: 20px; letter-spacing: 6px; color: #003B4D; margin: 0 0 4px 0; font-weight: 600;">
+                    PUNTOPAZ
+                </p>
+                <p style="font-size: 11px; letter-spacing: 5px; color: #8B7140; margin: 0 0 16px 0; font-weight: 600;">
+                    SALUD
+                </p>
                 <p style="font-size: 12px; color: #888888; margin: 0;">
-                    &copy; ${new Date().getFullYear()} FRO Salud. Todos los derechos reservados.
+                    &copy; ${new Date().getFullYear()} Punto Paz Salud. Todos los derechos reservados.
                 </p>
             </div>
         </div>

@@ -4,10 +4,14 @@ const {
   registrarTrazabilidadAgenda,
   obtenerTrazabilidadCita,
   notificarUsuario,
+  pedirEvaluacion,
   obtenerContactosCita,
   descontarSesionPaquete,
-  notificarListaEspera,
+  ofrecerCupoListaEspera,
 } = require('../services/agenda/agendaService');
+const { cerrarSolicitudPorApp } = require('../services/agenda/confirmacionService');
+const { actualizarIndicador } = require('../services/clinico/adherenciaService');
+const { devolverPorCancelacion } = require('./finanzasController');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //   CU14 — Buscar disponibilidad
@@ -42,6 +46,9 @@ function aTextoSQL(fecha) {
 
 exports.buscarDisponibilidad = async (req, res) => {
   const { especialidad_id, tipo_sede, fecha } = req.query;
+  // Búsqueda por nombre del profesional: opcional, se suma a los filtros de
+  // siempre en vez de reemplazarlos.
+  const nombreBuscado = String(req.query?.nombre || '').trim();
 
   if (!especialidad_id || !tipo_sede || !fecha) {
     return res.status(400).json({ error: 'Debe indicar especialidad, modalidad y fecha.' });
@@ -51,6 +58,25 @@ exports.buscarDisponibilidad = async (req, res) => {
     const fechaObj  = new Date(`${fecha}T00:00:00`);
     const diaSemana = fechaObj.getDay() === 0 ? 7 : fechaObj.getDay();
 
+    // CU14: la atención a domicilio depende de dónde vive el paciente. Se toma
+    // la comuna de su cuenta; una teleconsulta no depende del lugar, así que
+    // ese filtro solo se aplica a los bloques a domicilio.
+    let comunaPaciente = null;
+    const [[fichaPaciente]] = await pool.query(
+      `SELECT pa.paciente_id, pa.comuna_id, c.nombre
+         FROM Paciente pa
+         LEFT JOIN Comuna c ON c.comuna_id = pa.comuna_id
+        WHERE pa.usuario_id = ? LIMIT 1`,
+      [req.user?.usuario_id ?? null]
+    );
+    if (fichaPaciente?.comuna_id) {
+      comunaPaciente = { comuna_id: fichaPaciente.comuna_id, nombre: fichaPaciente.nombre };
+    }
+
+    const condicionNombre = nombreBuscado
+      ? `AND CONCAT_WS(' ', u.nombres, u.apellido_paterno, u.apellido_materno) LIKE ?`
+      : '';
+
     const [filas] = await pool.query(
       `SELECT
           p.profesional_id,
@@ -59,7 +85,22 @@ exports.buscarDisponibilidad = async (req, res) => {
           s.sede_id, s.nombre AS sede_nombre,
           pd.hora_inicio, pd.hora_fin, pd.modalidad,
           -- CU10: catálogo público del profesional
-          p.foto_url, p.reseña_curricular AS resena_curricular, p.areas_experticia
+          p.foto_url, p.reseña_curricular AS resena_curricular, p.areas_experticia,
+          -- CU58: promedio y cantidad de evaluaciones, para las estrellas.
+          p.calificacion_promedio,
+          (SELECT COUNT(*) FROM Evaluacion_Satisfaccion es
+             JOIN Cita ce ON ce.cita_id = es.cita_id
+            WHERE ce.profesional_id = p.profesional_id) AS total_evaluaciones,
+          -- CU14: comunas declaradas y si cubren la del paciente. Sin comunas
+          -- declaradas se entiende que atiende en cualquiera.
+          (SELECT GROUP_CONCAT(c2.nombre ORDER BY c2.nombre SEPARATOR ', ')
+             FROM Profesional_Comuna pc2
+             JOIN Comuna c2 ON c2.comuna_id = pc2.comuna_id
+            WHERE pc2.profesional_id = p.profesional_id) AS comunas_atencion,
+          (SELECT COUNT(*) FROM Profesional_Comuna pc3
+            WHERE pc3.profesional_id = p.profesional_id) AS total_comunas,
+          (SELECT COUNT(*) FROM Profesional_Comuna pc4
+            WHERE pc4.profesional_id = p.profesional_id AND pc4.comuna_id = ?) AS cubre_comuna
        FROM Profesional_Disponibilidad pd
        JOIN Profesional p  ON pd.profesional_id  = p.profesional_id
        JOIN Usuario     u  ON p.usuario_id        = u.usuario_id
@@ -67,11 +108,25 @@ exports.buscarDisponibilidad = async (req, res) => {
        JOIN Sede         s ON s.estado_sede        = 1
        WHERE p.especialidad_id = ?
          AND pd.dia_semana     = ?
-         AND u.cuenta_activo   = TRUE`,
-      [especialidad_id, diaSemana]
+         AND u.cuenta_activo   = TRUE
+         ${condicionNombre}`,
+      nombreBuscado
+        ? [comunaPaciente?.comuna_id ?? 0, especialidad_id, diaSemana, `%${nombreBuscado}%`]
+        : [comunaPaciente?.comuna_id ?? 0, especialidad_id, diaSemana]
     );
 
     const disponibilidad = [];
+    // Los bloques de hoy cuya hora ya pasó no se ofrecen. El proceso corre en
+    // hora de Chile (server.js), igual que las fechas de la base, así que el
+    // texto "AAAA-MM-DD HH:MM:SS" se puede comparar directamente.
+    const ahoraTexto = aTextoSQL(new Date());
+    // Para poder explicar en pantalla por qué no salió nadie.
+    let descartadosPorComuna = 0;
+
+    // CU19: para marcar los bloques ocupados hace falta saber quién pregunta
+    // (para no ofrecerle esperar su propia hora) y cuál es el tope de la lista.
+    const pacienteQueBusca = fichaPaciente?.paciente_id || 0;
+    const maximoListaEspera = await leerParametroEntero(pool, 'MAX_PACIENTES_LISTA_ESPERA', 5);
 
     for (const fila of filas) {
       // La modalidad la define cada bloque horario del profesional.
@@ -89,6 +144,19 @@ exports.buscarDisponibilidad = async (req, res) => {
       const modalidad =
         modalidadBloque === 'AMBOS' && tipo_sede !== 'AMBOS' ? tipo_sede : modalidadBloque;
 
+      // El profesional que declaró comunas solo aparece para las suyas, y solo
+      // cuando la hora implica ir al domicilio del paciente.
+      const implicaDomicilio = modalidad === 'DOMICILIO' || modalidad === 'AMBOS';
+      if (
+        implicaDomicilio &&
+        Number(fila.total_comunas) > 0 &&
+        comunaPaciente &&
+        Number(fila.cubre_comuna) === 0
+      ) {
+        descartadosPorComuna++;
+        continue;
+      }
+
       const horaInicio  = String(fila.hora_inicio).slice(0, 5);
       const horaFin     = String(fila.hora_fin).slice(0, 5);
       let   horaActual  = Number(horaInicio.split(':')[0]);
@@ -100,9 +168,14 @@ exports.buscarDisponibilidad = async (req, res) => {
         const fechaHoraInicio = `${fecha} ${bloqueInicio}`;
         const fechaHoraFin    = `${fecha} ${bloqueFin}`;
 
+        if (fechaHoraInicio <= ahoraTexto) {
+          horaActual++;
+          continue;
+        }
+
         // 1. Validar choque con citas existentes
         const [ocupadas] = await pool.query(
-          `SELECT cita_id FROM Cita
+          `SELECT cita_id, paciente_id FROM Cita
            WHERE profesional_id = ?
              AND estado NOT LIKE 'CANCELADA%'
              AND fecha_hora_inicio < ?
@@ -119,7 +192,50 @@ exports.buscarDisponibilidad = async (req, res) => {
           [fila.profesional_id, fechaHoraFin, fechaHoraInicio]
         );
 
-        // 3. Solo agregar si NO hay citas NI bloqueos en ese horario
+        // 3a. CU19: un bloque tomado por otra cita puede tener lista de espera.
+        //     Los bloqueos de agenda no: ese horario no existe para nadie.
+        if (ocupadas.length > 0 && bloqueos.length === 0) {
+          const ocupada = ocupadas[0];
+          const [[espera]] = await pool.query(
+            `SELECT
+                COUNT(*) AS en_espera,
+                MAX(CASE WHEN paciente_id = ? THEN posicion END) AS mi_posicion
+               FROM Lista_Espera
+              WHERE cita_id = ? AND estado IN ('ESPERANDO', 'NOTIFICADO')`,
+            [pacienteQueBusca, ocupada.cita_id]
+          );
+
+          disponibilidad.push({
+            profesional_id:  fila.profesional_id,
+            sede_id:         fila.sede_id,
+            nombres:         fila.nombres,
+            apellido_paterno: fila.apellido_paterno,
+            apellido_materno: fila.apellido_materno,
+            especialidad:    fila.especialidad,
+            tipo_sede:       modalidad,
+            foto_url:        fila.foto_url && fila.foto_url !== 'default.jpg' ? fila.foto_url : null,
+            resena_curricular: fila.resena_curricular || null,
+            areas_experticia: fila.areas_experticia || null,
+            comunas_atencion: fila.comunas_atencion || null,
+            // CU58: calificación y cantidad de evaluaciones del profesional.
+            calificacion: Number(fila.calificacion_promedio) || 0,
+            total_evaluaciones: Number(fila.total_evaluaciones) || 0,
+            fecha,
+            hora_inicio:     bloqueInicio,
+            hora_fin:        bloqueFin,
+            // Marcas propias del bloque ocupado:
+            ocupado:         true,
+            cita_id:         ocupada.cita_id,
+            es_mi_cita:      Number(ocupada.paciente_id) === Number(pacienteQueBusca),
+            en_espera:       Number(espera.en_espera),
+            mi_posicion:     espera.mi_posicion ? Number(espera.mi_posicion) : null,
+            lista_llena:     Number(espera.en_espera) >= maximoListaEspera,
+          });
+          horaActual++;
+          continue;
+        }
+
+        // 3b. Solo agregar como disponible si NO hay citas NI bloqueos.
         if (ocupadas.length === 0 && bloqueos.length === 0) {
           disponibilidad.push({
             profesional_id:  fila.profesional_id,
@@ -132,6 +248,10 @@ exports.buscarDisponibilidad = async (req, res) => {
             foto_url:        fila.foto_url && fila.foto_url !== 'default.jpg' ? fila.foto_url : null,
             resena_curricular: fila.resena_curricular || null,
             areas_experticia: fila.areas_experticia || null,
+            comunas_atencion: fila.comunas_atencion || null,
+            // CU58: calificación y cantidad de evaluaciones del profesional.
+            calificacion: Number(fila.calificacion_promedio) || 0,
+            total_evaluaciones: Number(fila.total_evaluaciones) || 0,
             fecha,
             hora_inicio:     bloqueInicio,
             hora_fin:        bloqueFin,
@@ -141,7 +261,14 @@ exports.buscarDisponibilidad = async (req, res) => {
       }
     }
 
-    return res.status(200).json({ data: disponibilidad });
+    return res.status(200).json({
+      data: disponibilidad,
+      filtro: {
+        comuna_paciente: comunaPaciente?.nombre || null,
+        nombre: nombreBuscado || null,
+        descartados_por_comuna: descartadosPorComuna,
+      },
+    });
   } catch (error) {
     console.error('[buscarDisponibilidad]', error);
     return res.status(500).json({ error: 'Error interno al buscar disponibilidad.' });
@@ -232,6 +359,16 @@ exports.bloquearHorario = async (req, res) => {
 
   if (!profesional_id || !sede_id || !fecha_hora_inicio || !fecha_hora_fin) {
     return res.status(400).json({ error: 'Todos los campos son requeridos.' });
+  }
+
+  // Una hora que ya pasó no se puede reservar (p. ej. si la pantalla de
+  // búsqueda quedó abierta desde antes). Hora de Chile, igual que la base.
+  const inicioTexto = String(fecha_hora_inicio).replace('T', ' ').slice(0, 19);
+  if (inicioTexto <= aTextoSQL(new Date())) {
+    return res.status(409).json({
+      error: 'HORA_PASADA',
+      mensaje: 'Ese horario ya pasó. Vuelve a buscar para ver las horas disponibles.',
+    });
   }
 
   const connection = await pool.getConnection();
@@ -436,6 +573,24 @@ exports.transicionarEstadoCita = async (req, res) => {
     // 2. Evaluar máquina de estados
     const nuevo_estado = evaluarMaquinaEstados(estado_anterior, evento, rolActor);
 
+    // RF73 — una cita solo pasa a CONFIRMADA con el pago íntegro, la confirme
+    // el profesional desde la ficha o el paciente desde la solicitud del CU21.
+    if (evento === 'CONFIRMAR') {
+      const [[pago]] = await connection.execute(
+        `SELECT transaccion_id FROM Transaccion
+          WHERE cita_id = ? AND estado = 'PAGADA' AND tipo <> 'DEVOLUCION' LIMIT 1`,
+        [id]
+      );
+      if (!pago) {
+        await connection.rollback();
+        return res.status(409).json({
+          error: 'CITA_SIN_PAGO',
+          mensaje:
+            'Esta hora todavía no está pagada. Podrás confirmarla cuando el paciente complete el pago desde Mis Citas.',
+        });
+      }
+    }
+
     // CU18 — Excepción 1: el paciente solo puede cancelar dentro del plazo
     // reglamentario (parámetro editable por el administrador).
     if (evento === 'CANCELAR' && rolActor === 'Paciente') {
@@ -504,15 +659,49 @@ exports.transicionarEstadoCita = async (req, res) => {
           ? `Tu cita fue cancelada. Motivo: ${motivo}`
           : `El estado de tu cita cambió a: ${nuevo_estado}`;
       await notificarUsuario(connection, contactos.usuario_paciente, 'CAMBIO_ESTADO_CITA', texto);
-      await notificarUsuario(connection, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto);
+      // El profesional tiene su propia pantalla: el aviso lo lleva a su jornada.
+      await notificarUsuario(connection, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto, {
+        datos: { pantalla: 'MiJornada' },
+      });
     }
 
-    // CU18 — al liberarse el bloque, avisar a la lista de espera.
+    // CU21 — si la cita tenía una solicitud de confirmación abierta, responder
+    // desde la app la cierra: el enlace del correo deja de servir.
+    if (evento === 'CONFIRMAR' || evento === 'CANCELAR') {
+      await cerrarSolicitudPorApp(
+        connection, id, evento === 'CONFIRMAR' ? 'CONFIRMADA' : 'CANCELADA'
+      );
+    }
+
+    // CU55 — sesión cerrada por la máquina de estados: se pide la calificación.
+    if (nuevo_estado === 'REALIZADA') {
+      await pedirEvaluacion(connection, id);
+    }
+
+    // RF74 — la cancelación con la anticipación mínima da derecho a devolución
+    // total. Va dentro de la transacción: o se cancela y se devuelve, o nada.
+    let devolucion = null;
     if (esCancelada(nuevo_estado)) {
-      cupos_notificados = await notificarListaEspera(connection, id);
+      devolucion = await devolverPorCancelacion(
+        connection, id, cita.fecha_hora_inicio, req
+      );
+    }
+
+    // CU18 + CU19 — al liberarse el bloque, el cupo se ofrece al PRIMERO de la
+    // lista de espera, con plazo. Si no responde, el programador lo cede al
+    // siguiente.
+    if (esCancelada(nuevo_estado)) {
+      cupos_notificados = await ofrecerCupoListaEspera(connection, id);
     }
 
     await connection.commit();
+
+    // CU44: el cierre de una sesión es uno de los eventos que actualizan los
+    // indicadores del paciente. Va fuera de la transacción y sin esperar: el
+    // cambio de estado no puede depender de un cálculo de métricas.
+    if (nuevo_estado === 'REALIZADA' || nuevo_estado === 'INASISTENCIA') {
+      actualizarIndicador(pool, cita.paciente_id).catch(() => {});
+    }
 
     return res.status(200).json({
       mensaje: 'Estado de cita actualizado correctamente.',
@@ -521,6 +710,7 @@ exports.transicionarEstadoCita = async (req, res) => {
       nuevo_estado,
       inventario,
       cupos_notificados,
+      devolucion,
     });
 
   } catch (err) {
@@ -766,7 +956,12 @@ exports.obtenerCitasPaciente = async (req, res) => {
           c.estado,
           COALESCE(c.modalidad, NULLIF(prof.tipo_sede, 'AMBOS')) AS modalidad,
           CONCAT(u_pac.nombres, ' ', u_pac.apellido_paterno) AS nombre_paciente,
-          CONCAT(u_prof.nombres, ' ', u_prof.apellido_paterno) AS nombre_profesional
+          CONCAT(u_prof.nombres, ' ', u_prof.apellido_paterno) AS nombre_profesional,
+          -- CU73: cómo quedó pagada la hora (PRESTACION, PAQUETE, SESION_PLAN,
+          -- ACTUALIZACION) o NULL si todavía no se paga.
+          (SELECT t.tipo FROM Transaccion t
+             WHERE t.cita_id = c.cita_id AND t.estado = 'PAGADA' AND t.tipo <> 'DEVOLUCION'
+             ORDER BY t.transaccion_id DESC LIMIT 1) AS pago_tipo
        FROM Cita c
        JOIN Paciente pac      ON c.paciente_id = pac.paciente_id
        JOIN Usuario u_pac     ON pac.usuario_id = u_pac.usuario_id
@@ -796,7 +991,12 @@ exports.obtenerCitasProfesional = async (req, res) => {
           c.estado,
           COALESCE(c.modalidad, NULLIF(prof.tipo_sede, 'AMBOS')) AS modalidad,
           CONCAT(u_pac.nombres, ' ', u_pac.apellido_paterno) AS nombre_paciente,
-          CONCAT(u_prof.nombres, ' ', u_prof.apellido_paterno) AS nombre_profesional
+          CONCAT(u_prof.nombres, ' ', u_prof.apellido_paterno) AS nombre_profesional,
+          -- CU73: cómo quedó pagada la hora (PRESTACION, PAQUETE, SESION_PLAN,
+          -- ACTUALIZACION) o NULL si todavía no se paga.
+          (SELECT t.tipo FROM Transaccion t
+             WHERE t.cita_id = c.cita_id AND t.estado = 'PAGADA' AND t.tipo <> 'DEVOLUCION'
+             ORDER BY t.transaccion_id DESC LIMIT 1) AS pago_tipo
        FROM Cita c
        JOIN Paciente pac      ON c.paciente_id = pac.paciente_id
        JOIN Usuario u_pac     ON pac.usuario_id = u_pac.usuario_id

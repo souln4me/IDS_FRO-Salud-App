@@ -1,5 +1,5 @@
 const pool = require('../../config/database');
-const { rechazarSiCerrado, estaCerrado } = require('../../services/clinico/episodioService');
+const { rechazarSiCerrado, estaCerrado, rechazarSiAjeno } = require('../../services/clinico/episodioService');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CU32 - Paso 1.1: Objetivos Terapéuticos
@@ -76,6 +76,10 @@ exports.crearObjetivo = async (req, res) => {
   try {
     // CU78 Exc.3 (D12): sin metas nuevas sobre un episodio cerrado.
     if (await rechazarSiCerrado(pool, episodio_clinico_id, res)) return;
+
+    // CU28: el episodio de otro profesional se consulta, no se escribe. La app
+    // ya lo mostraba en modo lectura, pero el servidor aceptaba la meta igual.
+    if (await rechazarSiAjeno(pool, episodio_clinico_id, req, res)) return;
 
     const [result] = await pool.query(
       `INSERT INTO Objetivo_Terapeutico (descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)

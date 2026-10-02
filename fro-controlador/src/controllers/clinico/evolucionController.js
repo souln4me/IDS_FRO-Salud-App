@@ -1,5 +1,10 @@
 const pool = require('../../config/database');
-const { rechazarSiCerrado, estaCerrado } = require('../../services/clinico/episodioService');
+const {
+  rechazarSiCerrado,
+  estaCerrado,
+  rechazarSiAjeno,
+  porcentajeObjetivosEpisodio,
+} = require('../../services/clinico/episodioService');
 
 // CU32
 
@@ -39,7 +44,7 @@ exports.actualizarAvance = async (req, res) => {
 
     // Bloqueamos la fila del objetivo y recuperamos la meta para validar el tope
     const [filas] = await connection.execute(
-      `SELECT meta_valor, valor_actual FROM Objetivo_Terapeutico
+      `SELECT meta_valor, valor_actual, episodio_clinico_id FROM Objetivo_Terapeutico
         WHERE objetivo_terapeutico_id = ? FOR UPDATE`,
       [objetivo_terapeutico_id]
     );
@@ -53,6 +58,18 @@ exports.actualizarAvance = async (req, res) => {
     }
 
     const metaValor = Number(filas[0].meta_valor);
+    const episodioId = filas[0].episodio_clinico_id;
+
+    // El avance es un registro clínico: solo lo anota el profesional a cargo y
+    // solo mientras el episodio siga abierto (CU28 / CU78 Exc.3).
+    if (await rechazarSiAjeno(connection, episodioId, req, res)) {
+      await connection.rollback();
+      return;
+    }
+    if (await rechazarSiCerrado(connection, episodioId, res)) {
+      await connection.rollback();
+      return;
+    }
 
     // ─ Excepción 3: el avance no puede superar la meta (100%) 
     if (nuevoValor > metaValor) {
@@ -88,6 +105,19 @@ exports.actualizarAvance = async (req, res) => {
       ]
     );
 
+    // La evolución de la sesión abierta guarda el avance global del episodio:
+    // así el historial muestra un porcentaje real en vez de "No informado".
+    const porcentajeEpisodio = await porcentajeObjetivosEpisodio(connection, episodioId);
+    if (porcentajeEpisodio !== null) {
+      await connection.execute(
+        `UPDATE Evolucion_Clinica
+            SET porcentaje_objetivo = ?
+          WHERE episodio_clinico_id = ?
+            AND inalterable = 0`,
+        [porcentajeEpisodio, episodioId]
+      );
+    }
+
     await connection.commit();
 
     // Porcentaje calculado para el panel gráfico (la Excepción 4 se maneja en frontend)
@@ -98,7 +128,8 @@ exports.actualizarAvance = async (req, res) => {
       objetivo_terapeutico_id: Number(objetivo_terapeutico_id),
       valor_actual: nuevoValor,
       meta_valor: metaValor,
-      porcentaje_cumplimiento: porcentaje
+      porcentaje_cumplimiento: porcentaje,
+      porcentaje_episodio: porcentajeEpisodio
     });
 
   } catch (error) {
