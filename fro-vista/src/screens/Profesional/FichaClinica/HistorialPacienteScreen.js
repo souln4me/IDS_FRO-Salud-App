@@ -1,6 +1,6 @@
 // Ruta: fro-vista/src/screens/Profesional/FichaClinica/HistorialPacienteScreen.js
 
-import React, { useEffect, useState, useContext } from 'react';
+import React, { useEffect, useState, useContext, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,11 @@ import {
   RefreshControl,
 } from 'react-native';
 
+import {
+  getReportePreclinico,
+  getSintomasDePaciente,
+  getAdherenciaDePaciente,
+} from '../../../api/client';
 import apiClient, {
   finalizarAtencion,
   getHistorialPaciente,
@@ -26,6 +31,7 @@ import { formatearFechaHora as formatearFecha } from '../../../utils/fechas';
 import { etiquetaModalidad, iconoModalidad } from '../../../utils/modalidad';
 import { datosEstado, etiquetaEstado, esEstadoTerminal } from '../../../utils/estados';
 import { colores, espacio, piezas, radio, sombra, tipografia } from '../../../theme';
+import SeccionHistorial from '../../../components/SeccionHistorial';
 import DialogoConfirmacion from '../../../components/DialogoConfirmacion';
 
 /**
@@ -48,13 +54,26 @@ function textoDireccion(paciente) {
 }
 
 export default function HistorialPacienteScreen({ route, navigation }) {
-  const { pacienteId, nombrePaciente } = route.params;
+  const { pacienteId, nombrePaciente, resaltarCitaId, resaltarEn } = route.params;
   const { userData } = useContext(AuthContext);
+
+  // La sesión clínica manda aquí con "Finalizar sesión": hay que dejar la cita
+  // en curso a la vista y señalada, en vez de hacer buscarla entre todas.
+  const refScroll = useRef(null);
+  const posicionCitas = useRef({});
 
   const [historial, setHistorial] = useState([]);
   const [episodios, setEpisodios] = useState([]);
   const [evoluciones, setEvoluciones] = useState([]);
   const [paciente, setPaciente] = useState(null);
+  // CU25: síntesis de la entrevista previa; CU50: reportes de evolución.
+  const [preclinico, setPreclinico] = useState(null);
+  const [errorPreclinico, setErrorPreclinico] = useState(false);
+  const [seguimiento, setSeguimiento] = useState([]);
+  // CU44: índice de adherencia del paciente, calculado por el servidor.
+  const [adherencia, setAdherencia] = useState(null);
+  // CU55: al cerrar la atención se le pasa el teléfono al paciente para que
+  // califique en el momento; si prefiere hacerlo después, lo tiene en Mis Citas.
   const [mensajeMultimedia, setMensajeMultimedia] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -80,6 +99,7 @@ export default function HistorialPacienteScreen({ route, navigation }) {
   // olvidó marcar en su momento. Antes vivía en la pantalla de marcas
   // temporales, que ahora solo muestra la jornada.
   const [marcaManual, setMarcaManual] = useState(null);
+  const [verAntiguas, setVerAntiguas] = useState(false);
 
   const cargarHistorial = async (isRefresh = false) => {
     try {
@@ -219,7 +239,13 @@ export default function HistorialPacienteScreen({ route, navigation }) {
           : inv.sin_paquete
             ? '\n\nEl paciente no tiene un paquete de sesiones activo: no se descontó ninguna sesión.'
             : `\n\nSesiones restantes del paquete: ${inv.sesiones_restantes}${inv.paquete_agotado ? ' (paquete agotado)' : ''}`;
-        setAviso({ tono: 'ok', titulo: 'Atención finalizada', mensaje: `Duración total: ${data.duracion_minutos} minutos.${detalleInventario}` });
+        setAviso({
+          tono: 'ok',
+          titulo: 'Atención finalizada',
+          // CU55: la calificación la hace el paciente desde su teléfono; se
+          // le envía un aviso al cerrar la sesión.
+          mensaje: `Duración total: ${data.duracion_minutos} minutos.${detalleInventario}\n\nLe enviamos al paciente un aviso para que califique la atención.`,
+        });
       }
       cargarHistorial(false);
     } catch (err) {
@@ -280,15 +306,21 @@ export default function HistorialPacienteScreen({ route, navigation }) {
       if (err.response) {
         const { status, data } = err.response;
 
+        // CU73: la hora todavía no está pagada. Se explica y se refresca la
+        // lista para que el botón pase a "Esperando pago".
+        if (data?.error === 'CITA_SIN_PAGO') {
+          setAviso({ tono: 'info', titulo: 'Esperando pago', mensaje: data.mensaje });
+          cargarHistorial(true);
+        }
         // EXCEPCIÓN 2: Muestra el error exacto que envía el backend para saber qué falló
-        if (status === 422 || data.code === 'TRANSICION_INVALIDA') {
+        else if (status === 422 || data.code === 'TRANSICION_INVALIDA') {
           setAviso({ tono: 'error', titulo: "Error de validación de flujo lógico", mensaje: `${data.error || 'La transición no está permitida por las reglas de negocio.'}\n\nPor favor, sigue el orden del flujo clínico.` });
         } 
         // EXCEPCIÓN 4: Fallo de persistencia en BD
         else if (status === 500 || data.code === 'PERSIST_FAIL') {
           setAviso({ tono: 'error', titulo: "Alerta de Error Crítica", mensaje: "El motor de base de datos no logró guardar el nuevo estado debido a un fallo de persistencia. Intente nuevamente o contacte a soporte." });
         } else {
-          setAviso({ tono: 'error', titulo: "Error", mensaje: data.error || "No se pudo cambiar el estado." });
+          setAviso({ tono: 'error', titulo: "No se pudo cambiar el estado", mensaje: data.mensaje || data.error || "Intenta nuevamente." });
         }
       } else {
         // EXCEPCIÓN 3: Latencia o pérdida de red
@@ -398,132 +430,211 @@ export default function HistorialPacienteScreen({ route, navigation }) {
     }
   };
 
-  return (
-    <ScrollView 
-      style={styles.container}
-      refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={() => cargarHistorial(true)} colors={[colores.primario]} />
+  // Al llegar desde la sesión, la cita acaba de cambiar de estado: se recarga
+  // para que el botón de finalizar aparezca con el estado real.
+  // CU25 y CU50 viajan aparte del historial: si fallan, la ficha se muestra igual.
+  const cargarPreclinico = useCallback(async () => {
+    setErrorPreclinico(false);
+    try {
+      const datos = await getReportePreclinico(pacienteId);
+      setPreclinico(datos);
+    } catch {
+      // Excepción 2 del CU25: la vista ofrece recargar.
+      setErrorPreclinico(true);
+    }
+    try {
+      const { reportes } = await getSintomasDePaciente(pacienteId);
+      setSeguimiento(reportes || []);
+    } catch {
+      setSeguimiento([]);
+    }
+    try {
+      const datos = await getAdherenciaDePaciente(pacienteId);
+      setAdherencia(datos?.adherencia || null);
+    } catch {
+      setAdherencia(null);
+    }
+  }, [pacienteId]);
+
+  useEffect(() => {
+    cargarPreclinico();
+  }, [cargarPreclinico]);
+
+  useEffect(() => {
+    if (!resaltarCitaId) return;
+    cargarHistorial(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resaltarCitaId, resaltarEn]);
+
+  useEffect(() => {
+    if (!resaltarCitaId || historial.length === 0) return;
+    // Un turno de reloj para que las tarjetas ya hayan medido su posición.
+    const t = setTimeout(() => {
+      const y = posicionCitas.current[resaltarCitaId];
+      if (y !== undefined) {
+        refScroll.current?.scrollTo({ y: Math.max(y - 16, 0), animated: true });
       }
-    >
-      <Text style={styles.titulo}>Ficha Clínica Electrónica</Text>
-      <Text style={styles.subtitulo}>Historial consolidado del paciente</Text>
+    }, 350);
+    return () => clearTimeout(t);
+  }, [resaltarCitaId, resaltarEn, historial.length]);
 
-      <View style={styles.infoPaciente}>
-        <Text style={styles.infoTitulo}>Paciente</Text>
-        <Text>Nombre: {paciente?.nombre_completo || nombrePaciente}</Text>
-        <Text>ID paciente: {pacienteId}</Text>
-        <Text>RUT: {paciente?.rut || 'No informado'}</Text>
-        <Text>Sexo clínico: {paciente?.sexo_clinico || 'No informado'}</Text>
-        {/* CU09: la dirección es clave para las atenciones a domicilio, pero
-            el paciente puede haberla ocultado desde su configuración. */}
-        <Text>Dirección: {textoDireccion(paciente)}</Text>
-      </View>
+  // El historial se parte en dos: lo que todavía tiene acción (por confirmar,
+  // iniciar o finalizar) y lo ya cerrado, que se consulta pero no estorba.
+  const citasActivas = historial.filter((c) => !esEstadoTerminal(c.estado));
+  const citasAntiguas = historial.filter((c) => esEstadoTerminal(c.estado));
 
-      <TouchableOpacity
-        style={styles.botonAnamnesis}
-        onPress={() =>
-          navigation.navigate('Anamnesis', {
-            pacienteId,
-            nombrePaciente,
-          })
-        }
-      >
-        <Text style={styles.botonAnamnesisTexto}>📋 Registrar Anamnesis</Text>
-      </TouchableOpacity>
+  // Una sola tarjeta de cita, reutilizada por las citas activas y por el
+  // desplegable de anteriores.
+  // Episodios y evoluciones: el más reciente a la vista y los anteriores en
+  // el desplegable de historial. El identificador crece con cada registro,
+  // así que ordena por antigüedad sin depender del formato de las fechas.
+  const episodiosOrdenados = [...episodios].sort(
+    (x, y) => Number(y.episodio_clinico_id) - Number(x.episodio_clinico_id)
+  );
+  const evolucionesOrdenadas = [...evoluciones].sort(
+    (x, y) => Number(y.evolucion_clinica_id) - Number(x.evolucion_clinica_id)
+  );
 
-      {loading && <ActivityIndicator size="large" style={styles.loading} color={colores.primario} />}
+  const renderEpisodio = (item) => (
+    <View key={item.episodio_clinico_id} style={styles.cardEpisodio}>
+      <Text style={styles.fecha}>
+        Episodio #{item.episodio_clinico_id}
+      </Text>
+      <Text>Motivo: {item.motivo_consulta}</Text>
+      <Text>Estado: {item.estado ? etiquetaEstado(item.estado) : 'No informado'}</Text>
+      <Text>Inicio: {formatearFecha(item.fecha_inicio)}</Text>
+      <Text>
+        Término:{' '}
+        {item.fecha_terminado
+          ? formatearFecha(item.fecha_terminado)
+          : 'En curso · el episodio sigue abierto'}
+      </Text>
 
-      {error !== '' && (
-        <View style={styles.errorContainer}>
-          <Text style={styles.error}>{error}</Text>
-          <TouchableOpacity style={styles.boton} onPress={() => cargarHistorial(false)}>
-            <Text style={styles.botonTexto}>Reintentar</Text>
+      {/* Las metas del episodio, que son las que dan el porcentaje de
+          avance de cada evolución. */}
+      {(item.metas || []).length === 0 ? (
+        <Text style={styles.metaEpisodioVacia}>
+          Sin metas definidas en este episodio
+        </Text>
+      ) : (
+        item.metas.map((meta) => {
+          const pct = Math.min(
+            100,
+            Math.round(
+              (Number(meta.valor_actual || 0) / Number(meta.meta_valor || 1)) * 100
+            )
+          );
+          return (
+            <Text key={meta.objetivo_terapeutico_id} style={styles.metaEpisodio}>
+              🎯 {meta.descripcion}: {Number(meta.valor_actual)} de{' '}
+              {Number(meta.meta_valor)} {meta.unidad} · {pct}%
+            </Text>
+          );
+        })
+      )}
+    </View>
+  );
+
+  const renderEvolucion = (item) => (
+    <View key={item.evolucion_clinica_id} style={styles.cardEvolucion}>
+      <Text style={styles.fecha}>
+        Evolución #{item.evolucion_clinica_id}
+      </Text>
+      <Text>Episodio: #{item.episodio_clinico_id}</Text>
+      <Text>Motivo episodio: {item.motivo_consulta}</Text>
+      {/* El porcentaje sale de las metas del episodio. Si el episodio
+          no tiene metas, no hay nada que medir: decirlo es más claro
+          que mostrar "No informado%". */}
+      <Text>
+        Avance de las metas:{' '}
+        {item.porcentaje_objetivo === null || item.porcentaje_objetivo === undefined
+          ? 'sin metas medidas en este episodio'
+          : `${item.porcentaje_objetivo}%`}
+      </Text>
+      <Text>
+        Respuesta fisiológica:{' '}
+        {item.respuesta_fisiologica || 'No informado'}
+      </Text>
+      <Text>
+        Técnicas aplicadas:{' '}
+        {item.tecnicas_aplicadas || 'No informado'}
+      </Text>
+      <Text>Inalterable: {item.inalterable === 1 ? 'Sí' : 'No'}</Text>
+      <Text>
+        Firma digital:{' '}
+        {item.firma_digital ? 'Registrada' : 'No registrada'}
+      </Text>
+      <Text>Hora firma: {formatearFecha(item.hora_firma_digital)}</Text>
+
+      {/* CU31: correcciones versionadas solo sobre registros cerrados.
+          En un registro abierto se explica dónde cerrarlo: el botón
+          "vivía" en otra pantalla y nadie lograba encontrarlo. */}
+      {item.inalterable !== 1 && (
+        <Text style={styles.pistaCorreccion}>
+          ✏️ Registro abierto: se edita directo. Las correcciones versionadas se
+          habilitan al cerrarlo y firmarlo en Trazabilidad → Inalterabilidad.
+        </Text>
+      )}
+      {item.inalterable === 1 && (
+        <View style={styles.filaVersiones}>
+          <TouchableOpacity
+            onPress={() => alternarVersiones(item.evolucion_clinica_id)}
+          >
+            <Text style={styles.enlaceVersiones}>
+              {versionesPorEvolucion[item.evolucion_clinica_id]
+                ? '▲ Ocultar versiones'
+                : `📑 Versiones (${item.total_versiones || 0})`}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => setCorreccionEvolucion(item)}>
+            <Text style={styles.enlaceCorreccion}>➕ Agregar corrección</Text>
           </TouchableOpacity>
         </View>
       )}
 
-      {!loading && error === '' && (
-        <>
-          {mensajeMultimedia !== '' && (
-            <View style={styles.warningBox}>
-              <Text style={styles.warningTitle}>Multimedia no disponible</Text>
-              <Text style={styles.warningText}>{mensajeMultimedia}</Text>
-            </View>
-          )}
-
-          {/* CU33/CU34/CU35: repositorio multimedia del paciente */}
-          {multimediaDisponible && (
-            <TouchableOpacity
-              style={styles.botonDocumentos}
-              onPress={() =>
-                navigation.navigate('Documentos', {
-                  pacienteId,
-                  nombrePaciente: nombrePaciente || paciente?.nombre_completo,
-                })
-              }
-            >
-              <Text style={styles.botonDocumentosTexto}>
-                📁 Documentos del paciente{totalDocumentos > 0 ? ` (${totalDocumentos})` : ''}
-              </Text>
-            </TouchableOpacity>
-          )}
-
-          {/* ── CU71: cuadratura de sesiones bonificables ── */}
-          <View style={styles.tarjetaCuadratura}>
-            <Text style={styles.tituloCuadratura}>💳 Cuadratura de coberturas</Text>
-            {cuadratura === null ? (
-              <TouchableOpacity
-                style={styles.botonCuadratura}
-                onPress={sincronizarCoberturas}
-                disabled={sincronizando}
-              >
-                {sincronizando ? (
-                  <ActivityIndicator color={colores.superficie} size="small" />
-                ) : (
-                  <Text style={styles.botonCuadraturaTexto}>Sincronizar con coberturas</Text>
-                )}
-              </TouchableOpacity>
-            ) : (
-              <>
-                <Text style={styles.lineaCuadratura}>
-                  Sesiones realizadas: {cuadratura.sesiones_realizadas} · Autorizadas por planes:{' '}
-                  {cuadratura.sesiones_autorizadas} (usadas {cuadratura.sesiones_usadas})
-                </Text>
-                {cuadratura.discrepancia_saldo && (
-                  <Text style={styles.alertaCuadratura}>
-                    ⚠️ Discrepancia de saldo: las sesiones ejecutadas superan las
-                    autorizadas. Regulariza la cobertura con el paciente.
-                  </Text>
-                )}
-                {cuadratura.realizadas_sin_bono.length > 0 && (
-                  <Text style={styles.alertaCuadratura}>
-                    ⚠️ {cuadratura.realizadas_sin_bono.length} atención(es) realizadas sin
-                    bono registrado (citas #{cuadratura.realizadas_sin_bono.join(', #')}).
-                  </Text>
-                )}
-                {!cuadratura.discrepancia_saldo && cuadratura.realizadas_sin_bono.length === 0 && (
-                  <Text style={styles.okCuadratura}>
-                    ✅ El registro contable está alineado con las autorizaciones.
-                  </Text>
-                )}
-                <TouchableOpacity onPress={() => setCuadratura(null)}>
-                  <Text style={styles.descartarCuadratura}>Descartar informe</Text>
-                </TouchableOpacity>
-              </>
-            )}
-          </View>
-
-          <Text style={styles.seccionTitulo}>Atenciones / Citas</Text>
-
-          {historial.length === 0 ? (
-            <Text style={styles.sinResultados}>Sin atenciones registradas</Text>
+      {versionesPorEvolucion[item.evolucion_clinica_id] && (
+        <View style={styles.cajaVersiones}>
+          {versionesPorEvolucion[item.evolucion_clinica_id].length === 0 ? (
+            <Text style={styles.textoVersion}>
+              Sin correcciones. El registro original está íntegro.
+            </Text>
           ) : (
-            historial.map((item) => {
+            versionesPorEvolucion[item.evolucion_clinica_id].map((v) => (
+              <View key={v.version_id} style={styles.itemVersion}>
+                <Text style={styles.tituloVersion}>
+                  Versión {v.numero_version} ·{' '}
+                  {formatearFecha(v.fecha_creacion)} · {v.autor?.trim() || 'Autor no informado'}
+                </Text>
+                <Text style={styles.textoVersion}>{v.texto_correccion}</Text>
+              </View>
+            ))
+          )}
+        </View>
+      )}
+    </View>
+  );
+
+  const renderCita = (item) => {
               // Normalizamos el estado actual a mayúsculas para las comparaciones visuales
               const estadoCita = (item.estado || '').toUpperCase();
 
+              // La marca se apaga sola en cuanto la atención queda finalizada.
+              const resaltada =
+                String(item.cita_id) === String(resaltarCitaId) && !esEstadoTerminal(estadoCita);
+
               return (
-                <View key={item.cita_id} style={styles.card}>
+                <View
+                  key={item.cita_id}
+                  style={[styles.card, resaltada && styles.cardResaltada]}
+                  onLayout={(e) => {
+                    posicionCitas.current[item.cita_id] = e.nativeEvent.layout.y;
+                  }}
+                >
+                  {resaltada && (
+                    <Text style={styles.avisoResaltada}>
+                      👇 Esta es la sesión que estás atendiendo
+                    </Text>
+                  )}
                   <Text style={styles.fecha}>
                     {formatearFecha(item.fecha_hora_inicio)}
                   </Text>
@@ -551,12 +662,19 @@ export default function HistorialPacienteScreen({ route, navigation }) {
                     {/* ACCIONES SI LA CITA ESTÁ AGENDADA */}
                     {estadoCita === 'AGENDADA' && (
                       <>
-                        <TouchableOpacity 
-                          style={[styles.botonAccion, { backgroundColor: colores.advertencia }]}
-                          onPress={() => modificarEstadoCita(item.cita_id, item.estado, 'CONFIRMAR')}
-                        >
-                          <Text style={styles.textoBotonAccion}>👍 Confirmar</Text>
-                        </TouchableOpacity>
+                        {/* CU73: solo se confirma una hora ya pagada. */}
+                        {item.pago_tipo ? (
+                          <TouchableOpacity 
+                            style={[styles.botonAccion, { backgroundColor: colores.advertencia }]}
+                            onPress={() => modificarEstadoCita(item.cita_id, item.estado, 'CONFIRMAR')}
+                          >
+                            <Text style={styles.textoBotonAccion}>👍 Confirmar</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={[styles.botonAccion, styles.esperaPago]}>
+                            <Text style={styles.textoEsperaPago}>⏳ Esperando pago</Text>
+                          </View>
+                        )}
 
                         <TouchableOpacity 
                           style={[styles.botonAccion, { backgroundColor: colores.error }]}
@@ -596,7 +714,7 @@ export default function HistorialPacienteScreen({ route, navigation }) {
                     {/* ACCIONES SI LA CITA ESTÁ EN CURSO */}
                     {estadoCita === 'EN_CURSO' && (
                       <TouchableOpacity 
-                        style={[styles.botonAccion, { backgroundColor: colores.exito, marginHorizontal: 0 }]}
+                        style={[styles.botonAccion, { backgroundColor: colores.primario, marginHorizontal: 0 }]}
                         onPress={() => modificarEstadoCita(item.cita_id, item.estado, 'FINALIZAR')}
                       >
                         <Text style={styles.textoBotonAccion}>✅ Finalizar Atención</Text>
@@ -609,7 +727,10 @@ export default function HistorialPacienteScreen({ route, navigation }) {
                     )}
                   </View>
 
-                  {/* CU38: marca horaria a mano cuando se olvidó marcar */}
+                  {/* CU38 Excepción 2: esta marca es SOLO para cuando la hora
+                      automática del servidor no es utilizable. El inicio antes
+                      del bloque horario (Excepción 1) se hace con "Iniciar",
+                      que pide confirmar y queda auditado. */}
                   {['CONFIRMADA', 'EN_CURSO'].includes(estadoCita) && (
                     <TouchableOpacity
                       onPress={() =>
@@ -622,7 +743,8 @@ export default function HistorialPacienteScreen({ route, navigation }) {
                       }
                     >
                       <Text style={styles.enlaceMarcaManual}>
-                        🕗 Registrar {estadoCita === 'CONFIRMADA' ? 'inicio' : 'término'} manual justificado
+                        🕗 ¿La hora automática falló? Registrar{' '}
+                        {estadoCita === 'CONFIRMADA' ? 'inicio' : 'término'} manual justificado
                       </Text>
                     </TouchableOpacity>
                   )}
@@ -715,107 +837,288 @@ export default function HistorialPacienteScreen({ route, navigation }) {
                   )}
                 </View>
               );
-            })
+  };
+
+  return (
+    <ScrollView 
+      ref={refScroll}
+      style={styles.container}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={() => cargarHistorial(true)} colors={[colores.primario]} />
+      }
+    >
+      <Text style={styles.titulo}>Ficha Clínica Electrónica</Text>
+      <Text style={styles.subtitulo}>Historial consolidado del paciente</Text>
+
+      <View style={styles.infoPaciente}>
+        <Text style={styles.infoTitulo}>Paciente</Text>
+        <Text>Nombre: {paciente?.nombre_completo || nombrePaciente}</Text>
+        <Text>ID paciente: {pacienteId}</Text>
+        <Text>RUT: {paciente?.rut || 'No informado'}</Text>
+        <Text>Sexo clínico: {paciente?.sexo_clinico || 'No informado'}</Text>
+        {/* CU09: la dirección es clave para las atenciones a domicilio, pero
+            el paciente puede haberla ocultado desde su configuración. */}
+        <Text>Dirección: {textoDireccion(paciente)}</Text>
+      </View>
+
+      <TouchableOpacity
+        style={styles.botonAnamnesis}
+        onPress={() =>
+          navigation.navigate('Anamnesis', {
+            pacienteId,
+            nombrePaciente,
+          })
+        }
+      >
+        <Text style={styles.botonAnamnesisTexto}>📋 Registrar Anamnesis</Text>
+      </TouchableOpacity>
+
+      {loading && <ActivityIndicator size="large" style={styles.loading} color={colores.primario} />}
+
+      {error !== '' && (
+        <View style={styles.errorContainer}>
+          <Text style={styles.error}>{error}</Text>
+          <TouchableOpacity style={styles.boton} onPress={() => cargarHistorial(false)}>
+            <Text style={styles.botonTexto}>Reintentar</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {!loading && error === '' && (
+        <>
+          {mensajeMultimedia !== '' && (
+            <View style={styles.warningBox}>
+              <Text style={styles.warningTitle}>Multimedia no disponible</Text>
+              <Text style={styles.warningText}>{mensajeMultimedia}</Text>
+            </View>
+          )}
+
+          {/* CU33/CU34/CU35: repositorio multimedia del paciente */}
+          {multimediaDisponible && (
+            <TouchableOpacity
+              style={styles.botonDocumentos}
+              onPress={() =>
+                navigation.navigate('Documentos', {
+                  pacienteId,
+                  nombrePaciente: nombrePaciente || paciente?.nombre_completo,
+                })
+              }
+            >
+              <Text style={styles.botonDocumentosTexto}>
+                📁 Documentos del paciente{totalDocumentos > 0 ? ` (${totalDocumentos})` : ''}
+              </Text>
+            </TouchableOpacity>
+          )}
+
+          {/* ── CU25: reporte de hallazgos pre-clínicos ──
+              Lo primero que el profesional debe leer antes de atender. */}
+          <View style={styles.tarjetaPreclinico}>
+            <Text style={styles.tituloPreclinico}>🩺 Entrevista previa del paciente</Text>
+
+            {errorPreclinico ? (
+              <>
+                <Text style={styles.textoPreclinico}>
+                  No pudimos cargar el reporte. Puede ser una demora del servidor.
+                </Text>
+                <TouchableOpacity onPress={cargarPreclinico}>
+                  <Text style={styles.enlacePreclinico}>Reintentar</Text>
+                </TouchableOpacity>
+              </>
+            ) : !preclinico ? (
+              <ActivityIndicator color={colores.primario} />
+            ) : !preclinico.hay_triaje ? (
+              <Text style={styles.textoPreclinico}>{preclinico.mensaje}</Text>
+            ) : !preclinico.reporte?.suficiente ? (
+              // Excepción 1 del CU25: sin datos suficientes no se inventa nada.
+              <>
+                <Text style={styles.etiquetaInsuficiente}>Información insuficiente</Text>
+                <Text style={styles.textoPreclinico}>{preclinico.reporte.resumen}</Text>
+              </>
+            ) : (
+              <>
+                {preclinico.reporte.banderas?.length > 0 ? (
+                  <View style={styles.cajaBanderas}>
+                    {preclinico.reporte.banderas.map((b, i) => (
+                      <Text
+                        key={`${b.codigo}-${i}`}
+                        style={[
+                          styles.bandera,
+                          b.severidad === 'CRITICA' && styles.banderaCritica,
+                        ]}
+                      >
+                        {b.severidad === 'CRITICA' ? '🚩' : '⚠️'} {b.texto}
+                      </Text>
+                    ))}
+                  </View>
+                ) : (
+                  <Text style={styles.sinBanderas}>✅ Sin banderas rojas en la entrevista.</Text>
+                )}
+
+                <Text style={styles.textoPreclinico}>{preclinico.reporte.resumen}</Text>
+
+                {preclinico.reporte.especialidad_sugerida ? (
+                  <Text style={styles.sugerenciaPreclinico}>
+                    Orientación sugerida al paciente: {preclinico.reporte.especialidad_sugerida}.
+                  </Text>
+                ) : null}
+
+                <Text style={styles.momentoPreclinico}>
+                  Entrevista respondida el {formatearFecha(preclinico.reporte.momento_triaje)}
+                </Text>
+              </>
+            )}
+          </View>
+
+          {/* ── CU44: compromiso del paciente con su pauta de ejercicios ── */}
+          {adherencia && adherencia.porcentaje !== null && adherencia.porcentaje !== undefined && (
+            <View style={styles.tarjetaAdherencia}>
+              <Text style={styles.tituloSeguimiento}>
+                🏋️ Adherencia a la pauta: {adherencia.porcentaje}%
+              </Text>
+              <Text style={styles.lineaSeguimiento}>
+                Cumplió {adherencia.cumplidas} de {adherencia.programadas} tareas programadas.
+              </Text>
+              <View style={styles.barraAdherencia}>
+                <View
+                  style={[
+                    styles.barraAdherenciaLlena,
+                    {
+                      width: `${adherencia.porcentaje}%`,
+                      backgroundColor:
+                        adherencia.porcentaje >= 80
+                          ? colores.exito
+                          : adherencia.porcentaje >= 50
+                            ? colores.advertencia
+                            : colores.error,
+                    },
+                  ]}
+                />
+              </View>
+            </View>
+          )}
+
+          {/* ── CU50: cómo ha reportado el paciente su evolución ── */}
+          {seguimiento.length > 0 && (
+            <View style={styles.tarjetaSeguimiento}>
+              <Text style={styles.tituloSeguimiento}>📈 Reportes del paciente entre sesiones</Text>
+              {seguimiento.slice(0, 6).map((r) => (
+                <Text key={r.reporte_sintoma_id} style={styles.lineaSeguimiento}>
+                  {formatearFecha(r.momento_registro)} · dolor {r.nivel_dolor}/10 ·
+                  limitación {r.limitacion_funcional}/10
+                  {r.comentario ? ` · "${r.comentario}"` : ''}
+                </Text>
+              ))}
+            </View>
+          )}
+
+          {/* ── CU71: cuadratura de sesiones bonificables ── */}
+          <View style={styles.tarjetaCuadratura}>
+            <Text style={styles.tituloCuadratura}>💳 Cuadratura de coberturas</Text>
+            {cuadratura === null ? (
+              <TouchableOpacity
+                style={styles.botonCuadratura}
+                onPress={sincronizarCoberturas}
+                disabled={sincronizando}
+              >
+                {sincronizando ? (
+                  <ActivityIndicator color={colores.superficie} size="small" />
+                ) : (
+                  <Text style={styles.botonCuadraturaTexto}>Sincronizar con coberturas</Text>
+                )}
+              </TouchableOpacity>
+            ) : (
+              <>
+                <Text style={styles.lineaCuadratura}>
+                  Sesiones realizadas: {cuadratura.sesiones_realizadas} · Autorizadas por planes:{' '}
+                  {cuadratura.sesiones_autorizadas} (usadas {cuadratura.sesiones_usadas})
+                </Text>
+                {cuadratura.discrepancia_saldo && (
+                  <Text style={styles.alertaCuadratura}>
+                    ⚠️ Discrepancia de saldo: las sesiones ejecutadas superan las
+                    autorizadas. Regulariza la cobertura con el paciente.
+                  </Text>
+                )}
+                {cuadratura.realizadas_sin_bono.length > 0 && (
+                  <Text style={styles.alertaCuadratura}>
+                    ⚠️ {cuadratura.realizadas_sin_bono.length} atención(es) realizadas sin
+                    bono registrado (citas #{cuadratura.realizadas_sin_bono.join(', #')}).
+                  </Text>
+                )}
+                {!cuadratura.discrepancia_saldo && cuadratura.realizadas_sin_bono.length === 0 && (
+                  <Text style={styles.okCuadratura}>
+                    ✅ El registro contable está alineado con las autorizaciones.
+                  </Text>
+                )}
+                <TouchableOpacity onPress={() => setCuadratura(null)}>
+                  <Text style={styles.descartarCuadratura}>Descartar informe</Text>
+                </TouchableOpacity>
+              </>
+            )}
+          </View>
+
+          <Text style={styles.seccionTitulo}>Atenciones / Citas</Text>
+
+          {citasActivas.length === 0 ? (
+            <Text style={styles.sinResultados}>
+              {historial.length === 0
+                ? 'Sin atenciones registradas'
+                : 'Sin citas por atender. Las anteriores están más abajo.'}
+            </Text>
+          ) : (
+            citasActivas.map(renderCita)
+          )}
+
+          {/* Las citas ya cerradas (realizadas, inasistencias y canceladas) no
+              deben llenar la vista: quedan plegadas, disponibles al abrirlas. */}
+          {citasAntiguas.length > 0 && (
+            <>
+              <TouchableOpacity
+                style={styles.cabeceraAntiguas}
+                onPress={() => setVerAntiguas((v) => !v)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.enlaceAntiguas}>
+                  {verAntiguas ? '▾' : '▸'} Citas anteriores ({citasAntiguas.length})
+                </Text>
+              </TouchableOpacity>
+              {verAntiguas && citasAntiguas.map(renderCita)}
+            </>
           )}
 
           <Text style={styles.seccionTitulo}>Episodios Clínicos</Text>
 
-          {episodios.length === 0 ? (
+          {episodiosOrdenados.length === 0 ? (
             <Text style={styles.sinResultados}>Sin episodios registrados</Text>
           ) : (
-            episodios.map((item) => (
-              <View key={item.episodio_clinico_id} style={styles.cardEpisodio}>
-                <Text style={styles.fecha}>
-                  Episodio #{item.episodio_clinico_id}
-                </Text>
-                <Text>Motivo: {item.motivo_consulta}</Text>
-                <Text>Estado: {item.estado ? etiquetaEstado(item.estado) : 'No informado'}</Text>
-                <Text>Inicio: {formatearFecha(item.fecha_inicio)}</Text>
-                <Text>Término: {formatearFecha(item.fecha_terminado)}</Text>
-              </View>
-            ))
+            <>
+              {renderEpisodio(episodiosOrdenados[0])}
+              <SeccionHistorial
+                titulo="Historial de episodios"
+                cantidad={episodiosOrdenados.length - 1}
+                ayuda="Episodios anteriores del paciente"
+              >
+                {episodiosOrdenados.slice(1).map(renderEpisodio)}
+              </SeccionHistorial>
+            </>
           )}
 
           <Text style={styles.seccionTitulo}>Evoluciones Clínicas</Text>
 
-          {evoluciones.length === 0 ? (
+          {evolucionesOrdenadas.length === 0 ? (
             <Text style={styles.sinResultados}>
               Sin evoluciones clínicas registradas
             </Text>
           ) : (
-            evoluciones.map((item) => (
-              <View key={item.evolucion_clinica_id} style={styles.cardEvolucion}>
-                <Text style={styles.fecha}>
-                  Evolución #{item.evolucion_clinica_id}
-                </Text>
-                <Text>Episodio: #{item.episodio_clinico_id}</Text>
-                <Text>Motivo episodio: {item.motivo_consulta}</Text>
-                <Text>
-                  Porcentaje objetivo:{' '}
-                  {item.porcentaje_objetivo ?? 'No informado'}%
-                </Text>
-                <Text>
-                  Respuesta fisiológica:{' '}
-                  {item.respuesta_fisiologica || 'No informado'}
-                </Text>
-                <Text>
-                  Técnicas aplicadas:{' '}
-                  {item.tecnicas_aplicadas || 'No informado'}
-                </Text>
-                <Text>Inalterable: {item.inalterable === 1 ? 'Sí' : 'No'}</Text>
-                <Text>
-                  Firma digital:{' '}
-                  {item.firma_digital ? 'Registrada' : 'No registrada'}
-                </Text>
-                <Text>Hora firma: {formatearFecha(item.hora_firma_digital)}</Text>
-
-                {/* CU31: correcciones versionadas solo sobre registros cerrados.
-                    En un registro abierto se explica dónde cerrarlo: el botón
-                    "vivía" en otra pantalla y nadie lograba encontrarlo. */}
-                {item.inalterable !== 1 && (
-                  <Text style={styles.pistaCorreccion}>
-                    ✏️ Registro abierto: se edita directo. Las correcciones versionadas se
-                    habilitan al cerrarlo y firmarlo en Trazabilidad → Inalterabilidad.
-                  </Text>
-                )}
-                {item.inalterable === 1 && (
-                  <View style={styles.filaVersiones}>
-                    <TouchableOpacity
-                      onPress={() => alternarVersiones(item.evolucion_clinica_id)}
-                    >
-                      <Text style={styles.enlaceVersiones}>
-                        {versionesPorEvolucion[item.evolucion_clinica_id]
-                          ? '▲ Ocultar versiones'
-                          : `📑 Versiones (${item.total_versiones || 0})`}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => setCorreccionEvolucion(item)}>
-                      <Text style={styles.enlaceCorreccion}>➕ Agregar corrección</Text>
-                    </TouchableOpacity>
-                  </View>
-                )}
-
-                {versionesPorEvolucion[item.evolucion_clinica_id] && (
-                  <View style={styles.cajaVersiones}>
-                    {versionesPorEvolucion[item.evolucion_clinica_id].length === 0 ? (
-                      <Text style={styles.textoVersion}>
-                        Sin correcciones. El registro original está íntegro.
-                      </Text>
-                    ) : (
-                      versionesPorEvolucion[item.evolucion_clinica_id].map((v) => (
-                        <View key={v.version_id} style={styles.itemVersion}>
-                          <Text style={styles.tituloVersion}>
-                            Versión {v.numero_version} ·{' '}
-                            {formatearFecha(v.fecha_creacion)} · {v.autor?.trim() || 'Autor no informado'}
-                          </Text>
-                          <Text style={styles.textoVersion}>{v.texto_correccion}</Text>
-                        </View>
-                      ))
-                    )}
-                  </View>
-                )}
-              </View>
-            ))
+            <>
+              {renderEvolucion(evolucionesOrdenadas[0])}
+              <SeccionHistorial
+                titulo="Historial de evoluciones"
+                cantidad={evolucionesOrdenadas.length - 1}
+                ayuda="Evoluciones anteriores, con sus versiones y correcciones"
+              >
+                {evolucionesOrdenadas.slice(1).map(renderEvolucion)}
+              </SeccionHistorial>
+            </>
           )}
         </>
       )}
@@ -832,7 +1135,7 @@ export default function HistorialPacienteScreen({ route, navigation }) {
             : ''
         }
         etiquetaConfirmar="Guardar versión"
-        colorConfirmar={colores.exito}
+        colorConfirmar={colores.primario}
         onConfirmar={(texto) => crearCorreccion(correccionEvolucion.evolucion_clinica_id, texto)}
         onCancelar={() => setCorreccionEvolucion(null)}
       />
@@ -843,7 +1146,7 @@ export default function HistorialPacienteScreen({ route, navigation }) {
         titulo="Cierre manual auditado"
         descripcion="Justifica el cierre sin la marca de término del paciente:"
         etiquetaConfirmar="Certificar sesión"
-        colorConfirmar={colores.exito}
+        colorConfirmar={colores.primario}
         onConfirmar={(motivo) => {
           const cita = cierreManualCita;
           setCierreManualCita(null);
@@ -912,13 +1215,18 @@ export default function HistorialPacienteScreen({ route, navigation }) {
         onCancelar={() => setConfirmacion(null)}
       />
 
+
       <DialogoAviso
         visible={aviso !== null}
         titulo={aviso?.titulo || ''}
         mensaje={aviso?.mensaje}
         lista={aviso?.lista}
         tono={aviso?.tono}
-        onCerrar={() => setAviso(null)}
+        onCerrar={() => {
+          const seguir = aviso?.alCerrar;
+          setAviso(null);
+          if (seguir) seguir();
+        }}
       />
 
       {/* CU22: la cancelación del profesional también exige justificación */}
@@ -1005,7 +1313,7 @@ const styles = StyleSheet.create({
   },
   enlaceVersiones: { color: colores.primario, fontWeight: '600', fontSize: 13 },
   pistaCorreccion: { color: colores.textoSuave, fontSize: 13, fontStyle: 'italic', marginTop: 8 },
-  enlaceCorreccion: { color: colores.exito, fontWeight: '600', fontSize: 13 },
+  enlaceCorreccion: { color: colores.primario, fontWeight: '600', fontSize: 13 },
   cajaVersiones: {
     marginTop: 8,
     borderLeftWidth: 3,
@@ -1075,6 +1383,8 @@ const styles = StyleSheet.create({
     ...tipografia.metaFuerte,
     color: colores.textoInverso,
   },
+  esperaPago: { backgroundColor: colores.superficieSuave, borderWidth: 1, borderColor: colores.borde },
+  textoEsperaPago: { ...tipografia.metaFuerte, color: colores.textoSuave, textAlign: 'center' },
   estadoTexto: {
     fontWeight: '600',
     color: colores.primario
@@ -1114,6 +1424,76 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginTop: 10,
   },
+  // CU25 — el reporte pre-clínico, arriba de todo.
+  tarjetaPreclinico: {
+    ...piezas.tarjeta,
+    marginBottom: espacio.base,
+    backgroundColor: colores.primarioSuave,
+    borderColor: colores.primarioBorde,
+  },
+  tituloPreclinico: { ...tipografia.cuerpoFuerte, color: colores.primario, marginBottom: espacio.sm },
+  textoPreclinico: { ...tipografia.meta, color: colores.texto, marginTop: espacio.xs },
+  enlacePreclinico: { ...tipografia.metaFuerte, color: colores.primario, marginTop: espacio.sm },
+  etiquetaInsuficiente: {
+    ...tipografia.micro,
+    color: colores.advertencia,
+    backgroundColor: colores.advertenciaSuave,
+    borderRadius: radio.sm,
+    paddingVertical: 4,
+    paddingHorizontal: espacio.sm,
+    alignSelf: 'flex-start',
+  },
+  cajaBanderas: { marginBottom: espacio.sm },
+  bandera: {
+    ...tipografia.meta,
+    color: colores.advertencia,
+    backgroundColor: colores.advertenciaSuave,
+    borderRadius: radio.sm,
+    paddingVertical: 6,
+    paddingHorizontal: espacio.sm,
+    marginBottom: 4,
+  },
+  // La crítica se lee distinta de la alta sin tener que leer el texto entero.
+  banderaCritica: { color: colores.error, backgroundColor: colores.errorSuave, fontWeight: '700' },
+  sinBanderas: { ...tipografia.meta, color: colores.exito },
+  sugerenciaPreclinico: { ...tipografia.meta, color: colores.secundarioFuerte, marginTop: espacio.sm },
+  momentoPreclinico: { ...tipografia.micro, color: colores.textoTenue, marginTop: espacio.sm },
+
+  // CU44 — el índice de adherencia, con la misma barra que ve el paciente.
+  tarjetaAdherencia: { ...piezas.tarjeta, marginBottom: espacio.base },
+  barraAdherencia: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colores.superficieSuave,
+    overflow: 'hidden',
+    marginTop: espacio.sm,
+  },
+  barraAdherenciaLlena: { height: '100%', borderRadius: 4 },
+
+  // CU50 — reportes de evolución enviados por el paciente.
+  tarjetaSeguimiento: { ...piezas.tarjeta, marginBottom: espacio.base },
+  tituloSeguimiento: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginBottom: espacio.sm },
+  lineaSeguimiento: { ...tipografia.meta, color: colores.textoSuave, marginTop: 2 },
+
+  metaEpisodio: { ...tipografia.meta, color: colores.primario, marginTop: espacio.xs },
+  metaEpisodioVacia: { ...tipografia.meta, color: colores.textoTenue, marginTop: espacio.xs },
+  cardResaltada: {
+    borderWidth: 2,
+    borderColor: colores.exito,
+    backgroundColor: colores.exitoSuave,
+  },
+  avisoResaltada: {
+    color: colores.exito,
+    fontWeight: 'bold',
+    marginBottom: 6,
+  },
+  cabeceraAntiguas: {
+    marginTop: espacio.sm,
+    paddingVertical: espacio.sm,
+    borderTopWidth: 1,
+    borderTopColor: colores.bordeSuave,
+  },
+  enlaceAntiguas: { ...tipografia.metaFuerte, color: colores.primario },
   enlaceMarcaManual: { ...tipografia.meta, color: colores.textoSuave, marginTop: espacio.sm },
   veloManual: { flex: 1, backgroundColor: colores.velo, justifyContent: 'center', padding: espacio.xl },
   cajaManual: { backgroundColor: colores.superficie, borderRadius: radio.xl, padding: espacio.xl, ...sombra.elevada },

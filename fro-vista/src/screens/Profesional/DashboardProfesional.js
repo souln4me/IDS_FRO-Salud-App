@@ -2,8 +2,8 @@
 //
 // Panel principal del profesional. La lista de pacientes asignados es el núcleo
 // de la vista: al entrar se ve de inmediato, y desde cada paciente se abre su
-// ficha clínica completa. Las herramientas transversales (trazabilidad del
-// documento y disponibilidad) quedan como accesos secundarios.
+// ficha clínica completa. El resto (jornada, mensajes, perfil, liquidaciones,
+// disponibilidad, soporte y cierre de sesión) vive en la barra inferior.
 
 import React, { useContext, useEffect, useState } from 'react';
 import {
@@ -18,18 +18,20 @@ import {
 } from 'react-native';
 
 import { AuthContext } from '../../context/AuthContext';
-import apiClient from '../../api/client';
+import apiClient, { getAlertasClinicas, revisarAlertaClinica } from '../../api/client';
 import { colores, espacio, radio, tipografia, piezas, interaccion } from '../../theme';
 import BarraAtencionEnCurso from '../../components/BarraAtencionEnCurso';
 
 export default function DashboardProfesional({ navigation }) {
-  const { userData, confirmarCierreSesion } = useContext(AuthContext);
+  const { userData } = useContext(AuthContext);
 
   const [pacientes, setPacientes] = useState([]);
   const [buscar, setBuscar] = useState('');
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  // CU50: banderas rojas de los pacientes a cargo, lo primero que debe verse.
+  const [alertas, setAlertas] = useState([]);
 
   const cargarPacientes = async (isRefresh = false) => {
     try {
@@ -66,9 +68,34 @@ export default function DashboardProfesional({ navigation }) {
     }
   };
 
+  const cargarAlertas = async () => {
+    try {
+      const { alertas: recibidas } = await getAlertasClinicas();
+      setAlertas(recibidas || []);
+    } catch {
+      setAlertas([]);
+    }
+  };
+
   useEffect(() => {
     cargarPacientes();
+    cargarAlertas();
   }, []);
+
+  // Al volver de una ficha puede haber alertas nuevas o ya revisadas.
+  useEffect(() => {
+    const quitar = navigation.addListener('focus', cargarAlertas);
+    return quitar;
+  }, [navigation]);
+
+  const revisar = async (alerta) => {
+    setAlertas((previas) => previas.filter((a) => a.alerta_clinica_id !== alerta.alerta_clinica_id));
+    try {
+      await revisarAlertaClinica(alerta.alerta_clinica_id);
+    } catch {
+      cargarAlertas();
+    }
+  };
 
   const abrirFicha = (paciente) => {
     navigation.navigate('FichaClinica', {
@@ -94,6 +121,42 @@ export default function DashboardProfesional({ navigation }) {
   const Encabezado = (
     <View>
       <Text style={styles.title}>Dr(a). {userData?.apellido_paterno}</Text>
+
+      {/* CU50 — Banderas rojas: deterioro reportado por los pacientes. Va
+          arriba de todo porque es lo que exige atención inmediata. */}
+      {alertas.length > 0 && (
+        <View style={styles.panelAlertas}>
+          <Text style={styles.alertasTitulo}>
+            🚩 Banderas rojas ({alertas.length})
+          </Text>
+          {alertas.map((alerta) => (
+            <View
+              key={alerta.alerta_clinica_id}
+              style={[styles.alerta, alerta.severidad === 'CRITICA' && styles.alertaCritica]}
+            >
+              <Text style={styles.alertaPaciente}>{alerta.paciente}</Text>
+              <Text style={styles.alertaMotivo}>{alerta.motivo}</Text>
+              <View style={styles.filaAlerta}>
+                <TouchableOpacity
+                  onPress={() =>
+                    navigation.navigate('FichaClinica', {
+                      pacienteId: alerta.paciente_id,
+                      nombrePaciente: alerta.paciente,
+                    })
+                  }
+                  activeOpacity={interaccion.opacidadActiva}
+                >
+                  <Text style={styles.alertaEnlace}>Abrir ficha →</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => revisar(alerta)} activeOpacity={interaccion.opacidadActiva}>
+                  <Text style={styles.alertaRevisar}>Marcar revisada</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))}
+        </View>
+      )}
+
       <Text style={styles.subtitle}>Pacientes asignados</Text>
 
       <View style={styles.filaBuscador}>
@@ -132,58 +195,6 @@ export default function DashboardProfesional({ navigation }) {
     </View>
   );
 
-  const PieDeLista = (
-    <View style={styles.pie}>
-      <Text style={styles.seccion}>Herramientas</Text>
-
-      <TouchableOpacity
-        style={styles.herramienta}
-        onPress={() => navigation.navigate('MiJornada')}
-      >
-        <Text style={styles.herramientaIcono}>📅</Text>
-        <View style={styles.herramientaTexto}>
-          <Text style={styles.herramientaTitulo}>Mi Jornada</Text>
-          <Text style={styles.herramientaSub}>Tus citas del día, con acceso directo a cada ficha.</Text>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.herramienta}
-        onPress={() => navigation.navigate('GestionDisponibilidad')}
-      >
-        <Text style={styles.herramientaIcono}>📅</Text>
-        <View style={styles.herramientaTexto}>
-          <Text style={styles.herramientaTitulo}>Gestionar Disponibilidad</Text>
-          <Text style={styles.herramientaSub}>Bloquear horarios por vacaciones o licencias.</Text>
-        </View>
-      </TouchableOpacity>
-
-      {/* CU10: catálogo público del profesional (foto, reseña, áreas, modalidad) */}
-      <TouchableOpacity
-        style={styles.herramienta}
-        onPress={() => navigation.navigate('MiPerfil')}
-      >
-        <Text style={styles.herramientaIcono}>🪪</Text>
-        <View style={styles.herramientaTexto}>
-          <Text style={styles.herramientaTitulo}>Mi perfil público</Text>
-          <Text style={styles.herramientaSub}>Foto, reseña, áreas de experticia y modalidad que ven los pacientes.</Text>
-        </View>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.herramienta}
-        onPress={() => navigation.navigate('Seguridad')}
-      >
-        <Text style={styles.herramientaIcono}>🔐</Text>
-        <View style={styles.herramientaTexto}>
-          <Text style={styles.herramientaTitulo}>Seguridad de la Cuenta</Text>
-          <Text style={styles.herramientaSub}>Contraseña y sesiones activas.</Text>
-        </View>
-      </TouchableOpacity>
-
-    </View>
-  );
-
   return (
     <View style={styles.pantalla}>
       {/* Opción C: si hay una atención abierta, se ve y se retoma desde aquí. */}
@@ -196,7 +207,6 @@ export default function DashboardProfesional({ navigation }) {
         keyExtractor={(item) => item.paciente_id.toString()}
         renderItem={renderPaciente}
         ListHeaderComponent={Encabezado}
-        ListFooterComponent={PieDeLista}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -205,15 +215,6 @@ export default function DashboardProfesional({ navigation }) {
           />
         }
       />
-
-      {/* Fijo al borde inferior, igual que en la vista de Paciente. */}
-      <TouchableOpacity
-        style={styles.logoutBtn}
-        onPress={confirmarCierreSesion}
-        activeOpacity={interaccion.opacidadActiva}
-      >
-        <Text style={styles.logoutText}>Cerrar sesión</Text>
-      </TouchableOpacity>
     </View>
   );
 }
@@ -252,51 +253,26 @@ const styles = StyleSheet.create({
   card: { ...piezas.tarjeta, marginBottom: espacio.md },
   nombre: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.xs },
   dato: { ...tipografia.meta, color: colores.textoSuave },
-  // Botón delineado: el texto va en verde, no en blanco (quedaba invisible).
+  // CU50 — el bloque de banderas rojas.
+  panelAlertas: { marginBottom: espacio.base },
+  alertasTitulo: { ...tipografia.subtitulo, color: colores.error, marginBottom: espacio.sm },
+  alerta: {
+    ...piezas.tarjeta,
+    backgroundColor: colores.advertenciaSuave,
+    borderColor: colores.advertenciaBorde,
+    marginBottom: espacio.sm,
+  },
+  // La crítica se distingue de la alta sin depender solo del texto.
+  alertaCritica: { backgroundColor: colores.errorSuave, borderColor: colores.errorBorde },
+  alertaPaciente: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo },
+  alertaMotivo: { ...tipografia.meta, color: colores.texto, marginTop: 2 },
+  filaAlerta: { flexDirection: 'row', justifyContent: 'space-between', marginTop: espacio.md },
+  alertaEnlace: { ...tipografia.metaFuerte, color: colores.primario },
+  alertaRevisar: { ...tipografia.meta, color: colores.textoSuave },
+
+  // Botón delineado: el texto va en el azul de marca, no en blanco (quedaba invisible).
   boton: { ...piezas.botonSecundario, marginTop: espacio.md, paddingVertical: espacio.md },
   botonSecundarioTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
 
-  pie: { marginTop: espacio.lg },
-  seccion: {
-    ...tipografia.micro,
-    color: colores.textoTenue,
-    marginBottom: espacio.md,
-    marginTop: espacio.sm,
-  },
-
-  // Herramientas: mismas fichas que el resto, con el ícono en pastilla verde.
-  herramienta: {
-    ...piezas.tarjeta,
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: espacio.md,
-  },
-  herramientaIcono: {
-    fontSize: 22,
-    marginRight: espacio.base,
-    width: 46,
-    height: 46,
-    borderRadius: radio.md,
-    backgroundColor: colores.primarioSuave,
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    lineHeight: 46,
-    overflow: 'hidden',
-  },
-  herramientaTexto: { flex: 1 },
-  herramientaTitulo: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginBottom: 2 },
-  herramientaSub: { ...tipografia.meta, color: colores.textoSuave },
-
   pantalla: { flex: 1, backgroundColor: colores.fondo },
-  logoutBtn: {
-    marginHorizontal: espacio.lg,
-    marginBottom: espacio.lg,
-    paddingVertical: espacio.md,
-    borderRadius: radio.md,
-    borderWidth: 1.5,
-    borderColor: colores.error,
-    backgroundColor: 'transparent',
-    alignItems: 'center',
-  },
-  logoutText: { ...tipografia.cuerpoFuerte, color: colores.error },
 });
