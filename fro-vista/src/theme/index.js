@@ -1,63 +1,83 @@
 // Ruta: fro-vista/src/theme/index.js
 //
-// SISTEMA DE DISEÑO DE FRO SALUD — fuente única de verdad.
+// SISTEMA DE DISEÑO DE PUNTO PAZ SALUD — fuente única de verdad.
 //
 // Toda la app toma de aquí sus colores, tipografía, espaciados, radios y
 // sombras. Antes cada pantalla definía los suyos: había más de 110 colores
 // distintos escritos a mano y la interfaz no se veía como un mismo producto.
 // Si algo hay que cambiar de aspecto, se cambia en este archivo.
 //
-// Identidad: verde #004639 (primario) y negro (secundario). Ambos son muy
-// oscuros, así que se usan como acento y color de marca —nunca como fondo de
-// toda la pantalla— sobre una base de neutros claros con un leve matiz verde
-// para que el conjunto se sienta de la misma familia.
+// Identidad (rebranding Punto Paz Salud): azul verdoso #003B4D (Pantone 548)
+// como color primario y café #8B7140 (Pantone 873C) como acento, sobre base
+// blanca. El azul es muy oscuro, así que se usa como color de marca y de
+// acción —nunca como fondo de pantalla completa—; el café aparece en dosis
+// pequeñas, igual que en el isotipo. Los neutros llevan un matiz cálido
+// imperceptible para acompañar esa calidez sin ensuciar la lectura.
 
 // ── Escala de marca ─────────────────────────────────────────────────────────
-// Tints y shades del verde oficial, para fondos suaves, bordes y estados.
-const verde = {
-  50:  '#E8F2EF',   // fondo suave de bloques destacados
-  100: '#CBE0DA',   // borde de esos bloques
-  200: '#9DC4BA',
-  300: '#6BA697',
-  400: '#3E8876',
-  500: '#1A6B58',
-  600: '#005543',   // estado presionado / hover
-  700: '#004639',   // ★ VERDE OFICIAL DE MARCA
-  800: '#003A2F',
-  900: '#002B22',
+// Tints y shades del azul oficial, para fondos suaves, bordes y estados.
+const azul = {
+  50:  '#E7EFF2',   // fondo suave de bloques destacados
+  100: '#C6DAE1',   // borde de esos bloques
+  200: '#96B8C3',
+  300: '#6295A5',
+  400: '#317486',
+  500: '#0F5A6D',
+  600: '#004A5F',   // estado presionado / hover
+  700: '#003B4D',   // ★ AZUL OFICIAL DE MARCA (Pantone 548)
+  800: '#00303F',
+  900: '#00212C',
 };
 
-// Neutros con un matiz verde imperceptible: armonizan con la marca y evitan
-// el gris azulado genérico.
+// Café del isotipo: acento cálido. Los tonos oscuros existen para cuando el
+// café tiene que llevar texto blanco encima y necesita contraste suficiente.
+const cafe = {
+  50:  '#F6F1E9',
+  100: '#E9DDC7',
+  200: '#D6C197',
+  300: '#BFA470',
+  400: '#A78B52',
+  500: '#8B7140',   // ★ CAFÉ OFICIAL DE MARCA (Pantone 873C)
+  600: '#7A6238',
+  700: '#63502E',
+};
+
+// Neutros con un matiz cálido imperceptible: armonizan con el café de la
+// marca y evitan el gris azulado genérico.
 const neutro = {
   0:   '#FFFFFF',
-  25:  '#FAFBFA',   // fondo de la app
-  50:  '#F4F6F5',   // superficies hundidas, filas alternas
-  100: '#E9EDEB',   // separadores
-  200: '#DCE2DF',   // bordes
-  300: '#C2CBC7',   // bordes de campos
-  400: '#9AA5A0',   // texto deshabilitado, marcas de agua
-  500: '#7A857F',
-  600: '#5A6560',   // texto secundario  (6.1:1 sobre blanco)
-  700: '#3D4642',
-  800: '#1F2724',   // texto principal
-  900: '#0B0F0D',   // títulos (negro de marca)
+  25:  '#FCFBF9',   // fondo de la app
+  50:  '#F6F4F1',   // superficies hundidas, filas alternas
+  100: '#ECE8E3',   // separadores
+  200: '#DED9D2',   // bordes
+  300: '#C6BFB5',   // bordes de campos
+  400: '#9E958A',   // texto deshabilitado, marcas de agua
+  500: '#7D756A',
+  600: '#5D564D',   // texto secundario  (7.2:1 sobre blanco)
+  700: '#433D36',
+  800: '#23201C',   // texto principal
+  900: '#12100E',   // títulos
 };
 
 export const colores = {
   // Marca
-  primario:        verde[700],
-  primarioFuerte:  verde[800],
-  primarioSuave:   verde[50],
-  primarioBorde:   verde[100],
-  primarioPresionado: verde[600],
-  secundario:      '#000000',   // negro oficial
+  primario:        azul[700],
+  primarioFuerte:  azul[800],
+  primarioSuave:   azul[50],
+  primarioBorde:   azul[100],
+  primarioPresionado: azul[600],
+  // Acento café del isotipo. 'secundarioFuerte' es el que lleva texto blanco:
+  // el café oficial se queda corto de contraste para eso.
+  secundario:       cafe[500],
+  secundarioFuerte: cafe[700],
+  secundarioSuave:  cafe[50],
+  secundarioBorde:  cafe[100],
 
   // Superficies
   fondo:      neutro[25],
   superficie: neutro[0],
   superficieSuave: neutro[50],
-  velo:       'rgba(11, 15, 13, 0.55)',
+  velo:       'rgba(18, 16, 14, 0.55)',
 
   // Bordes
   borde:       neutro[200],
@@ -72,8 +92,8 @@ export const colores = {
   textoInverso: neutro[0],
   textoDeshabilitado: neutro[400],
 
-  // Estados. El verde de marca ya ocupa el rol "positivo", así que el éxito
-  // usa un verde más luminoso para que ambos se distingan de un vistazo.
+  // Estados. Ninguno puede confundirse con los dos colores de marca: el éxito
+  // es verde franco y la advertencia tira a naranja, no al café del isotipo.
   exito:        '#0E7A4A',
   exitoSuave:   '#E6F4EC',
   exitoBorde:   '#B7DFC9',
@@ -82,16 +102,17 @@ export const colores = {
   errorSuave:   '#FDECEA',
   errorBorde:   '#F3C6C2',
 
-  advertencia:      '#8A5300',
-  advertenciaSuave: '#FFF6E5',
-  advertenciaBorde: '#F0DCB4',
+  advertencia:      '#A85A00',
+  advertenciaSuave: '#FFF2E3',
+  advertenciaBorde: '#F5D5AC',
 
-  info:        verde[700],
-  infoSuave:   verde[50],
-  infoBorde:   verde[100],
+  info:        azul[700],
+  infoSuave:   azul[50],
+  infoBorde:   azul[100],
 
   // Escalas completas, por si una pantalla necesita un matiz puntual.
-  verde,
+  azul,
+  cafe,
   neutro,
 };
 
@@ -123,21 +144,21 @@ export const radio = {
 export const sombra = {
   ninguna: {},
   suave: {
-    shadowColor: '#0B1F1A',
+    shadowColor: '#241C12',
     shadowOpacity: 0.06,
     shadowRadius: 12,
     shadowOffset: { width: 0, height: 4 },
     elevation: 2,
   },
   media: {
-    shadowColor: '#0B1F1A',
+    shadowColor: '#241C12',
     shadowOpacity: 0.10,
     shadowRadius: 20,
     shadowOffset: { width: 0, height: 8 },
     elevation: 5,
   },
   elevada: {
-    shadowColor: '#0B1F1A',
+    shadowColor: '#241C12',
     shadowOpacity: 0.16,
     shadowRadius: 28,
     shadowOffset: { width: 0, height: 12 },

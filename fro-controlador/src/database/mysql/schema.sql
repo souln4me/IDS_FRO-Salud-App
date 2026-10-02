@@ -33,11 +33,51 @@ CREATE TABLE Notificacion (
     notificacion_id INT PRIMARY KEY AUTO_INCREMENT,
     canal VARCHAR(50) NOT NULL,
     tipo VARCHAR(50) NOT NULL,
+    -- CU52: el título encabeza el aviso en el centro de notificaciones y en la
+    -- alerta push; 'datos' dice a qué pantalla saltar al tocarlo.
+    titulo VARCHAR(120),
     contenido TEXT NOT NULL,
+    datos JSON,
     momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     leida BOOLEAN DEFAULT FALSE,
     usuario_id INT NOT NULL,
-    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id) 
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+);
+
+-- CU52: canales de salida que acepta cada usuario. Sin fila, ambos activos.
+-- El centro de notificaciones dentro de la app siempre recibe: es el registro
+-- histórico del usuario, apagarlo seria perder el rastro de lo que se le avisó.
+CREATE TABLE Preferencia_Notificacion (
+    usuario_id INT PRIMARY KEY,
+    canal_push BOOLEAN NOT NULL DEFAULT TRUE,
+    canal_email BOOLEAN NOT NULL DEFAULT TRUE,
+    ultima_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+);
+
+-- CU52: tokens de notificación push del usuario, uno por dispositivo.
+CREATE TABLE Dispositivo_Push (
+    dispositivo_push_id INT PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(255) NOT NULL UNIQUE,
+    plataforma VARCHAR(20) NOT NULL DEFAULT 'DESCONOCIDA',
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_id INT NOT NULL,
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
+);
+
+-- CU21: solicitud de confirmación de asistencia. El token viaja en el enlace
+-- del correo y vence solo, así que la respuesta asíncrona no necesita sesión.
+CREATE TABLE Solicitud_Confirmacion (
+    solicitud_confirmacion_id INT PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    momento_expira TIMESTAMP NOT NULL,
+    momento_respuesta TIMESTAMP NULL,
+    respuesta VARCHAR(20) NULL,
+    canal_respuesta VARCHAR(20) NULL,
+    cita_id INT NOT NULL UNIQUE,
+    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
 );
 
 CREATE TABLE Ticket_Soporte (
@@ -47,8 +87,25 @@ CREATE TABLE Ticket_Soporte (
     estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTO',
     momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     momento_resuelto TIMESTAMP,
+    -- CU61: a qué operador quedó enrutado y cuándo. Sin operador para el área,
+    -- queda NULL: es la bandeja de supervisión general.
+    asignado_a INT NULL,
+    momento_enrutamiento TIMESTAMP NULL,
+    -- CU60: evidencia opcional (captura de pantalla) alojada en Cloudinary.
+    adjunto_url VARCHAR(500) NULL,
+    resolucion VARCHAR(500) NULL,
     usuario_id INT NOT NULL,
-    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id) 
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id),
+    FOREIGN KEY (asignado_a) REFERENCES Usuario(usuario_id)
+);
+
+-- CU61: qué áreas atiende cada operador de soporte. El enrutamiento cruza la
+-- etiqueta del ticket con esta tabla.
+CREATE TABLE Area_Soporte_Operador (
+    usuario_id INT NOT NULL,
+    categoria VARCHAR(50) NOT NULL,
+    PRIMARY KEY (usuario_id, categoria),
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
 );
 
 CREATE TABLE Bitacora_Auditoria (
@@ -157,6 +214,17 @@ CREATE TABLE Profesional_Disponibilidad (
     FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id)
 );
 
+-- CU10/CU14: comunas en las que el profesional atiende a domicilio. Un
+-- profesional puede cubrir varias; el buscador del paciente usa esto para no
+-- ofrecer horas a domicilio de quien no llega a su comuna.
+CREATE TABLE Profesional_Comuna (
+    profesional_id INT NOT NULL,
+    comuna_id INT NOT NULL,
+    PRIMARY KEY (profesional_id, comuna_id),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+    FOREIGN KEY (comuna_id) REFERENCES Comuna(comuna_id)
+);
+
 CREATE TABLE Contacto_Emergencia (
     contacto_emergencia_id INT PRIMARY KEY AUTO_INCREMENT,
     nombre VARCHAR(100) NOT NULL,
@@ -173,6 +241,8 @@ CREATE TABLE Paciente (
     -- CU09: qué datos de contacto ve el profesional. NULL = todo visible.
     -- Formato: {"mostrar_direccion": true, "mostrar_telefono": true}
     privacidad_contacto JSON,
+    -- CU58: si es TRUE, sus calificaciones escritas se muestran como anónimas.
+    resena_anonima BOOLEAN NOT NULL DEFAULT FALSE,
     contacto_emergencia_id INT,
     usuario_id INT NOT NULL UNIQUE,
     comuna_id INT NOT NULL,
@@ -192,6 +262,73 @@ CREATE TABLE Triaje (
     integrado BOOLEAN NOT NULL DEFAULT FALSE,
     paciente_id INT NOT NULL,
     FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id)
+);
+
+-- CU25: síntesis de la entrevista de triaje que el profesional lee antes de
+-- la sesión. Se genera al completar el triaje y queda ligado al paciente.
+CREATE TABLE Reporte_Preclinico (
+    reporte_preclinico_id INT PRIMARY KEY AUTO_INCREMENT,
+    resumen TEXT NOT NULL,
+    -- Hallazgos que exigen atención prioritaria, con su severidad.
+    banderas JSON,
+    -- Etiquetas clínicas derivadas del triaje; con ellas se sugiere la
+    -- especialidad del CU26.
+    etiquetas JSON,
+    suficiente BOOLEAN NOT NULL DEFAULT TRUE,
+    especialidad_sugerida_id INT NULL,
+    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    triaje_id INT NOT NULL UNIQUE,
+    paciente_id INT NOT NULL,
+    FOREIGN KEY (triaje_id) REFERENCES Triaje(triaje_id),
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (especialidad_sugerida_id) REFERENCES Especialidad(especialidad_id)
+);
+
+-- CU44: índice de adherencia del paciente, una foto por día. La serie de
+-- filas es la que dibuja la curva del panel de progreso (CU45).
+CREATE TABLE Indicador_Adherencia (
+    indicador_adherencia_id INT PRIMARY KEY AUTO_INCREMENT,
+    fecha DATE NOT NULL,
+    porcentaje TINYINT NOT NULL,
+    tareas_programadas INT NOT NULL,
+    tareas_cumplidas INT NOT NULL,
+    momento_calculo TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    paciente_id INT NOT NULL,
+    UNIQUE KEY uq_adherencia_dia (paciente_id, fecha),
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id)
+);
+
+-- CU50: reporte de evolución que el paciente envía entre sesiones. clave_envio
+-- es del cliente: si el teléfono reintenta el mismo envío, no se duplica.
+CREATE TABLE Reporte_Sintoma (
+    reporte_sintoma_id INT PRIMARY KEY AUTO_INCREMENT,
+    nivel_dolor TINYINT NOT NULL,
+    limitacion_funcional TINYINT NOT NULL,
+    comentario VARCHAR(500),
+    clave_envio VARCHAR(64) NOT NULL UNIQUE,
+    momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paciente_id INT NOT NULL,
+    episodio_clinico_id INT NULL,
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+);
+
+-- CU50: alerta que llega al panel del profesional (Banderas Rojas del RF50).
+CREATE TABLE Alerta_Clinica (
+    alerta_clinica_id INT PRIMARY KEY AUTO_INCREMENT,
+    tipo VARCHAR(40) NOT NULL,
+    severidad VARCHAR(20) NOT NULL,
+    motivo VARCHAR(255) NOT NULL,
+    datos JSON,
+    estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA',
+    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    momento_revision TIMESTAMP NULL,
+    paciente_id INT NOT NULL,
+    profesional_id INT NULL,
+    reporte_sintoma_id INT NULL,
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+    FOREIGN KEY (reporte_sintoma_id) REFERENCES Reporte_Sintoma(reporte_sintoma_id)
 );
 
 CREATE TABLE Disclaimer (
@@ -247,7 +384,9 @@ CREATE TABLE Episodio_Clinico (
     episodio_clinico_id INT PRIMARY KEY AUTO_INCREMENT,
     motivo_consulta VARCHAR(255) NOT NULL,
     fecha_inicio TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    fecha_terminado TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+    -- Queda NULL mientras el episodio siga abierto: con CURRENT_TIMESTAMP todos
+    -- los episodios "terminaban" en el mismo instante en que se creaban.
+    fecha_terminado TIMESTAMP NULL DEFAULT NULL,
     -- CU78: ABIERTO admite nuevos registros; CERRADO los rechaza (D12).
     estado VARCHAR(255) DEFAULT 'ABIERTO',
     paciente_id INT,
@@ -330,11 +469,30 @@ CREATE TABLE Objetivo_Terapeutico (
 
 CREATE TABLE Mensaje_Chat (
     mensaje_id INT PRIMARY KEY AUTO_INCREMENT,
+    -- CU53: el texto se guarda cifrado (AES-256-GCM). La base nunca ve el
+    -- contenido legible; el descifrado ocurre al servirlo a quien participa.
     contenido_cifrado TEXT NOT NULL,
     bloqueado BOOLEAN DEFAULT FALSE,
     momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    -- Quién escribió y si la otra parte ya lo leyó.
+    remitente_usuario_id INT NOT NULL,
+    leido BOOLEAN NOT NULL DEFAULT FALSE,
     episodio_clinico_id INT NOT NULL,
-    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)   
+    KEY idx_chat_episodio (episodio_clinico_id, mensaje_id),
+    FOREIGN KEY (remitente_usuario_id) REFERENCES Usuario(usuario_id),
+    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+);
+
+-- CU57: diccionario central de términos no permitidos, administrado por el
+-- Administrador. Bloquea mensajes del chat y, más adelante, reseñas públicas.
+CREATE TABLE Palabra_Restringida (
+    palabra_restringida_id INT PRIMARY KEY AUTO_INCREMENT,
+    termino VARCHAR(80) NOT NULL UNIQUE,
+    categoria VARCHAR(40) NOT NULL DEFAULT 'GENERAL',
+    activa BOOLEAN NOT NULL DEFAULT TRUE,
+    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    administrador_id INT NULL,
+    FOREIGN KEY (administrador_id) REFERENCES Usuario(usuario_id)
 );
 
 CREATE TABLE Material_Terapeutico(
@@ -429,17 +587,51 @@ CREATE TABLE Lista_Espera (
     momento_inscripcion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     posicion INT NOT NULL,
     notificado BOOLEAN DEFAULT FALSE,
+    -- CU19: el cupo se ofrece de a uno. ESPERANDO -> NOTIFICADO -> TOMADO, o
+    -- VENCIDO si no responde en el plazo y el turno pasa al siguiente.
+    estado VARCHAR(20) NOT NULL DEFAULT 'ESPERANDO',
+    momento_notificacion TIMESTAMP NULL,
+    momento_expira TIMESTAMP NULL,
+    -- Enlace del correo para tomar el cupo sin abrir la app.
+    token_cupo VARCHAR(64) NULL,
     paciente_id INT NOT NULL,
     cita_id INT NOT NULL,
+    UNIQUE KEY uq_espera_cita_paciente (cita_id, paciente_id),
+    UNIQUE KEY uq_lista_espera_token (token_cupo),
     FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
     FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
+);
+
+-- CU75: liquidación mensual del profesional. Una fila por profesional y mes,
+-- inalterable una vez emitida: es el respaldo del pago.
+CREATE TABLE Liquidacion (
+    liquidacion_id INT PRIMARY KEY AUTO_INCREMENT,
+    anio SMALLINT NOT NULL,
+    mes TINYINT NOT NULL,
+    sesiones_validadas INT NOT NULL DEFAULT 0,
+    monto_prestaciones INT NOT NULL DEFAULT 0,
+    bonificacion INT NOT NULL DEFAULT 0,
+    monto_total INT NOT NULL DEFAULT 0,
+    observacion VARCHAR(255) NULL,
+    momento_emision TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    profesional_id INT NOT NULL,
+    emitida_por INT NOT NULL,
+    UNIQUE KEY uq_liquidacion_periodo (profesional_id, anio, mes),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+    FOREIGN KEY (emitida_por) REFERENCES Usuario(usuario_id)
 );
 
 CREATE TABLE Evaluacion_Satisfaccion(
     evaluacion_satisfaccion_id INT PRIMARY KEY AUTO_INCREMENT,
     puntuacion TINYINT NOT NULL,
     resena VARCHAR(300),
-    estado_moderacion BOOLEAN DEFAULT FALSE,
+    -- CU56: la nota cuenta siempre para el promedio; lo que se modera es el
+    -- TEXTO. PENDIENTE no se publica, APROBADA sí, RECHAZADA queda oculta con
+    -- su causal (borrado lógico: la fila no se borra, deja de ser visible).
+    estado_moderacion VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
+    motivo_rechazo VARCHAR(255) NULL,
+    moderador_id INT NULL,
+    momento_moderacion TIMESTAMP NULL,
     momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     cita_id INT NOT NULL UNIQUE,
     FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)

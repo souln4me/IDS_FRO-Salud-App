@@ -10,6 +10,27 @@ const convertirFecha = (fechaStr, esFechaFin = false) => {
     return `${y}-${m}-${d} ${hora}`;
 };
 
+/**
+ * CU16 — Bloqueos vigentes del profesional autenticado.
+ * Sin esto, al confirmar un bloqueo no quedaba forma de ver lo ya inhabilitado.
+ */
+exports.listarBloqueos = async (req, res) => {
+    try {
+        const [bloqueos] = await pool.query(
+            `SELECT b.bloqueo_id, b.fecha_inicio, b.fecha_fin, b.motivo
+               FROM Bloqueo_Agenda b
+               JOIN Profesional p ON p.profesional_id = b.profesional_id
+              WHERE p.usuario_id = ?
+              ORDER BY b.fecha_inicio DESC`,
+            [req.user.usuario_id]
+        );
+        return res.status(200).json({ bloqueos });
+    } catch (error) {
+        console.error('[listarBloqueos CU16]', error);
+        return res.status(500).json({ mensaje: 'No se pudieron recuperar los bloqueos de agenda.' });
+    }
+};
+
 exports.restringirDisponibilidad = async (req, res) => {
     const { profesional_id, fecha_inicio, fecha_fin, motivo } = req.body;
     const connection = await pool.getConnection();

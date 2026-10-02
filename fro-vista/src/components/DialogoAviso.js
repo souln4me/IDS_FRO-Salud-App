@@ -11,11 +11,14 @@ import { Modal, View, Text, ScrollView, TouchableOpacity, StyleSheet } from 'rea
 
 import { colores, espacio, radio, sombra, tipografia, interaccion } from '../theme';
 
+// El éxito usa el azul de marca (Punto Paz Salud), no el verde de la paleta
+// anterior. El símbolo va dentro de un círculo del color del tono: los emoji
+// (✅, ⚠️) traían sus propios colores y no seguían la paleta.
 const TONOS = {
-  ok:     { icono: '✅', color: colores.exito },
-  error:  { icono: '⚠️', color: colores.error },
-  alerta: { icono: '⏳', color: colores.advertencia },
-  info:   { icono: 'ℹ️', color: colores.primario },
+  ok:     { simbolo: '✓', color: colores.primario },
+  error:  { simbolo: '!', color: colores.error },
+  alerta: { simbolo: '!', color: colores.advertencia },
+  info:   { simbolo: 'i', color: colores.primario },
 };
 
 /**
@@ -31,7 +34,7 @@ export default function DialogoAviso({
   onCerrar,
   onSeleccionarFila,   // si se pasa, cada fila se puede tocar
 }) {
-  const { icono, color } = TONOS[tono] || TONOS.info;
+  const { simbolo, color } = TONOS[tono] || TONOS.info;
 
   return (
     <Modal
@@ -46,7 +49,9 @@ export default function DialogoAviso({
           <View style={[estilos.marca, { backgroundColor: color }]} />
 
           <View style={estilos.cuerpo}>
-            <Text style={estilos.icono}>{icono}</Text>
+            <View style={[estilos.distintivo, { backgroundColor: color }]}>
+              <Text style={estilos.simbolo}>{simbolo}</Text>
+            </View>
             <Text style={estilos.titulo}>{titulo}</Text>
             {mensaje ? <Text style={estilos.mensaje}>{mensaje}</Text> : null}
 
@@ -106,7 +111,15 @@ const estilos = StyleSheet.create({
   marca: { height: 5 },
   cuerpo: { padding: espacio.xl },
 
-  icono: { fontSize: 28, marginBottom: espacio.sm },
+  distintivo: {
+    width: 40,
+    height: 40,
+    borderRadius: radio.completo,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: espacio.md,
+  },
+  simbolo: { fontSize: 20, lineHeight: 24, fontWeight: '700', color: colores.textoInverso },
   titulo: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.sm },
   mensaje: { ...tipografia.cuerpo, color: colores.textoSuave },
 

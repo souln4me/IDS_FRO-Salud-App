@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // CU68: Transformadores (Data Mappers).
-// Funciones PURAS: traducen entre el estándar interno de FRO Salud y el formato
+// Funciones PURAS: traducen entre el estándar interno de Punto Paz Salud y el formato
 // de cada proveedor. Sin efectos secundarios.
 // ─────────────────────────────────────────────────────────────────────────────
 

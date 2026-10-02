@@ -25,7 +25,9 @@ import AnamnesisScreen from './AnamnesisScreen';
 import EpisodioScreen from './EpisodioScreen';
 import SesionClinicaScreen from './SesionClinicaScreen';
 import PautasScreen from './PautasScreen';
-import { getHistorialPaciente } from '../../../api/client';
+import apiClient, { getHistorialPaciente } from '../../../api/client';
+import DialogoAviso from '../../../components/DialogoAviso';
+import DialogoConfirmacion from '../../../components/DialogoConfirmacion';
 import { colores, espacio, radio, tipografia, interaccion } from '../../../theme';
 import { formatearFecha } from '../../../utils/fechas';
 import BarraAtencionEnCurso from '../../../components/BarraAtencionEnCurso';
@@ -71,7 +73,9 @@ export default function FichaClinicaScreen({ route, navigation }) {
   // igual hacía creer que el paciente estaba vacío cuando el problema era otro.
   const [errorEpisodios, setErrorEpisodios] = useState('');
 
-  const cargarEpisodios = useCallback(async () => {
+  // El episodio recién creado pasa a ser el activo: el aviso decía "ya quedó
+  // seleccionado arriba" y no era cierto, así que había que buscarlo a mano.
+  const cargarEpisodios = useCallback(async (dejarActivo) => {
     if (!pacienteId) return;
     setCargandoEpisodios(true);
     setErrorEpisodios('');
@@ -79,13 +83,17 @@ export default function FichaClinicaScreen({ route, navigation }) {
       const datos = await getHistorialPaciente(pacienteId);
       const lista = datos?.episodios || [];
       setEpisodios(lista);
-      // Se preselecciona el más reciente: es casi siempre sobre el que se
-      // trabaja, y así la ficha queda utilizable sin tocar nada.
+      // Se preselecciona el más reciente PROPIO: en los de otros profesionales
+      // no se puede registrar (CU28), así que abrir ahí sería un callejón.
       setEpisodioActivo((actual) => {
+        if (dejarActivo && lista.some((e) => String(e.episodio_clinico_id) === String(dejarActivo))) {
+          return String(dejarActivo);
+        }
         if (actual && lista.some((e) => String(e.episodio_clinico_id) === String(actual))) {
           return actual;
         }
-        return lista.length > 0 ? String(lista[0].episodio_clinico_id) : '';
+        const propio = lista.find((e) => e.es_propio) || lista[0];
+        return propio ? String(propio.episodio_clinico_id) : '';
       });
     } catch (error) {
       setEpisodios([]);
@@ -98,6 +106,40 @@ export default function FichaClinicaScreen({ route, navigation }) {
       setCargandoEpisodios(false);
     }
   }, [pacienteId]);
+
+  // CU78 (D12): cerrar el episodio es el alta del tratamiento. El botón vivía
+  // dentro de la pestaña Episodios y solo aparecía después de teclear el número
+  // del episodio y pulsar "Consultar": nadie lo encontraba. Va donde se ve el
+  // episodio activo, que es donde se trabaja.
+  const [cerrando, setCerrando] = useState(false);
+  const [confirmacion, setConfirmacion] = useState(null);
+  const [aviso, setAviso] = useState(null);
+
+  const cerrarEpisodio = async (episodio) => {
+    setCerrando(true);
+    try {
+      const { data } = await apiClient.put(`/clinica/episodio/${episodio.episodio_clinico_id}`, {
+        estado: 'CERRADO',
+      });
+      await cargarEpisodios();
+      setAviso({
+        tono: 'ok',
+        titulo: 'Episodio cerrado',
+        mensaje: data?.mensaje || 'El episodio quedó cerrado y no admitirá nuevos registros.',
+      });
+    } catch (error) {
+      setAviso({
+        tono: 'error',
+        titulo: 'No se pudo cerrar',
+        mensaje:
+          error.response?.data?.mensaje ||
+          error.response?.data?.error ||
+          'Intenta nuevamente.',
+      });
+    } finally {
+      setCerrando(false);
+    }
+  };
 
   useEffect(() => {
     cargarEpisodios();
@@ -174,7 +216,7 @@ export default function FichaClinicaScreen({ route, navigation }) {
           ) : errorEpisodios ? (
             <View style={styles.filaContexto}>
               <Text style={styles.errorContexto}>{errorEpisodios}</Text>
-              <TouchableOpacity onPress={cargarEpisodios} activeOpacity={interaccion.opacidadActiva}>
+              <TouchableOpacity onPress={() => cargarEpisodios()} activeOpacity={interaccion.opacidadActiva}>
                 <Text style={styles.enlaceCrear}>Reintentar</Text>
               </TouchableOpacity>
             </View>
@@ -203,17 +245,75 @@ export default function FichaClinicaScreen({ route, navigation }) {
                   {episodios.map((e) => (
                     <Picker.Item
                       key={e.episodio_clinico_id}
-                      label={`#${e.episodio_clinico_id} · ${e.motivo_consulta || 'Sin motivo'}`}
+                      label={
+                        `#${e.episodio_clinico_id} · ${e.motivo_consulta || 'Sin motivo'}` +
+                        (e.es_propio ? '' : ` · de ${e.profesional_responsable} (solo consulta)`)
+                      }
                       value={String(e.episodio_clinico_id)}
                     />
                   ))}
                 </Picker>
               </View>
               {episodioElegido && (
-                <Text style={styles.detalleContexto}>
-                  {episodioElegido.estado || 'Sin estado'} · desde{' '}
-                  {formatearFecha(episodioElegido.fecha_inicio)}
-                </Text>
+                <View style={styles.filaContexto}>
+                  <Text style={styles.detalleContexto}>
+                    {episodioElegido.estado || 'Sin estado'} · desde{' '}
+                    {formatearFecha(episodioElegido.fecha_inicio)}
+                  </Text>
+                  {/* CU53: el chat cuelga del episodio, así que se abre desde
+                      el episodio que está activo en la ficha. */}
+                  <TouchableOpacity
+                    activeOpacity={interaccion.opacidadActiva}
+                    onPress={() =>
+                      navigation.navigate('ChatClinico', {
+                        episodioId: episodioElegido.episodio_clinico_id,
+                        nombreOtro: nombrePaciente,
+                      })
+                    }
+                  >
+                    <Text style={styles.enlaceCrear}>💬 Mensajes</Text>
+                  </TouchableOpacity>
+
+                  {/* es_propio llega como 0 o 1 desde la base. Sin convertirlo a
+                      booleano, el 0 se cuela como texto suelto dentro de la vista
+                      y React Native corta la pantalla con "Text strings must be
+                      rendered within a <Text> component". */}
+                  {Boolean(episodioElegido.es_propio) &&
+                    String(episodioElegido.estado || '').toUpperCase() !== 'CERRADO' && (
+                      <TouchableOpacity
+                        disabled={cerrando}
+                        activeOpacity={interaccion.opacidadActiva}
+                        onPress={() =>
+                          setConfirmacion({
+                            titulo: 'Cerrar el episodio',
+                            mensaje:
+                              `Vas a cerrar el episodio #${episodioElegido.episodio_clinico_id} (${episodioElegido.motivo_consulta || 'sin motivo'}). ` +
+                              'Dejará de admitir sesiones, metas, pautas y documentos. Lo que venga después necesita un episodio nuevo.',
+                            etiqueta: 'Cerrar episodio',
+                            accion: () => cerrarEpisodio(episodioElegido),
+                          })
+                        }
+                      >
+                        <Text style={styles.enlaceCrear}>
+                          {cerrando ? 'Cerrando…' : '🔒 Cerrar episodio'}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                </View>
+              )}
+              {/* CU28: los episodios de otros profesionales se consultan, no se
+                  editan. El aviso va en la cabecera para que valga en todas las
+                  pestañas, no solo en la sesión clínica. */}
+              {episodioElegido && !episodioElegido.es_propio && (
+                <View style={styles.avisoLectura}>
+                  <Text style={styles.avisoLecturaTexto}>
+                    🔒 Solo lectura · episodio creado por {episodioElegido.profesional_responsable}
+                  </Text>
+                  <Text style={styles.avisoLecturaAyuda}>
+                    Puedes consultarlo para dar continuidad al tratamiento. Para registrar tu
+                    atención, elige un episodio tuyo o crea uno en la pestaña Episodios.
+                  </Text>
+                </View>
               )}
             </>
           )}
@@ -262,6 +362,28 @@ export default function FichaClinicaScreen({ route, navigation }) {
           );
         })}
       </View>
+
+      <DialogoConfirmacion
+        visible={confirmacion !== null}
+        titulo={confirmacion?.titulo || ''}
+        mensaje={confirmacion?.mensaje}
+        etiquetaConfirmar={confirmacion?.etiqueta || 'Confirmar'}
+        tono="peligro"
+        onConfirmar={() => {
+          const accion = confirmacion?.accion;
+          setConfirmacion(null);
+          if (accion) accion();
+        }}
+        onCancelar={() => setConfirmacion(null)}
+      />
+
+      <DialogoAviso
+        visible={aviso !== null}
+        titulo={aviso?.titulo || ''}
+        mensaje={aviso?.mensaje}
+        tono={aviso?.tono}
+        onCerrar={() => setAviso(null)}
+      />
     </View>
   );
 }
@@ -293,6 +415,16 @@ const styles = StyleSheet.create({
   picker: { color: colores.texto },
   detalleContexto: { ...tipografia.meta, color: colores.textoSuave, marginTop: espacio.xs },
   filaContexto: { flexDirection: 'row', alignItems: 'center', gap: espacio.sm, flexWrap: 'wrap' },
+  avisoLectura: {
+    marginTop: espacio.sm,
+    padding: espacio.sm,
+    borderRadius: radio.md,
+    backgroundColor: colores.infoSuave,
+    borderWidth: 1,
+    borderColor: colores.infoBorde,
+  },
+  avisoLecturaTexto: { ...tipografia.metaFuerte, color: colores.info },
+  avisoLecturaAyuda: { ...tipografia.meta, color: colores.textoSuave, marginTop: 2 },
   sinEpisodios: { ...tipografia.meta, color: colores.textoSuave, flex: 1 },
   errorContexto: { ...tipografia.meta, color: colores.error, flex: 1 },
   enlaceCrear: { ...tipografia.metaFuerte, color: colores.primario },

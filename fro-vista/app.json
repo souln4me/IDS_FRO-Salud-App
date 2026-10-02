@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "FRO Salud",
+    "name": "Punto Paz Salud",
     "slug": "fro-salud-app",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,19 +10,21 @@
     ],
     "plugins": [
       "expo-secure-store",
-      "@react-native-community/datetimepicker"
+      "@react-native-community/datetimepicker",
+      "expo-sharing",
+      "expo-status-bar"
     ],
-    "icon": "./assets/logo-fro.png",
-    "primaryColor": "#004639",
-    "backgroundColor": "#FAFBFA",
+    "icon": "./assets/icono-app.png",
+    "primaryColor": "#003B4D",
+    "backgroundColor": "#FCFBF9",
     "splash": {
-      "image": "./assets/logo-fro.png",
+      "image": "./assets/icono-app.png",
       "resizeMode": "contain",
       "backgroundColor": "#FFFFFF"
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/logo-fro.png",
+        "foregroundImage": "./assets/icono-adaptativo.png",
         "backgroundColor": "#FFFFFF"
       }
     },
@@ -30,7 +32,7 @@
       "supportsTablet": true
     },
     "web": {
-      "favicon": "./assets/logo-fro.png"
+      "favicon": "./assets/icono-app.png"
     }
   }
 }

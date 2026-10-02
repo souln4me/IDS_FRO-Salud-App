@@ -56,9 +56,9 @@ async function main() {
 
   console.log(`2/2 Enviando correo de prueba a ${SMTP_USER}…`);
   await transporter.sendMail({
-    from: `"Fro Salud" <${SMTP_USER}>`,
+    from: `"Punto Paz Salud" <${SMTP_USER}>`,
     to: SMTP_USER,
-    subject: 'Prueba de configuración SMTP - Fro Salud',
+    subject: 'Prueba de configuración SMTP - Punto Paz Salud',
     text:
       'Si estás leyendo esto, el envío de correos del sistema funciona correctamente. ' +
       'Puedes borrar este mensaje.',

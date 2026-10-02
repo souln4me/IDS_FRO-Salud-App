@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { porcentajeObjetivosEpisodio } = require('../services/clinico/episodioService');
 
 const registrarAuditoria = async (connection, req, accion, entidad, datos) => {
   const usuarioId = req.user?.usuario_id || null;
@@ -47,7 +48,7 @@ exports.finalizarEvolucion = async (req, res) => {
 
     // 4. Verificar el estado de la evolución
     const [rows] = await connection.execute(
-      `SELECT evolucion_clinica_id, inalterable
+      `SELECT evolucion_clinica_id, inalterable, episodio_clinico_id, porcentaje_objetivo
        FROM Evolucion_Clinica
        WHERE evolucion_clinica_id = ?
        FOR UPDATE`,
@@ -74,13 +75,21 @@ exports.finalizarEvolucion = async (req, res) => {
     }
 
     // 5. CU36 - Generar Timestamp automático y vincular firma
+    // El registro se sella con el avance de las metas del episodio: si nunca se
+    // guardó despues del ultimo avance, el dato igual queda en el registro.
+    const porcentajeEpisodio =
+      rows[0].porcentaje_objetivo === null || rows[0].porcentaje_objetivo === undefined
+        ? await porcentajeObjetivosEpisodio(connection, rows[0].episodio_clinico_id)
+        : null;
+
     await connection.execute(
       `UPDATE Evolucion_Clinica
        SET inalterable = 1,
            firma_digital = ?,
-           hora_firma_digital = CURRENT_TIMESTAMP
+           hora_firma_digital = CURRENT_TIMESTAMP,
+           porcentaje_objetivo = COALESCE(porcentaje_objetivo, ?)
        WHERE evolucion_clinica_id = ?`,
-      [firmaDigitalGenerada, evolucionId]
+      [firmaDigitalGenerada, porcentajeEpisodio, evolucionId]
     );
 
     await registrarAuditoria(connection, req, 'FINALIZAR_EVOLUCION_CLINICA', 'evolucion_clinica', {

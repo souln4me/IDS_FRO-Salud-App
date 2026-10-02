@@ -18,14 +18,17 @@ import {
 
 import apiClient from '../../api/client';
 import { AuthContext } from '../../context/AuthContext';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import VistaConTeclado from '../../components/VistaConTeclado';
 import CambioContrasenaOTP from '../../components/CambioContrasenaOTP';
 import DialogoConfirmacion from '../../components/DialogoConfirmacion';
 import { formatearFechaHora } from '../../utils/fechas';
-import { colores, radio } from '../../theme';
+import { colores, espacio, radio, tipografia, piezas, interaccion } from '../../theme';
 import DialogoAviso from '../../components/DialogoAviso';
 
-export default function SeguridadScreen() {
+// Sesiones, contraseña y privacidad, sin contenedor propio: la usa esta
+// pantalla y el pie de los perfiles (paciente y profesional).
+function SeccionesSeguridad({ contrasenaPrimero = false }) {
   const { userData, logoutSession } = useContext(AuthContext);
   const esPaciente = userData?.rol === 'Paciente';
 
@@ -147,6 +150,7 @@ export default function SeguridadScreen() {
       await apiClient.put('/auth/privacidad', {
         mostrar_direccion: nueva.mostrar_direccion,
         mostrar_telefono: nueva.mostrar_telefono,
+        nombre_en_resenas: nueva.nombre_en_resenas !== false,
       });
     } catch (err) {
       // CU09 — Excepción 4: si la escritura falla, se restaura lo anterior.
@@ -159,9 +163,10 @@ export default function SeguridadScreen() {
 
   const formatearFecha = (valor) => formatearFechaHora(valor, '—');
 
-  return (
-    <VistaConTeclado style={estilos.fondo} contentContainerStyle={estilos.contenido}>
-      {/* ── CU08: Sesiones activas ── */}
+  // Cada bloque por separado: en "Mi perfil" del paciente cambia el orden.
+  // ── CU08: Sesiones activas ──
+  const bloqueSesiones = (
+    <>
       <Text style={estilos.seccion}>Sesiones activas</Text>
       <Text style={estilos.ayudaSeccion}>
         Estos dispositivos tienen acceso a tu cuenta. Puedes cerrarlos de forma remota.
@@ -207,8 +212,12 @@ export default function SeguridadScreen() {
           </View>
         ))
       )}
+    </>
+  );
 
-      {/* ── CU07: Cambio de contraseña ── */}
+  // ── CU07: Cambio de contraseña ──
+  const bloqueContrasena = (
+    <>
       <Text style={estilos.seccion}>Contraseña</Text>
 
       {!cambioActivo ? (
@@ -252,8 +261,12 @@ export default function SeguridadScreen() {
           </TouchableOpacity>
         </View>
       )}
+    </>
+  );
 
-      {/* ── CU09: Privacidad (solo pacientes) ── */}
+  // ── CU09: Privacidad (solo pacientes) ──
+  const bloquePrivacidad = (
+    <>
       {esPaciente && (
         <>
           <Text style={estilos.seccion}>Privacidad de mis datos</Text>
@@ -272,7 +285,7 @@ export default function SeguridadScreen() {
                   value={privacidad.mostrar_direccion}
                   onValueChange={(v) => cambiarPreferencia('mostrar_direccion', v)}
                   disabled={guardandoPrivacidad}
-                  trackColor={{ false: colores.borde, true: colores.verde[300] }}
+                  trackColor={{ false: colores.borde, true: colores.azul[300] }}
                   thumbColor={privacidad.mostrar_direccion ? colores.primario : colores.superficie}
                   ios_backgroundColor={colores.borde}
                 />
@@ -283,8 +296,27 @@ export default function SeguridadScreen() {
                   value={privacidad.mostrar_telefono}
                   onValueChange={(v) => cambiarPreferencia('mostrar_telefono', v)}
                   disabled={guardandoPrivacidad}
-                  trackColor={{ false: colores.borde, true: colores.verde[300] }}
+                  trackColor={{ false: colores.borde, true: colores.azul[300] }}
                   thumbColor={privacidad.mostrar_telefono ? colores.primario : colores.superficie}
+                  ios_backgroundColor={colores.borde}
+                />
+              </View>
+              {/* CU58: nombre bajo las calificaciones escritas, o anónimo. */}
+              <View style={estilos.filaPreferencia}>
+                <View style={estilos.preferenciaTextos}>
+                  <Text style={estilos.preferenciaTexto}>Mostrar mi nombre en mis calificaciones</Text>
+                  <Text style={estilos.preferenciaAyuda}>
+                    {privacidad.nombre_en_resenas !== false
+                      ? 'Tus comentarios publicados muestran tu nombre y la inicial de tu apellido.'
+                      : 'Tus comentarios publicados aparecen como “Anónimo”.'}
+                  </Text>
+                </View>
+                <Switch
+                  value={privacidad.nombre_en_resenas !== false}
+                  onValueChange={(v) => cambiarPreferencia('nombre_en_resenas', v)}
+                  disabled={guardandoPrivacidad}
+                  trackColor={{ false: colores.borde, true: colores.azul[300] }}
+                  thumbColor={privacidad.nombre_en_resenas !== false ? colores.primario : colores.superficie}
                   ios_backgroundColor={colores.borde}
                 />
               </View>
@@ -292,6 +324,23 @@ export default function SeguridadScreen() {
           )}
         </>
       )}
+    </>
+  );
+
+  return (
+    <>
+      {contrasenaPrimero ? (
+        <>
+          {bloqueContrasena}
+          {bloqueSesiones}
+        </>
+      ) : (
+        <>
+          {bloqueSesiones}
+          {bloqueContrasena}
+        </>
+      )}
+      {bloquePrivacidad}
       <DialogoConfirmacion
         visible={sesionPorCerrar !== null}
         titulo={sesionPorCerrar?.actual ? 'Cerrar esta sesión' : 'Revocar acceso remoto'}
@@ -320,13 +369,82 @@ export default function SeguridadScreen() {
           if (seguir) seguir();
         }}
       />
+    </>
+  );
+}
+
+// Franja de color de lado a lado que abre cada sección de "Mi perfil", para
+// distinguirlas de un vistazo.
+function FranjaSeccion({ icono, titulo, alInicio = false }) {
+  return (
+    <View style={[estilos.franja, alInicio && estilos.franjaAlInicio]} accessibilityRole="header">
+      <Ionicons name={icono} size={16} color={colores.primario} />
+      <Text style={estilos.franjaTexto}>{titulo}</Text>
+    </View>
+  );
+}
+
+// Pie de "Mi perfil" (paciente y profesional), de arriba hacia abajo: la
+// seguridad de la cuenta (contraseña y, justo debajo, sesiones activas), Ayuda
+// y soporte y, al final de todo, Cerrar sesión.
+// alInicio: el pie es lo primero de la pantalla (paciente), así que la primera
+// franja va pegada a la cabecera.
+export function PieDePerfil({ navigation, tituloSeguridad, alInicio = false }) {
+  const { confirmarCierreSesion } = useContext(AuthContext);
+  return (
+    <>
+      <FranjaSeccion icono="shield-checkmark-outline" titulo={tituloSeguridad} alInicio={alInicio} />
+      <SeccionesSeguridad contrasenaPrimero />
+
+      <FranjaSeccion icono="help-buoy-outline" titulo="Ayuda y soporte" />
+      {/* CU60: el mismo acceso a soporte que tenía el menú de inicio. */}
+      <TouchableOpacity
+        style={estilos.filaMenu}
+        onPress={() => navigation.navigate('Soporte')}
+        activeOpacity={interaccion.opacidadActiva}
+        accessibilityRole="button"
+      >
+        <View style={estilos.menuIconoCaja}>
+          <Text style={estilos.menuIcono}>🎫</Text>
+        </View>
+        <View style={estilos.menuTextos}>
+          <Text style={estilos.menuTitulo}>Ayuda y soporte</Text>
+          <Text style={estilos.menuAyuda}>
+            Reporta un problema y sigue el estado de tus solicitudes.
+          </Text>
+        </View>
+        <Text style={estilos.menuChevron}>›</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={estilos.botonSalir}
+        onPress={confirmarCierreSesion}
+        activeOpacity={interaccion.opacidadActiva}
+        accessibilityRole="button"
+      >
+        <Text style={estilos.botonSalirTexto}>Cerrar sesión</Text>
+      </TouchableOpacity>
+    </>
+  );
+}
+
+// comoPerfil: la pestaña "Mi perfil" del paciente (seguridad y privacidad
+// primero; la información personal irá arriba cuando exista).
+export default function SeguridadScreen({ navigation, comoPerfil = false }) {
+  return (
+    <VistaConTeclado style={estilos.fondo} contentContainerStyle={estilos.contenido}>
+      {comoPerfil ? (
+        <PieDePerfil navigation={navigation} tituloSeguridad="Seguridad y privacidad" alInicio />
+      ) : (
+        <SeccionesSeguridad />
+      )}
     </VistaConTeclado>
   );
 }
 
 const estilos = StyleSheet.create({
   fondo: { flex: 1, backgroundColor: colores.fondo },
-  contenido: { padding: 20, paddingBottom: 40 },
+  contenido: { padding: espacio.lg, paddingBottom: 40 },
   seccion: { fontSize: 17, fontWeight: 'bold', color: colores.primario, marginTop: 18, marginBottom: 6 },
   ayudaSeccion: { color: colores.textoSuave, fontSize: 13, marginBottom: 12 },
   cargando: { marginVertical: 12 },
@@ -395,4 +513,56 @@ const estilos = StyleSheet.create({
     paddingVertical: 10,
   },
   preferenciaTexto: { color: colores.texto, fontSize: 15 },
+  preferenciaTextos: { flex: 1, paddingRight: espacio.md },
+  preferenciaAyuda: { ...tipografia.micro, color: colores.textoTenue, marginTop: 2, letterSpacing: 0 },
+
+  // ── Mi perfil (paciente) ──
+  // La franja cruza todo el ancho: anula el margen lateral del contenido
+  // (espacio.lg, igual aquí y en el perfil del profesional).
+  franja: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espacio.sm,
+    marginHorizontal: -espacio.lg,
+    marginTop: espacio.xxl,
+    marginBottom: espacio.sm,
+    paddingHorizontal: espacio.lg,
+    paddingVertical: espacio.md,
+    backgroundColor: colores.primarioSuave,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: colores.primarioBorde,
+  },
+  franjaAlInicio: { marginTop: -espacio.lg, borderTopWidth: 0 },
+  franjaTexto: {
+    ...tipografia.micro,
+    color: colores.primario,
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
+  },
+  filaMenu: { ...piezas.tarjeta, flexDirection: 'row', alignItems: 'center', marginTop: espacio.sm },
+  menuIconoCaja: {
+    width: 46,
+    height: 46,
+    borderRadius: radio.md,
+    backgroundColor: colores.primarioSuave,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: espacio.base,
+  },
+  menuIcono: { fontSize: 22 },
+  menuTextos: { flex: 1 },
+  menuTitulo: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginBottom: 2 },
+  menuAyuda: { ...tipografia.meta, color: colores.textoSuave },
+  menuChevron: { fontSize: 28, color: colores.textoDeshabilitado, marginLeft: espacio.sm },
+  // Cerrar sesión: destructivo pero secundario, contorno y no bloque rojo.
+  botonSalir: {
+    marginTop: espacio.xxl,
+    paddingVertical: espacio.md,
+    borderRadius: radio.md,
+    borderWidth: 1.5,
+    borderColor: colores.error,
+    alignItems: 'center',
+  },
+  botonSalirTexto: { ...tipografia.cuerpoFuerte, color: colores.error },
 });

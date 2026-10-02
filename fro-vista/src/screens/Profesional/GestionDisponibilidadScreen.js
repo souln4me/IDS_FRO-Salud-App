@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import apiClient from '../../api/client';
 import VistaConTeclado from '../../components/VistaConTeclado';
@@ -6,6 +6,7 @@ import { AuthContext } from '../../context/AuthContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { colores, espacio, piezas, radio, sombra } from '../../theme';
 import DialogoConfirmacion from '../../components/DialogoConfirmacion';
+import { formatearFecha } from '../../utils/fechas';
 
 export default function GestionDisponibilidadScreen() {
     // Los avisos usan el diálogo de la app: el Alert nativo no sigue el diseño.
@@ -18,6 +19,25 @@ export default function GestionDisponibilidadScreen() {
   const [show, setShow] = useState(false);
   const [modo, setModo] = useState('inicio');
   const [motivo, setMotivo] = useState('');
+  // CU16: sin ver lo ya bloqueado no hay forma de saber qué días quedaron fuera.
+  const [bloqueos, setBloqueos] = useState([]);
+  const [cargandoBloqueos, setCargandoBloqueos] = useState(true);
+
+  const cargarBloqueos = useCallback(async () => {
+    setCargandoBloqueos(true);
+    try {
+      const { data } = await apiClient.get('/clinica/disponibilidad/bloqueos');
+      setBloqueos(data.bloqueos || []);
+    } catch {
+      setBloqueos([]);
+    } finally {
+      setCargandoBloqueos(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    cargarBloqueos();
+  }, [cargarBloqueos]);
 
   if (isLoading) {
     return (
@@ -69,6 +89,7 @@ export default function GestionDisponibilidadScreen() {
             setFin('');
             setMotivo('');
             if (userData?.role === 'Admin') setProfId('');
+            await cargarBloqueos();
             
         } catch (error) {
             setResultado({ tono: "error", titulo: "No se pudo bloquear", mensaje: error.response?.data?.mensaje || "Falla de red o de servidor." });
@@ -131,6 +152,28 @@ export default function GestionDisponibilidadScreen() {
         <TouchableOpacity style={styles.actionButton} onPress={bloquearAgenda}>
           <Text style={styles.saveButtonText}>CONFIRMAR BLOQUEO</Text>
         </TouchableOpacity>
+
+        {/* Los periodos ya inhabilitados, para no duplicarlos ni perderlos de vista.
+            El listado es de la agenda propia: el Admin bloquea agendas ajenas, no la suya. */}
+        {userData?.role !== 'Admin' && (
+        <View style={styles.listaBloqueos}>
+          <Text style={styles.listaTitulo}>Periodos bloqueados</Text>
+          {cargandoBloqueos ? (
+            <ActivityIndicator color={colores.primario} />
+          ) : bloqueos.length === 0 ? (
+            <Text style={styles.listaVacia}>Todavía no has bloqueado ningún periodo.</Text>
+          ) : (
+            bloqueos.map((b) => (
+              <View key={b.bloqueo_id} style={styles.bloqueoItem}>
+                <Text style={styles.bloqueoFechas}>
+                  📅 {formatearFecha(b.fecha_inicio)} → {formatearFecha(b.fecha_fin)}
+                </Text>
+                <Text style={styles.bloqueoMotivo}>{b.motivo}</Text>
+              </View>
+            ))
+          )}
+        </View>
+        )}
       </View>
 
       <DialogoConfirmacion
@@ -148,6 +191,20 @@ export default function GestionDisponibilidadScreen() {
 }
 
 const styles = StyleSheet.create({
+  listaBloqueos: { marginTop: espacio.lg, borderTopWidth: 1, borderTopColor: colores.bordeSuave, paddingTop: espacio.md },
+  listaTitulo: { fontWeight: '700', color: colores.textoTitulo, marginBottom: espacio.sm },
+  listaVacia: { color: colores.textoSuave },
+  bloqueoItem: {
+    paddingVertical: espacio.sm,
+    paddingHorizontal: espacio.md,
+    marginBottom: espacio.sm,
+    borderRadius: radio.md,
+    backgroundColor: colores.advertenciaSuave,
+    borderWidth: 1,
+    borderColor: colores.advertenciaBorde,
+  },
+  bloqueoFechas: { fontWeight: '600', color: colores.advertencia },
+  bloqueoMotivo: { color: colores.textoSuave, marginTop: 2 },
   container: { flex: 1, backgroundColor: colores.fondo },
   card: { backgroundColor: colores.superficie, borderRadius: radio.lg, padding: 20,
     ...sombra.media,

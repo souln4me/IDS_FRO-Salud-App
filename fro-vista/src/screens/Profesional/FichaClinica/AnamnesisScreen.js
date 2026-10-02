@@ -572,10 +572,10 @@ const styles = StyleSheet.create({
     padding: espacio.base,
     marginTop: espacio.xl,
   },
-  guiaTitulo: { ...tipografia.cuerpoFuerte, color: colores.exito, marginBottom: espacio.xs },
+  guiaTitulo: { ...tipografia.cuerpoFuerte, color: colores.primario, marginBottom: espacio.xs },
   guiaTexto: { ...tipografia.meta, color: colores.textoSuave, marginBottom: espacio.md },
   guiaBoton: {
-    backgroundColor: colores.exito,
+    backgroundColor: colores.primario,
     borderRadius: radio.md,
     paddingVertical: espacio.md,
     alignItems: 'center',

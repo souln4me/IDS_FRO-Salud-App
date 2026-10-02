@@ -185,7 +185,7 @@ const estilos = StyleSheet.create({
   instruccion: { color: colores.textoSuave, marginBottom: 10, fontWeight: '600' },
 
   botonPrimario: {
-    backgroundColor: colores.exito,
+    backgroundColor: colores.primario,
     borderRadius: radio.md,
     padding: 15,
     alignItems: 'center',

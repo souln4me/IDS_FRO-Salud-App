@@ -7,6 +7,8 @@
  * efectos: trazabilidad (CU22), descuento de sesiones (CU76) y avisos (CU18).
  */
 
+const { despachar } = require('../notifications/despachador');
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Parámetros de negocio (editables por el administrador en Parámetros Globales)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -81,17 +83,49 @@ async function obtenerTrazabilidadCita(connection, cita_id) {
  * Deja un aviso en la bandeja del usuario. Nunca lanza: si el aviso falla,
  * la operación principal debe mantenerse (Excepción 4 de CU17/CU18).
  */
-async function notificarUsuario(connection, usuario_id, tipo, contenido) {
+async function notificarUsuario(connection, usuario_id, tipo, contenido, extra = {}) {
   if (!usuario_id) return false;
   try {
-    await connection.execute(
-      `INSERT INTO Notificacion (canal, tipo, contenido, usuario_id)
-       VALUES ('APP', ?, ?, ?)`,
-      [tipo, contenido, usuario_id]
-    );
+    // CU52: el despachador decide los canales según las preferencias del
+    // usuario. Antes esto escribía directo en la tabla y el aviso no salía de
+    // la base de datos.
+    await despachar(connection, { usuario_id, tipo, contenido, ...extra });
     return true;
   } catch (error) {
     console.error(`[notificarUsuario] Falló el aviso a usuario ${usuario_id}:`, error.message);
+    return false;
+  }
+}
+
+/**
+ * CU55 — Terminada la sesión, se le pide al PACIENTE que califique la
+ * atención con un aviso en su propio teléfono. Antes el formulario aparecía
+ * en el celular del profesional, que no es quien debe evaluarse a sí mismo.
+ * El aviso abre Mis Citas con el formulario de esa cita ya desplegado.
+ */
+async function pedirEvaluacion(connection, citaId) {
+  try {
+    const [[cita]] = await connection.execute(
+      `SELECT pa.usuario_id,
+              TRIM(CONCAT_WS(' ', u.nombres, u.apellido_paterno)) AS profesional
+         FROM Cita c
+         JOIN Paciente pa ON pa.paciente_id = c.paciente_id
+         JOIN Profesional pr ON pr.profesional_id = c.profesional_id
+         JOIN Usuario u ON u.usuario_id = pr.usuario_id
+        WHERE c.cita_id = ? LIMIT 1`,
+      [citaId]
+    );
+    if (!cita) return false;
+    return notificarUsuario(
+      connection,
+      cita.usuario_id,
+      'EVALUAR_SESION',
+      `¿Cómo te fue en tu sesión con ${cita.profesional || 'tu profesional'}? ` +
+        'Tócalo para calificar la atención: tu opinión ayuda a otros pacientes a elegir.',
+      { datos: { pantalla: 'MisCitas', evaluar_cita_id: Number(citaId) } }
+    );
+  } catch (error) {
+    console.error('[pedirEvaluacion CU55]', error.message);
     return false;
   }
 }
@@ -162,44 +196,170 @@ async function descontarSesionPaquete(connection, paciente_id, motivo) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CU18 — Aviso a la lista de espera al liberarse un cupo
+//  CU19 — Lista de espera secuencial
 // ─────────────────────────────────────────────────────────────────────────────
 
+/** Datos del bloque liberado, para poder describirlo en el aviso. */
+async function datosDelBloque(conexion, cita_id) {
+  const [filas] = await conexion.execute(
+    `SELECT c.cita_id, c.fecha_hora_inicio, c.fecha_hora_fin, c.profesional_id, c.sede_id,
+            COALESCE(
+              NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellido_paterno)), ''),
+              CONCAT('Profesional #', c.profesional_id)
+            ) AS profesional,
+            COALESCE(e.nombre, 'General') AS especialidad
+       FROM Cita c
+       JOIN Profesional p ON p.profesional_id = c.profesional_id
+       LEFT JOIN Usuario u ON u.usuario_id = p.usuario_id
+       LEFT JOIN Especialidad e ON e.especialidad_id = p.especialidad_id
+      WHERE c.cita_id = ? LIMIT 1`,
+    [cita_id]
+  );
+  return filas[0] || null;
+}
+
+/** "el martes 30/09/2026 a las 10:00", para los textos de los avisos. */
+function describirBloque(bloque) {
+  if (!bloque?.fecha_hora_inicio) return 'el bloque que esperabas';
+  const f = new Date(bloque.fecha_hora_inicio);
+  const dos = (n) => String(n).padStart(2, '0');
+  return `el ${dos(f.getDate())}/${dos(f.getMonth() + 1)}/${f.getFullYear()} a las ${dos(f.getHours())}:${dos(f.getMinutes())}`;
+}
+
 /**
- * Notifica, en orden de posición, a los pacientes inscritos en la lista de
- * espera de una cita que acaba de liberarse. Nunca lanza: un fallo aquí no
- * debe revertir la cancelación (Excepción 4 del CU18).
+ * Ofrece el cupo liberado al PRIMERO de la lista que siga esperando, y a nadie
+ * más: esa es la regla del CU19 (aviso secuencial por orden de llegada). Si ya
+ * hay alguien con el turno vigente, no se toca nada hasta que venza.
+ *
+ * Nunca lanza: un fallo aquí no puede revertir la cancelación que liberó el
+ * bloque (Excepción 4 del CU18).
+ *
+ * @returns {Promise<number>} 1 si se ofreció a alguien, 0 si no había a quién.
  */
-async function notificarListaEspera(connection, cita_id) {
+async function ofrecerCupoListaEspera(connection, cita_id) {
   try {
-    const [inscritos] = await connection.execute(
+    // El cupo solo existe si el bloque quedó realmente libre. Sin esta
+    // comprobación, salir de la lista de un bloque OCUPADO le avisaba al
+    // siguiente que se había liberado algo que nunca se liberó.
+    const [[estadoBloque]] = await connection.execute(
+      `SELECT estado FROM Cita WHERE cita_id = ? LIMIT 1`,
+      [cita_id]
+    );
+    if (!estadoBloque || !String(estadoBloque.estado).startsWith('CANCELADA')) return 0;
+
+    // ¿Alguien tiene el turno abierto todavía? Entonces el cupo es suyo.
+    const [[turnoVigente]] = await connection.execute(
+      `SELECT 1 AS ok FROM Lista_Espera
+        WHERE cita_id = ? AND estado = 'NOTIFICADO' AND momento_expira > NOW()
+        LIMIT 1`,
+      [cita_id]
+    );
+    if (turnoVigente) return 0;
+
+    const [[siguiente]] = await connection.execute(
       `SELECT le.lista_espera_id, le.posicion, u.usuario_id
          FROM Lista_Espera le
          JOIN Paciente p ON p.paciente_id = le.paciente_id
          JOIN Usuario  u ON u.usuario_id  = p.usuario_id
-        WHERE le.cita_id = ? AND le.notificado = FALSE
-        ORDER BY le.posicion ASC, le.momento_inscripcion ASC`,
+        WHERE le.cita_id = ? AND le.estado = 'ESPERANDO'
+        ORDER BY le.posicion ASC, le.momento_inscripcion ASC
+        LIMIT 1`,
       [cita_id]
     );
+    if (!siguiente) return 0;
 
-    for (const inscrito of inscritos) {
-      await notificarUsuario(
-        connection,
-        inscrito.usuario_id,
-        'CUPO_DISPONIBLE',
-        'Se liberó un cupo por el que estabas en lista de espera. Entra a la app para reservarlo.'
-      );
-      await connection.execute(
-        `UPDATE Lista_Espera SET notificado = TRUE WHERE lista_espera_id = ?`,
-        [inscrito.lista_espera_id]
-      );
-    }
+    const minutos = await leerParametroEntero(
+      connection, 'PLAZO_RESPUESTA_LISTA_ESPERA_MINUTOS', 30
+    );
 
-    return inscritos.length;
+    // Enlace del correo para tomar el cupo sin abrir la app.
+    const token = require('crypto').randomBytes(24).toString('hex');
+    await connection.execute(
+      `UPDATE Lista_Espera
+          SET estado = 'NOTIFICADO',
+              notificado = TRUE,
+              momento_notificacion = NOW(),
+              momento_expira = DATE_ADD(NOW(), INTERVAL ? MINUTE),
+              token_cupo = ?
+        WHERE lista_espera_id = ?`,
+      [minutos, token, siguiente.lista_espera_id]
+    );
+    // Carga diferida: confirmacionService depende de este módulo.
+    const { urlPublica } = require('./confirmacionService');
+    const enlace = `${urlPublica()}/api/citas/lista-espera/cupo/${token}`;
+
+    const bloque = await datosDelBloque(connection, cita_id);
+    const cuando = describirBloque(bloque);
+
+    await notificarUsuario(
+      connection,
+      siguiente.usuario_id,
+      'CUPO_DISPONIBLE',
+      `Se liberó el cupo de ${cuando}${bloque?.profesional ? ` con ${bloque.profesional}` : ''}. ` +
+      `Eres el primero de la lista: tienes ${minutos} minutos para tomarlo antes de que pase al siguiente.`,
+      {
+        datos: { pantalla: 'MisCitas', cita_id: Number(cita_id), lista_espera: true },
+        correo: {
+          asunto: 'Se liberó el cupo que esperabas - Punto Paz Salud',
+          accion:
+            `<p style="text-align:center;margin:24px 0;"><a href="${enlace}" ` +
+            'style="display:inline-block;background:#003B4D;color:#FFFFFF;text-decoration:none;' +
+            'font-weight:600;padding:14px 28px;border-radius:10px;font-size:15px;">Tomar el cupo</a></p>' +
+            `<p style="color:#5D564D;font-size:13px;">Tienes ${minutos} minutos. También puedes tomarlo ` +
+            'desde la app, sección <b>Mis Citas</b>.</p>',
+        },
+      }
+    );
+
+    return 1;
   } catch (error) {
-    console.error('[notificarListaEspera] Falló el aviso de cupo liberado:', error.message);
+    console.error('[ofrecerCupoListaEspera] Falló el aviso de cupo liberado:', error.message);
     return 0;
   }
+}
+
+/**
+ * Excepción 4 del CU19: al que no responde dentro del plazo se le revoca la
+ * prioridad y el cupo pasa automáticamente al siguiente de la fila.
+ *
+ * Se ejecuta desde el programador y también de forma oportunista cada vez que
+ * alguien consulta sus listas, porque en el plan gratuito de Render el
+ * servidor se duerme y el temporizador no corre mientras tanto.
+ *
+ * @returns {Promise<{vencidos: number, ofrecidos: number}>}
+ */
+async function revisarVencimientosListaEspera(conexion) {
+  const resumen = { vencidos: 0, ofrecidos: 0 };
+  try {
+    const [vencidos] = await conexion.execute(
+      `SELECT le.lista_espera_id, le.cita_id, u.usuario_id
+         FROM Lista_Espera le
+         JOIN Paciente p ON p.paciente_id = le.paciente_id
+         JOIN Usuario  u ON u.usuario_id  = p.usuario_id
+        WHERE le.estado = 'NOTIFICADO' AND le.momento_expira <= NOW()`
+    );
+
+    for (const turno of vencidos) {
+      await conexion.execute(
+        `UPDATE Lista_Espera SET estado = 'VENCIDO' WHERE lista_espera_id = ?`,
+        [turno.lista_espera_id]
+      );
+      resumen.vencidos++;
+
+      await notificarUsuario(
+        conexion,
+        turno.usuario_id,
+        'CUPO_CEDIDO',
+        'Se venció el plazo para tomar el cupo que se había liberado, así que pasó al siguiente de la lista. ' +
+        'Puedes inscribirte en otro bloque cuando quieras.'
+      );
+
+      resumen.ofrecidos += await ofrecerCupoListaEspera(conexion, turno.cita_id);
+    }
+  } catch (error) {
+    console.error('[revisarVencimientosListaEspera]', error.message);
+  }
+  return resumen;
 }
 
 module.exports = {
@@ -207,7 +367,11 @@ module.exports = {
   registrarTrazabilidadAgenda,
   obtenerTrazabilidadCita,
   notificarUsuario,
+  pedirEvaluacion,
   obtenerContactosCita,
   descontarSesionPaquete,
-  notificarListaEspera,
+  ofrecerCupoListaEspera,
+  revisarVencimientosListaEspera,
+  datosDelBloque,
+  describirBloque,
 };

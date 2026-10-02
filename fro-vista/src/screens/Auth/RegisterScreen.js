@@ -3,11 +3,14 @@ import { View, Text, TextInput, Button, StyleSheet, TouchableOpacity } from 'rea
 import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
 import VistaConTeclado from '../../components/VistaConTeclado';
-import LogoFro from '../../components/LogoFro';
+import LogoMarca from '../../components/LogoMarca';
 import { validateRut } from '../../utils/validators';
 import { requisitosIncumplidos } from '../../utils/contrasena';
 import { colores, espacio, radio, tipografia, piezas } from '../../theme';
 import DialogoAviso from '../../components/DialogoAviso';
+import CampoContrasena from '../../components/CampoContrasena';
+import RequisitosContrasena from '../../components/RequisitosContrasena';
+import EditorBloqueHorario, { BotonAgregarBloque } from '../../components/EditorBloqueHorario';
 import DialogoConfirmacion from '../../components/DialogoConfirmacion';
 
 const RegisterScreen = ({ navigation }) => {
@@ -19,6 +22,8 @@ const RegisterScreen = ({ navigation }) => {
     const [especialidades, setEspecialidades] = useState([]);
     const [errores, setErrores] = useState({});
     const [disponibilidad, setDisponibilidad] = useState([]);
+    // CU14: comunas donde el profesional atiende a domicilio (puede ser más de una).
+    const [comunasAtencion, setComunasAtencion] = useState([]);
 
     const [formData, setFormData] = useState({
         rut: '', nombres: '', apellido_paterno: '', apellido_materno: '', email: '', telefono: '', contrasena: '', confirmar_contrasena: '',
@@ -70,13 +75,11 @@ const RegisterScreen = ({ navigation }) => {
         // El bloque nuevo hereda la modalidad general elegida arriba, pero se
         // puede cambiar por bloque (ej: lunes online, martes a domicilio).
         const modalidadInicial = formData.tipo_sede || 'DOMICILIO';
-        setDisponibilidad([...disponibilidad, { dia_semana: '1', hora_inicio: '08:00', hora_fin: '12:00', modalidad: modalidadInicial }]);
+        setDisponibilidad([...disponibilidad, { dia_semana: 1, hora_inicio: '08:00', hora_fin: '12:00', modalidad: modalidadInicial }]);
     };
 
     const actualizarHorario = (index, campo, valor) => {
-        const nuevosHorarios = [...disponibilidad];
-        nuevosHorarios[index][campo] = valor;
-        setDisponibilidad(nuevosHorarios);
+        setDisponibilidad((previos) => previos.map((b, i) => (i === index ? { ...b, [campo]: valor } : b)));
     };
 
     const eliminarHorario = (index) => {
@@ -122,6 +125,19 @@ const RegisterScreen = ({ navigation }) => {
             if(disponibilidad.length === 0) { 
                 setAviso({ tono: 'error', titulo: "Agenda Vacía", mensaje: "Debe agregar al menos un bloque horario." }); 
                 esValido = false; 
+            } else if (disponibilidad.some((b) => b.hora_inicio >= b.hora_fin)) {
+                setAviso({ tono: 'error', titulo: 'Revisa tus horarios', mensaje: 'En cada bloque, la hora de término debe ser posterior a la de inicio.' });
+                esValido = false;
+            }
+            // Quien atiende a domicilio tiene que decir dónde: el paciente solo
+            // ve a los profesionales que llegan a su comuna.
+            if (['DOMICILIO', 'AMBOS'].includes(formData.tipo_sede) && comunasAtencion.length === 0) {
+                setAviso({
+                    tono: 'error',
+                    titulo: 'Faltan las comunas',
+                    mensaje: 'Elige al menos una comuna de atención a domicilio: los pacientes buscan por su comuna.',
+                });
+                esValido = false;
             }
         }
 
@@ -188,7 +204,7 @@ const RegisterScreen = ({ navigation }) => {
         try {
             let response;
             if (esProfesional) {
-                const payloadProfesional = { ...formData, disponibilidad };
+                const payloadProfesional = { ...formData, disponibilidad, comunas: comunasAtencion };
                 response = await apiClient.post('/auth/registrar-profesional', payloadProfesional);
             } else {
                 response = await apiClient.post('/auth/registrar', formData);
@@ -226,7 +242,7 @@ const RegisterScreen = ({ navigation }) => {
     return (
         <VistaConTeclado style={styles.container} contentContainerStyle={{ paddingBottom: 80 }}>
                 <View style={styles.cabecera}>
-                    <LogoFro tamano="md" />
+                    <LogoMarca tamano="md" />
                     <Text style={styles.title}>
                         {esProfesional ? 'Alta de profesional' : 'Crear cuenta'}
                     </Text>
@@ -275,12 +291,14 @@ const RegisterScreen = ({ navigation }) => {
                 </View>
                 <View style={styles.campo}>
                     <Text style={styles.label}>Contraseña</Text>
-                    <TextInput style={[styles.input, errores.contrasena && styles.inputError]} placeholder="8+ caracteres, letra, número y símbolo" secureTextEntry value={formData.contrasena} onChangeText={(v) => handleChange('contrasena', v)} />
+                    <CampoContrasena style={[styles.input, errores.contrasena && styles.inputError]} placeholder="8+ caracteres, letra, número y símbolo" value={formData.contrasena} onChangeText={(v) => handleChange('contrasena', v)} />
                 </View>
                 <View style={styles.campo}>
                     <Text style={styles.label}>Confirmar contraseña</Text>
-                    <TextInput style={[styles.input, errores.confirmar_contrasena && styles.inputError]} placeholder="Repite la contraseña" secureTextEntry value={formData.confirmar_contrasena} onChangeText={(v) => handleChange('confirmar_contrasena', v)} />
+                    <CampoContrasena style={[styles.input, errores.confirmar_contrasena && styles.inputError]} placeholder="Repite la contraseña" value={formData.confirmar_contrasena} onChangeText={(v) => handleChange('confirmar_contrasena', v)} />
                 </View>
+                {/* Los requisitos se marcan mientras se escribe, igual que al cambiar o recuperar la contraseña. */}
+                <RequisitosContrasena contrasena={formData.contrasena} confirmacion={formData.confirmar_contrasena} style={styles.requisitos} />
 
                 {!esProfesional && (
                     <View>
@@ -359,6 +377,39 @@ const RegisterScreen = ({ navigation }) => {
                             </Picker>
                         </View>
 
+                        {['DOMICILIO', 'AMBOS'].includes(formData.tipo_sede) && (
+                            <View style={styles.campo}>
+                                <Text style={styles.label}>Comunas donde atenderás a domicilio</Text>
+                                <View style={styles.comunasFila}>
+                                    {comunas.map((c) => {
+                                        const elegida = comunasAtencion.includes(c.comuna_id);
+                                        return (
+                                            <TouchableOpacity
+                                                key={c.comuna_id.toString()}
+                                                style={[styles.comunaChip, elegida && styles.comunaChipElegida]}
+                                                onPress={() =>
+                                                    setComunasAtencion((previas) =>
+                                                        previas.includes(c.comuna_id)
+                                                            ? previas.filter((id) => id !== c.comuna_id)
+                                                            : [...previas, c.comuna_id]
+                                                    )
+                                                }
+                                            >
+                                                <Text style={[styles.comunaChipTexto, elegida && styles.comunaChipTextoElegida]}>
+                                                    {elegida ? '✓ ' : ''}{c.nombre}
+                                                </Text>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </View>
+                                <Text style={styles.ayudaComunas}>
+                                    Puedes elegir varias. Los pacientes solo verán tus horas a domicilio
+                                    si viven en una de ellas; las teleconsultas no dependen de la comuna.
+                                    Después puedes cambiarlas en Mi Perfil.
+                                </Text>
+                            </View>
+                        )}
+
                         <View style={styles.campo}>
                             <Text style={styles.label}>Reseña curricular</Text>
                             <TextInput style={[styles.input, { height: 80, textAlignVertical: 'top' }]} placeholder="Breve descripción de tu experiencia" multiline numberOfLines={3} value={formData.resena_curricular} onChangeText={(v) => handleChange('resena_curricular', v)} />
@@ -366,41 +417,14 @@ const RegisterScreen = ({ navigation }) => {
 
                         <Text style={styles.subHeader}>Matriz de Jornada Laboral</Text>
                         {disponibilidad.map((bloque, index) => (
-                            <View key={index} style={styles.horarioBox}>
-                                <View style={styles.pickerContainerHorario}>
-                                    <Picker selectedValue={bloque.dia_semana} onValueChange={(v) => actualizarHorario(index, 'dia_semana', v)} style={{ height: 55, justifyContent: 'center' }}>
-                                        <Picker.Item label="Lunes" value="1" />
-                                        <Picker.Item label="Martes" value="2" />
-                                        <Picker.Item label="Miércoles" value="3" />
-                                        <Picker.Item label="Jueves" value="4" />
-                                        <Picker.Item label="Viernes" value="5" />
-                                        <Picker.Item label="Sábado" value="6" />
-                                        <Picker.Item label="Domingo" value="7" />
-                                    </Picker>
-                                </View>
-                                <View style={styles.pickerContainerHorario}>
-                                    <Picker selectedValue={bloque.modalidad || 'DOMICILIO'} onValueChange={(v) => actualizarHorario(index, 'modalidad', v)} style={{ height: 55, justifyContent: 'center' }}>
-                                        <Picker.Item label="En este horario: A Domicilio" value="DOMICILIO" />
-                                        <Picker.Item label="En este horario: Online" value="ONLINE" />
-                                        <Picker.Item label="En este horario: Ambas" value="AMBOS" />
-                                    </Picker>
-                                </View>
-                                <View style={styles.row}>
-                                    <View style={styles.campo}>
-                                        <Text style={styles.label}>Inicio</Text>
-                                        <TextInput style={[styles.input, { width: '40%', marginBottom: 0 }]} placeholder="08:00" value={bloque.hora_inicio} onChangeText={(v) => actualizarHorario(index, 'hora_inicio', v)} />
-                                    </View>
-                                    <View style={styles.campo}>
-                                        <Text style={styles.label}>Fin</Text>
-                                        <TextInput style={[styles.input, { width: '40%', marginBottom: 0 }]} placeholder="13:00" value={bloque.hora_fin} onChangeText={(v) => actualizarHorario(index, 'hora_fin', v)} />
-                                    </View>
-                                    <TouchableOpacity style={styles.btnEliminar} onPress={() => eliminarHorario(index)}>
-                                        <Text style={{ color: colores.superficie, fontWeight: 'bold' }}>X</Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
+                            <EditorBloqueHorario
+                                key={index}
+                                bloque={bloque}
+                                onCambiar={(campo, valor) => actualizarHorario(index, campo, valor)}
+                                onEliminar={() => eliminarHorario(index)}
+                            />
                         ))}
-                        <Button title="+ Añadir Bloque Horario" onPress={agregarBloqueHorario} color={colores.primario} />
+                        <BotonAgregarBloque onPress={agregarBloqueHorario} />
                     </View>
                 )}
 
@@ -452,7 +476,7 @@ const styles = StyleSheet.create({
     },
 
     // Rótulo de sección: mayúsculas pequeñas, sin la franja gris de antes.
-    // Título de sección: verde de marca, con una barra que lo ancla a la
+    // Título de sección: azul de marca, con una barra que lo ancla a la
     // izquierda en vez del rótulo gris apagado de antes.
     sectionHeader: {
         ...tipografia.subtitulo,
@@ -464,8 +488,22 @@ const styles = StyleSheet.create({
         marginBottom: espacio.base,
     },
     campo: { marginBottom: espacio.base },
+    requisitos: { marginTop: -espacio.sm, marginBottom: espacio.base },
     campoMitad: { flex: 1, marginBottom: espacio.base },
     label: { ...piezas.etiqueta },
+    comunasFila: { flexDirection: 'row', flexWrap: 'wrap', gap: espacio.sm },
+    comunaChip: {
+        paddingVertical: espacio.sm,
+        paddingHorizontal: espacio.md,
+        borderRadius: radio.completo,
+        borderWidth: 1,
+        borderColor: colores.bordeCampo,
+        backgroundColor: colores.superficie,
+    },
+    comunaChipElegida: { borderColor: colores.primario, backgroundColor: colores.primarioSuave },
+    comunaChipTexto: { ...tipografia.meta, color: colores.textoSuave, fontWeight: '600' },
+    comunaChipTextoElegida: { color: colores.primario },
+    ayudaComunas: { ...tipografia.meta, color: colores.textoTenue, marginTop: espacio.sm },
     subHeader: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginTop: espacio.md, marginBottom: espacio.sm },
 
     // alignItems al final: el botón queda a la altura del campo, no de su etiqueta.
@@ -483,15 +521,6 @@ const styles = StyleSheet.create({
         overflow: 'hidden',
         paddingHorizontal: espacio.sm,
     },
-    pickerContainerHorario: {
-        backgroundColor: colores.superficie,
-        borderWidth: 1,
-        borderColor: colores.bordeCampo,
-        borderRadius: radio.md,
-        marginBottom: espacio.sm,
-        overflow: 'hidden',
-        paddingHorizontal: espacio.sm,
-    },
 
     btnValidar: {
         ...piezas.botonSecundario,
@@ -501,20 +530,6 @@ const styles = StyleSheet.create({
     },
     txtBtnValidar: { ...tipografia.metaFuerte, color: colores.primario, textAlign: 'center' },
 
-    horarioBox: {
-        ...piezas.tarjeta,
-        padding: espacio.md,
-        marginBottom: espacio.base,
-    },
-    btnEliminar: {
-        width: 48,
-        borderRadius: radio.md,
-        borderWidth: 1.5,
-        borderColor: colores.error,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginBottom: espacio.sm,
-    },
 
     buttonContainer: { marginTop: espacio.xl, marginBottom: espacio.xxxl },
 });

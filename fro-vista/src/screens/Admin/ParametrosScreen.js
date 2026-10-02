@@ -1,7 +1,7 @@
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { Platform } from 'react-native';
 
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -15,19 +15,34 @@ import {
 import apiClient from '../../api/client'; 
 import ErrorRetry from '../../components/ErrorRetry';
 import VistaConTeclado from '../../components/VistaConTeclado'; 
-import { AuthContext } from '../../context/AuthContext'
 import { formatearFechaHora } from '../../utils/fechas';
 import { colores, radio, sombra } from '../../theme';
 import DialogoAviso from '../../components/DialogoAviso';
 
-export default function ParametrosScreen({ navigation }) {
-  const { confirmarCierreSesion } = useContext(AuthContext);
+/** Texto sin tildes, en minúsculas y con espacios en vez de guiones bajos. */
+const normalizar = (texto) =>
+  String(texto || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/_/g, ' ')
+    .toLowerCase();
 
+/** ¿El parámetro calza con lo buscado? Cada palabra debe aparecer. */
+function coincide(parametro, busqueda) {
+  const palabras = normalizar(busqueda).split(/\s+/).filter(Boolean);
+  if (palabras.length === 0) return true;
+  const texto = normalizar(`${parametro.clave} ${parametro.descripcion}`);
+  return palabras.every((p) => texto.includes(p));
+}
+
+export default function ParametrosScreen({ navigation }) {
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
 
   const [aviso, setAviso] = useState(null);
 
   const [parametros, setParametros] = useState([]);
+  // Filtro por nombre o descripción del parámetro.
+  const [busqueda, setBusqueda] = useState('');
   const [erroresLocales, setErroresLocales] = useState({}); 
   const [isLoading, setIsLoading] = useState(true);
   const [errorRed, setErrorRed] = useState(false);
@@ -150,11 +165,6 @@ const aplicarRestriccion = async () => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.header}>
-        <Text style={styles.title}>Parámetros Globales</Text>
-        <Text style={styles.subtitle}>Panel de Control Administrativo</Text>
-      </View>
-
       {isLoading ? (
         <View style={styles.centerContent}>
           <ActivityIndicator size="large" color={colores.primario} />
@@ -176,7 +186,31 @@ const aplicarRestriccion = async () => {
             Modifique los valores arancelarios o matrices de negocio con precaución. Los cambios impactan inmediatamente en la red.
           </Text>
 
+          <View style={styles.buscador}>
+            <Text style={styles.buscadorIcono}>🔍</Text>
+            <TextInput
+              style={styles.buscadorCampo}
+              placeholder="Buscar parámetro (ej. lista de espera, arancel)"
+              placeholderTextColor={colores.textoTenue}
+              value={busqueda}
+              onChangeText={setBusqueda}
+              autoCorrect={false}
+              clearButtonMode="while-editing"
+            />
+            {busqueda ? (
+              <TouchableOpacity onPress={() => setBusqueda('')} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Text style={styles.buscadorLimpiar}>✕</Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          {busqueda.trim() && !parametros.some((p) => coincide(p, busqueda)) ? (
+            <Text style={styles.sinResultados}>Ningún parámetro coincide con “{busqueda.trim()}”.</Text>
+          ) : null}
+
           {parametros.map((param, index) => {
+            // El índice original se conserva: los errores de validación van por índice.
+            if (!coincide(param, busqueda)) return null;
             const tieneError = erroresLocales[index] !== undefined;
             const estaVacio = String(param.valor).trim() === '';
 
@@ -253,24 +287,6 @@ const aplicarRestriccion = async () => {
         </VistaConTeclado>
       )}
 
-      {/* CU41 Exc.2 (D11): sesiones derivadas por discrepancias multi-factor */}
-      <TouchableOpacity
-        style={styles.securityLink}
-        onPress={() => navigation.navigate('SesionesSuspendidas')}
-      >
-        <Text style={styles.securityLinkText}>⚠️ Sesiones suspendidas en revisión</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.securityLink}
-        onPress={() => navigation.navigate('Seguridad')}
-      >
-        <Text style={styles.securityLinkText}>🔐 Seguridad de la cuenta</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity style={styles.logoutButton} onPress={confirmarCierreSesion}>
-        <Text style={styles.logoutButtonText}>CERRAR SESIÓN</Text>
-      </TouchableOpacity>
     <DialogoAviso
       visible={aviso !== null}
       titulo={aviso?.titulo || ''}
@@ -287,14 +303,7 @@ const aplicarRestriccion = async () => {
 }
 
 const styles = StyleSheet.create({
-  securityLink: { alignItems: 'center', paddingVertical: 10 },
-  securityLinkText: { color: colores.primario, fontWeight: 'bold' },
   container: { flex: 1, backgroundColor: colores.fondo },
-  header: { backgroundColor: colores.primario, padding: 20, paddingTop: 40, borderBottomLeftRadius: radio.lg, borderBottomRightRadius: radio.lg,
-    ...sombra.media,
-  },
-  title: { fontSize: 22, fontWeight: 'bold', color: colores.superficie },
-  subtitle: { fontSize: 15, color: colores.borde, marginTop: 5 },
   centerContent: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 15, color: colores.textoSuave, fontSize: 15 },
   scrollContent: { padding: 15, paddingBottom: 40 },
@@ -313,8 +322,18 @@ const styles = StyleSheet.create({
   saveButtonText: { color: colores.superficie, fontWeight: 'bold', fontSize: 13, letterSpacing: 1 },
   saveButtonTextDisabled: { color: colores.textoTenue },
   timestampText: { fontSize: 11, color: colores.textoTenue, marginTop: 10, textAlign: 'center' },
-  logoutButton: { backgroundColor: colores.error, margin: 20, padding: 15, borderRadius: radio.sm, alignItems: 'center',
-    ...sombra.suave,
+  buscador: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colores.superficie,
+    borderWidth: 1,
+    borderColor: colores.bordeCampo,
+    borderRadius: radio.md,
+    paddingHorizontal: 12,
+    marginBottom: 15,
   },
-  logoutButtonText: { color: colores.superficie, fontWeight: 'bold', fontSize: 15, letterSpacing: 1 }
+  buscadorIcono: { fontSize: 15, marginRight: 8 },
+  buscadorCampo: { flex: 1, paddingVertical: 11, fontSize: 15, color: colores.texto },
+  buscadorLimpiar: { fontSize: 15, color: colores.textoSuave, paddingHorizontal: 4 },
+  sinResultados: { color: colores.textoSuave, fontStyle: 'italic', textAlign: 'center', marginBottom: 15 },
 });

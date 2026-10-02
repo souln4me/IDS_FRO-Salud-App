@@ -14,6 +14,7 @@ const app = require('./src/app');
 // Requerir la configuración de la base de datos para forzar la validación de conexión al arrancar
 const pool = require('./src/config/database');
 const { ejecutarMigraciones } = require('./scripts/migrar-db');
+const { iniciarProgramador } = require('./src/services/agenda/programador');
 
 const PORT = process.env.PORT || 3000;
 // En la nube el servicio corre dentro de un contenedor: hay que escuchar en
@@ -32,6 +33,8 @@ async function iniciar() {
 
   app.listen(PORT, HOST, () => {
     console.log(`🚀 Servidor backend escuchando en ${HOST}:${PORT}`);
+    // CU19/CU21: solicitudes de confirmación y turnos de lista de espera.
+    iniciarProgramador(pool);
   });
 }
 

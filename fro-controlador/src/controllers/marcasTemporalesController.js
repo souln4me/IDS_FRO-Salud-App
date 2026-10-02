@@ -1,5 +1,6 @@
 const pool = require('../config/database');
-const { descontarSesionPaquete } = require('../services/agenda/agendaService');
+const { actualizarIndicador } = require('../services/clinico/adherenciaService');
+const { descontarSesionPaquete, pedirEvaluacion } = require('../services/agenda/agendaService');
 
 function obtenerIP(req) {
   return (
@@ -61,8 +62,21 @@ async function registrarAuditoria(connection, req, accion, datos) {
   );
 }
 
+// Valida AAAA-MM-DD y descarta cualquier otra cosa: la fecha entra en la
+// consulta y no puede venir con sorpresas.
+function fechaSimple(valor) {
+  const texto = String(valor || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(texto) ? texto : null;
+}
+
 exports.listarCitasProfesional = async (req, res) => {
   try {
+    // La jornada por día pide un rango (una semana); sin rango se devuelve todo,
+    // como antes, para no romper a ningún cliente.
+    const desde = fechaSimple(req.query?.desde);
+    const hasta = fechaSimple(req.query?.hasta);
+    const rango = desde && hasta;
+
     const [citas] = await pool.execute(
       `SELECT
           c.cita_id,
@@ -87,16 +101,14 @@ exports.listarCitasProfesional = async (req, res) => {
        LEFT JOIN Paciente pa ON pa.paciente_id = c.paciente_id
        LEFT JOIN Usuario u ON u.usuario_id = pa.usuario_id
        WHERE p.usuario_id = ?
+         -- La jornada incluye lo que todavía hay que confirmar y las
+         -- inasistencias del día: son parte de lo que pasó en esa hora. Las
+         -- canceladas no, porque el bloque quedó libre.
          AND UPPER(REPLACE(TRIM(c.estado), ' ', '_'))
-             IN ('CONFIRMADA', 'EN_CURSO', 'REALIZADA')
-       ORDER BY
-         CASE UPPER(REPLACE(TRIM(c.estado), ' ', '_'))
-           WHEN 'EN_CURSO' THEN 1
-           WHEN 'CONFIRMADA' THEN 2
-           ELSE 3
-         END,
-         c.fecha_hora_inicio DESC`,
-      [req.user.usuario_id]
+             IN ('AGENDADA', 'CONFIRMADA', 'EN_CURSO', 'REALIZADA', 'INASISTENCIA')
+         ${rango ? 'AND DATE(c.fecha_hora_inicio) BETWEEN ? AND ?' : ''}
+       ORDER BY c.fecha_hora_inicio ASC`,
+      rango ? [req.user.usuario_id, desde, hasta] : [req.user.usuario_id]
     );
 
     return res.status(200).json({ citas });
@@ -346,7 +358,14 @@ exports.finalizarAtencion = async (req, res) => {
       inventario
     });
 
+    // CU55: el paciente recibe el aviso para calificar la sesión.
+    await pedirEvaluacion(connection, cita_id);
+
     await connection.commit();
+
+    // CU44: cerrar la atención es uno de los eventos que refrescan los
+    // indicadores del paciente. Fuera de la transacción y sin esperar.
+    actualizarIndicador(pool, cita.paciente_id).catch(() => {});
 
     return res.status(200).json({
       mensaje: 'Atencion finalizada correctamente.',
