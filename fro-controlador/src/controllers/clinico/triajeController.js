@@ -13,6 +13,7 @@ const {
   estructurarTriaje,
   plantillaParaEspecialidad,
 } = require('../../services/clinico/triajeService');
+const { generarReporte } = require('../../services/clinico/preclinicoService');
 
 /** Paciente del usuario autenticado (Excepción 1 del CU24 si no existe). */
 async function pacienteDeUsuario(usuarioId) {
@@ -328,11 +329,24 @@ exports.completarTriaje = async (req, res) => {
       console.error('[completarTriaje] Sin registro en bitácora:', errorBitacora.message);
     }
 
+    // CU25/CU26: con la entrevista cerrada se sintetiza el reporte pre-clínico
+    // (banderas rojas para el profesional) y la especialidad sugerida para el
+    // paciente. Si falla, el triaje igual queda completado: el reporte se
+    // genera solo la primera vez que alguien lo abre.
+    const sintesis = await generarReporte(connection, {
+      pacienteId,
+      triajeId,
+      respuestas,
+    });
+
     await connection.commit();
 
     return res.status(200).json({
       mensaje: 'Entrevista completada. Tus respuestas quedaron integradas a tu ficha clínica.',
       triaje_id: triajeId,
+      // CU26: sugerencia de derivación para mostrarla al cerrar la entrevista.
+      derivacion: sintesis?.derivacion || null,
+      banderas: sintesis?.analisis?.banderas || [],
       vista_previa: estructura.texto,
       alergias_registradas: estructura.alergias,
       cirugias_registradas: estructura.quirurgicos || [],

@@ -17,11 +17,11 @@ import {
   StyleSheet,
 } from 'react-native';
 
-import apiClient from '../../api/client';
+import apiClient, { getMiDerivacion } from '../../api/client';
 import ErrorRetry from '../../components/ErrorRetry';
 import VistaConTeclado from '../../components/VistaConTeclado';
 import { formatearFecha } from '../../utils/fechas';
-import { colores, espacio, radio, tipografia } from '../../theme';
+import { colores, espacio, radio, tipografia, piezas } from '../../theme';
 import DialogoAviso from '../../components/DialogoAviso';
 
 /**
@@ -40,6 +40,9 @@ function desglosarResumen(texto) {
       // "── TRIAJE AUTOMATIZADO (05/09/2026) ──" y sus cierres.
       if (/^─+/.test(linea) || /^──/.test(linea)) {
         const limpio = linea.replace(/[─-]/g, '').trim();
+        // "FIN TRIAJE" es un marcador interno (la ficha lo usa para separar
+        // el bloque del triaje); al paciente no le dice nada.
+        if (/^FIN TRIAJE$/i.test(limpio)) return null;
         return limpio ? { tipo: 'encabezado', texto: limpio } : null;
       }
       const corte = linea.indexOf(':');
@@ -58,12 +61,16 @@ export default function TriajeScreen({ navigation }) {
   // fase: 'cargando' | 'error' | 'disclaimer' | 'entrevista' | 'completado' | 'resumen'
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
   const [aviso, setAviso] = useState(null);
+  // CU26: a qué especialidad orienta la entrevista recién completada.
+  const [derivacion, setDerivacion] = useState(null);
   const [fase, setFase] = useState('cargando');
   const [disclaimer, setDisclaimer] = useState(null);
   const [arbol, setArbol] = useState(null);
   const [nodoActual, setNodoActual] = useState(null);
   const [respuestas, setRespuestas] = useState({});
   const [entradaTexto, setEntradaTexto] = useState('');
+  // Al volver atrás, la opción que se había elegido queda marcada.
+  const [respuestaPrevia, setRespuestaPrevia] = useState(null);
   const [procesando, setProcesando] = useState(false);
   const [fechaCompletado, setFechaCompletado] = useState(null);
   const [vistaPrevia, setVistaPrevia] = useState('');
@@ -77,6 +84,8 @@ export default function TriajeScreen({ navigation }) {
 
       if (data.triaje?.estado === 'COMPLETADO') {
         setFechaCompletado(data.triaje.momento_completado);
+        const vigente = await getMiDerivacion().catch(() => null);
+        setDerivacion(vigente?.hay_triaje ? vigente.derivacion || null : null);
         setFase('completado');
         return;
       }
@@ -173,6 +182,7 @@ export default function TriajeScreen({ navigation }) {
     respuestasRef.current = nuevas;
     setRespuestas(nuevas);
     setEntradaTexto('');
+    setRespuestaPrevia(null);
 
     // Guardado parcial silencioso: si falla, la entrevista continúa igual y
     // el próximo guardado lo reintenta (Exc.4 del CU23).
@@ -190,6 +200,51 @@ export default function TriajeScreen({ navigation }) {
     }
   };
 
+  /** Preguntas ya respondidas que llevan hasta `destino`, en orden. */
+  const caminoHasta = (datosArbol, previas, destino) => {
+    const camino = [];
+    const vistos = new Set();
+    let cursor = datosArbol.inicio;
+    while (cursor && cursor !== 'FIN' && cursor !== destino && !vistos.has(cursor)) {
+      vistos.add(cursor);
+      const nodo = datosArbol.nodos[cursor];
+      if (!nodo || !(nodo.id in previas)) break;
+      camino.push(cursor);
+      cursor =
+        nodo.tipo === 'opciones'
+          ? nodo.opciones.find((o) => o.valor === previas[nodo.id])?.siguiente
+          : nodo.siguiente;
+    }
+    return camino;
+  };
+
+  // ── Volver a la pregunta anterior ──────────────────────────────────────────
+  // Se reabre la pregunta previa con su respuesta a la vista (en las de texto
+  // o número queda escrita para corregirla). Se descartan esa respuesta y las
+  // que venían después: al cambiarla, el camino del árbol puede ser otro.
+  const volverAtras = () => {
+    const camino = caminoHasta(arbol, respuestasRef.current, nodoActual);
+    if (camino.length === 0) return;
+    const anterior = camino[camino.length - 1];
+    const nodoAnterior = arbol.nodos[anterior];
+    const respuestaAnterior = respuestasRef.current[nodoAnterior.id];
+
+    const conservadas = {};
+    camino.slice(0, -1).forEach((clave) => {
+      const id = arbol.nodos[clave].id;
+      conservadas[id] = respuestasRef.current[id];
+    });
+    respuestasRef.current = conservadas;
+    setRespuestas(conservadas);
+    apiClient.put('/clinica/triaje/respuestas', { respuestas: conservadas }).catch(() => {});
+
+    setEntradaTexto(
+      nodoAnterior.tipo !== 'opciones' && respuestaAnterior != null ? String(respuestaAnterior) : ''
+    );
+    setRespuestaPrevia(nodoAnterior.tipo === 'opciones' ? respuestaAnterior : null);
+    setNodoActual(anterior);
+  };
+
   // ── CU24: completar e integrar ─────────────────────────────────────────────
   const completar = async (finales) => {
     setProcesando(true);
@@ -199,6 +254,9 @@ export default function TriajeScreen({ navigation }) {
         respuestas: finales,
       });
       setVistaPrevia(data?.vista_previa || '');
+      // CU26: la sugerencia de especialidad sale del mismo análisis que el
+      // reporte pre-clínico, y se muestra al cerrar la entrevista.
+      setDerivacion(data?.derivacion || null);
       setFase('resumen');
     } catch (err) {
       const respuesta = err.response?.data;
@@ -233,6 +291,41 @@ export default function TriajeScreen({ navigation }) {
   };
 
   // ── Render por fase ────────────────────────────────────────────────────────
+  // CU26 — Sugerencia de derivación por especialidad clínica: aparece al
+  // terminar la entrevista y queda a la vista mientras siga vigente.
+  const tarjetaDerivacion = derivacion ? (
+    <View style={estilos.tarjetaDerivacion}>
+      <Text style={estilos.derivacionTitulo}>
+        {derivacion.general
+          ? '🧭 Tu entrevista no apunta a una especialidad concreta'
+          : `🎯 Te sugerimos ${derivacion.nombre}`}
+      </Text>
+      <Text style={estilos.derivacionTexto}>
+        {derivacion.general
+          ? 'Contáctate con nosotros para poder guiarte hacia el profesional adecuado.'
+          : derivacion.disponible_en_comuna
+            ? `Es la especialidad que mejor calza con tu motivo de consulta, y hay profesionales que atienden a domicilio en ${derivacion.comuna || 'tu comuna'}.`
+            : derivacion.disponible_online
+              ? 'Es la especialidad que mejor calza con tu motivo de consulta. En tu comuna no hay atención a domicilio, pero sí teleconsulta.'
+              : 'Es la especialidad que mejor calza con tu motivo de consulta, pero por ahora no tenemos profesionales disponibles para tu comuna.'}
+      </Text>
+      {derivacion.alternativas?.length > 0 && (
+        <Text style={estilos.derivacionAlternativas}>
+          Disponibles ahora: {derivacion.alternativas.map((a) => a.nombre).join(', ')}.
+        </Text>
+      )}
+      {/* Sin especialidad clara, el paso útil es hablar con el equipo. */}
+      <TouchableOpacity
+        style={estilos.botonDerivacion}
+        onPress={() => navigation.navigate(derivacion.general ? 'Soporte' : 'BuscarCita')}
+      >
+        <Text style={estilos.botonDerivacionTexto}>
+          {derivacion.general ? 'Contactarnos' : 'Buscar hora ahora'}
+        </Text>
+      </TouchableOpacity>
+    </View>
+  ) : null;
+
 
   if (fase === 'cargando') {
     return (
@@ -281,7 +374,7 @@ export default function TriajeScreen({ navigation }) {
 
   if (fase === 'completado') {
     return (
-      <View style={estilos.centrado}>
+      <VistaConTeclado style={estilos.fondo} contentContainerStyle={[estilos.contenido, estilos.contenidoCentrado]}>
         <Text style={estilos.iconoGrande}>✅</Text>
         <Text style={estilos.tituloCentrado}>Ya completaste tu entrevista</Text>
         <Text style={estilos.textoCentrado}>
@@ -291,6 +384,7 @@ export default function TriajeScreen({ navigation }) {
             : ''}.
           Tu profesional las revisará en la consulta.
         </Text>
+        {tarjetaDerivacion}
         <TouchableOpacity
           style={[estilos.botonPrimario, procesando && estilos.deshabilitado]}
           onPress={rehacerTriaje}
@@ -298,7 +392,7 @@ export default function TriajeScreen({ navigation }) {
         >
           <Text style={estilos.botonPrimarioTexto}>Responder una nueva entrevista</Text>
         </TouchableOpacity>
-      </View>
+      </VistaConTeclado>
     );
   }
 
@@ -324,7 +418,17 @@ export default function TriajeScreen({ navigation }) {
             )
           )}
         </View>
-        <TouchableOpacity style={estilos.botonPrimario} onPress={() => navigation.goBack()}>
+        {tarjetaDerivacion}
+
+        {/* La pestaña queda en "entrevista completada" (con la sugerencia) para
+            cuando el paciente vuelva a ella. */}
+        <TouchableOpacity
+          style={estilos.botonPrimario}
+          onPress={() => {
+            iniciar();
+            navigation.goBack();
+          }}
+        >
           <Text style={estilos.botonPrimarioTexto}>Volver al inicio</Text>
         </TouchableOpacity>
       </VistaConTeclado>
@@ -352,10 +456,13 @@ export default function TriajeScreen({ navigation }) {
         nodo.opciones.map((opcion) => (
           <TouchableOpacity
             key={opcion.valor}
-            style={estilos.opcion}
+            style={[estilos.opcion, opcion.valor === respuestaPrevia && estilos.opcionElegida]}
             onPress={() => responder(opcion.valor)}
           >
-            <Text style={estilos.opcionTexto}>{opcion.etiqueta}</Text>
+            <Text style={estilos.opcionTexto}>
+              {opcion.valor === respuestaPrevia ? '✓  ' : ''}
+              {opcion.etiqueta}
+            </Text>
           </TouchableOpacity>
         ))
       ) : (
@@ -372,6 +479,16 @@ export default function TriajeScreen({ navigation }) {
             <Text style={estilos.botonPrimarioTexto}>Continuar</Text>
           </TouchableOpacity>
         </>
+      )}
+
+      {caminoHasta(arbol, respuestas, nodoActual).length > 0 && (
+        <TouchableOpacity
+          style={estilos.botonAtras}
+          onPress={volverAtras}
+          accessibilityRole="button"
+        >
+          <Text style={estilos.botonAtrasTexto}>‹  Pregunta anterior</Text>
+        </TouchableOpacity>
       )}
 
       <Text style={estilos.notaAvance}>
@@ -396,6 +513,7 @@ const estilos = StyleSheet.create({
   fondo: { flex: 1, backgroundColor: colores.fondo },
   contenido: { padding: 20, paddingBottom: 40 },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+  contenidoCentrado: { flexGrow: 1, justifyContent: 'center' },
 
   titulo: { fontSize: 22, fontWeight: 'bold', color: colores.primario, marginBottom: 14 },
   tarjetaLegal: {
@@ -413,6 +531,27 @@ const estilos = StyleSheet.create({
   iconoGrande: { fontSize: 52, marginBottom: 10, textAlign: 'center' },
   tituloCentrado: { fontSize: 22, fontWeight: 'bold', color: colores.primario, textAlign: 'center', marginBottom: 8 },
   textoCentrado: { color: colores.textoSuave, textAlign: 'center', marginBottom: 18, lineHeight: 20 },
+
+  // CU26 — la orientación por especialidad, al cerrar la entrevista.
+  tarjetaDerivacion: {
+    ...piezas.tarjeta,
+    width: '100%',
+    backgroundColor: colores.secundarioSuave,
+    borderColor: colores.secundarioBorde,
+    marginBottom: espacio.base,
+  },
+  derivacionTitulo: { ...tipografia.cuerpoFuerte, color: colores.secundarioFuerte },
+  derivacionTexto: { ...tipografia.meta, color: colores.texto, marginTop: espacio.xs },
+  derivacionAlternativas: { ...tipografia.meta, color: colores.textoSuave, marginTop: espacio.sm },
+  botonDerivacion: {
+    marginTop: espacio.md,
+    borderWidth: 1.5,
+    borderColor: colores.secundarioFuerte,
+    borderRadius: radio.md,
+    paddingVertical: espacio.md,
+    alignItems: 'center',
+  },
+  botonDerivacionTexto: { ...tipografia.cuerpoFuerte, color: colores.secundarioFuerte },
 
   tarjetaResumen: {
     backgroundColor: colores.superficie,
@@ -452,7 +591,13 @@ const estilos = StyleSheet.create({
     padding: 16,
     marginBottom: 10,
   },
+  // Misma fuente en ambos estados: en Android cambiar el grosor del texto de
+  // una opción marcada lo hace desaparecer.
+  opcionElegida: { backgroundColor: colores.primarioSuave, borderWidth: 2, padding: 15 },
   opcionTexto: { color: colores.primario, fontWeight: '600', fontSize: 15 },
+  // Relleno con el azul de la marca.
+  botonAtras: { ...piezas.botonPrimario, marginTop: espacio.md },
+  botonAtrasTexto: { ...tipografia.cuerpoFuerte, color: colores.textoInverso },
   entrada: {
     backgroundColor: colores.superficie,
     borderWidth: 1,

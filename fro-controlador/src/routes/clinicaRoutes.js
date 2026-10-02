@@ -19,6 +19,8 @@ const pautaController = require('../controllers/clinico/pautaController');
 
 // CU23/CU24/CU27/CU77: triaje automatizado y plantillas de evaluación
 const triajeController = require('../controllers/clinico/triajeController');
+const seguimientoController = require('../controllers/clinico/seguimientoController');
+const chatController = require('../controllers/clinico/chatController');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CU29 — Anamnesis / Ficha Clínica
@@ -85,8 +87,77 @@ router.put('/intervenciones/:episodio_id',
     verifyToken, authorizeRoles(['Profesional']),
     intervencionController.guardarIntervencion
 );
+// El paciente llega por un motivo nuevo: la atención en curso se traslada al
+// episodio nuevo en vez de quedar atada al anterior.
+router.put('/intervenciones/:episodio_id/atencion',
+    verifyToken, authorizeRoles(['Profesional']),
+    intervencionController.trasladarAtencion
+);
+
+// ── CU25 — Reporte de hallazgos pre-clínicos (lo lee el profesional)
+router.get('/pacientes/:pacienteId/reporte-preclinico',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    seguimientoController.reportePreclinico
+);
+
+// ── CU26 — Sugerencia de derivación por especialidad (la ve el paciente)
+router.get('/mi-derivacion',
+    verifyToken, authorizeRoles(['Paciente']),
+    seguimientoController.miDerivacion
+);
+
+// ── CU50 — Reporte de evolución del paciente y banderas rojas
+router.post('/sintomas',
+    verifyToken, authorizeRoles(['Paciente']),
+    seguimientoController.registrarSintomas
+);
+router.get('/mis-sintomas',
+    verifyToken, authorizeRoles(['Paciente']),
+    seguimientoController.misSintomas
+);
+router.get('/pacientes/:pacienteId/sintomas',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    seguimientoController.sintomasDePaciente
+);
+router.get('/alertas',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    seguimientoController.alertasAbiertas
+);
+router.post('/alertas/:id/revisar',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    seguimientoController.revisarAlerta
+);
+
+// ── CU44/CU45 — Indice de adherencia y panel de progreso
+router.get('/mi-progreso',
+    verifyToken, authorizeRoles(['Paciente']),
+    seguimientoController.miProgreso
+);
+router.get('/pacientes/:pacienteId/adherencia',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    seguimientoController.adherenciaDePaciente
+);
+
+// ── CU53/CU57 — Mensajería clínica cifrada
+router.get('/mis-conversaciones',
+    verifyToken, authorizeRoles(['Paciente', 'Profesional']),
+    chatController.misConversaciones
+);
+router.get('/episodio/:episodio_id/mensajes',
+    verifyToken, authorizeRoles(['Paciente', 'Profesional']),
+    chatController.listarMensajes
+);
+router.post('/episodio/:episodio_id/mensajes',
+    verifyToken, authorizeRoles(['Paciente', 'Profesional']),
+    chatController.enviarMensaje
+);
 
 // CU16
+router.get('/disponibilidad/bloqueos',
+    verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+    disponibilidadController.listarBloqueos
+);
+
 router.post('/disponibilidad/restringir',
     verifyToken, authorizeRoles(['Profesional', 'Administrador']),
     disponibilidadController.restringirDisponibilidad

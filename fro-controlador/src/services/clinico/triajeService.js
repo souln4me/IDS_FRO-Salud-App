@@ -13,7 +13,7 @@
 const DISCLAIMER = {
   version: '1.0',
   texto:
-    'Estás por usar la entrevista clínica automatizada de FRO Salud.\n\n' +
+    'Estás por usar la entrevista clínica automatizada de Punto Paz Salud.\n\n' +
     '1. Esta herramienta es un APOYO para ordenar tus síntomas antes de la ' +
     'consulta. NO entrega diagnósticos ni reemplaza la evaluación de un ' +
     'profesional de la salud.\n\n' +
