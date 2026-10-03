@@ -20,7 +20,7 @@ import apiClient from '../../api/client';
 import { formatearFecha, formatearFechaHora } from '../../utils/fechas';
 import ErrorRetry from '../../components/ErrorRetry';
 import VistaConTeclado from '../../components/VistaConTeclado';
-import { colores, radio } from '../../theme';
+import { colores, radio, espacio, tipografia } from '../../theme';
 import EtiquetaEstado from '../../components/EtiquetaEstado';
 import DialogoAviso from '../../components/DialogoAviso';
 
@@ -30,6 +30,8 @@ const CLAVE_CACHE = 'cu48_cache_pautas';
 export default function MisPautasScreen() {
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
   const [aviso, setAviso] = useState(null);
+  // CU44: porcentaje de adherencia, que el servidor devuelve al marcar.
+  const [adherencia, setAdherencia] = useState(null);
   const [pautas, setPautas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
@@ -91,10 +93,13 @@ export default function MisPautasScreen() {
     setMarcandoId(ejercicio.pauta_ejercicio_id);
 
     try {
-      if (ejercicio.cumplido_hoy) {
-        await apiClient.delete(`/clinica/pautas/ejercicios/${ejercicio.pauta_ejercicio_id}/cumplimiento`);
-      } else {
-        await apiClient.post(`/clinica/pautas/ejercicios/${ejercicio.pauta_ejercicio_id}/cumplimiento`);
+      // CU44: el servidor recalcula el índice de adherencia con cada marca y lo
+      // devuelve, así el paciente ve el efecto de lo que acaba de hacer.
+      const { data } = ejercicio.cumplido_hoy
+        ? await apiClient.delete(`/clinica/pautas/ejercicios/${ejercicio.pauta_ejercicio_id}/cumplimiento`)
+        : await apiClient.post(`/clinica/pautas/ejercicios/${ejercicio.pauta_ejercicio_id}/cumplimiento`);
+      if (data?.adherencia !== null && data?.adherencia !== undefined) {
+        setAdherencia(data.adherencia);
       }
       await cargarPautas(true);
     } catch (err) {
@@ -137,6 +142,16 @@ export default function MisPautasScreen() {
           <Text style={estilos.avisoCacheTexto}>
             📴 Sin conexión. Mostrando tu pauta guardada el {formatearFechaHora(desdeCache, 'fecha desconocida')}.
             Desliza hacia abajo para recargar cuando vuelva la señal.
+          </Text>
+        </View>
+      )}
+
+      {/* CU44: el índice se mueve con cada marca, así que se muestra acá mismo
+          en vez de obligar a ir al panel de progreso para verlo. */}
+      {adherencia !== null && (
+        <View style={estilos.cintaAdherencia}>
+          <Text style={estilos.cintaAdherenciaTexto}>
+            Tu adherencia va en {adherencia}%
           </Text>
         </View>
       )}
@@ -233,6 +248,16 @@ const estilos = StyleSheet.create({
   fondo: { flex: 1, backgroundColor: colores.fondo },
   contenido: { padding: 16, paddingBottom: 40 },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
+
+  cintaAdherencia: {
+    backgroundColor: colores.primarioSuave,
+    borderRadius: radio.md,
+    paddingVertical: espacio.sm,
+    paddingHorizontal: espacio.md,
+    marginBottom: espacio.base,
+    alignItems: 'center',
+  },
+  cintaAdherenciaTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
 
   avisoCache: {
     backgroundColor: colores.advertenciaSuave,

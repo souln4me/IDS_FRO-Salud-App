@@ -8,6 +8,7 @@
 
 const pool = require('../../config/database');
 const { estaCerrado } = require('../../services/clinico/episodioService');
+const { actualizarIndicador } = require('../../services/clinico/adherenciaService');
 
 const FRECUENCIAS_VALIDAS = ['DIARIA', 'SEMANAL'];
 
@@ -369,7 +370,9 @@ exports.misPautas = async (req, res) => {
 async function ejercicioDelPaciente(pautaEjercicioId, usuarioId) {
   const [filas] = await pool.query(
     `SELECT pe.pauta_ejercicio_id, pt.pauta_tratamiento_id, pt.estado,
-            pt.fecha_inicio, pt.fecha_expiracion
+            pt.fecha_inicio, pt.fecha_expiracion,
+            -- CU44: hace falta para recalcular el índice de adherencia.
+            ec.paciente_id
        FROM Pauta_Ejercicio pe
        JOIN Pauta_Tratamiento pt ON pt.pauta_tratamiento_id = pe.pauta_tratamiento_id
        JOIN Episodio_Clinico ec ON ec.episodio_clinico_id = pt.episodio_clinico_id
@@ -411,9 +414,14 @@ exports.marcarCumplimiento = async (req, res) => {
       [id]
     );
 
+    // CU44: marcar una tarea mueve el índice de adherencia. Se recalcula acá
+    // mismo para que el panel de progreso muestre el dato al instante.
+    const adherencia = await actualizarIndicador(pool, ejercicio.paciente_id);
+
     return res.status(200).json({
       mensaje: resultado.affectedRows > 0 ? '¡Ejercicio registrado!' : 'Ya estaba registrado hoy.',
       cumplido_hoy: true,
+      adherencia: adherencia?.porcentaje ?? null,
     });
   } catch (error) {
     console.error('[marcarCumplimiento]', error);
@@ -435,7 +443,13 @@ exports.desmarcarCumplimiento = async (req, res) => {
       [id]
     );
 
-    return res.status(200).json({ mensaje: 'Marca de hoy retirada.', cumplido_hoy: false });
+    const adherencia = await actualizarIndicador(pool, ejercicio.paciente_id);
+
+    return res.status(200).json({
+      mensaje: 'Marca de hoy retirada.',
+      cumplido_hoy: false,
+      adherencia: adherencia?.porcentaje ?? null,
+    });
   } catch (error) {
     console.error('[desmarcarCumplimiento]', error);
     return res.status(500).json({ error: 'No se pudo retirar la marca.' });
