@@ -156,7 +156,11 @@ exports.obtenerHistorialPaciente = async (req, res) => {
         -- paciente se vea completa, pero solo las propias se pueden gestionar:
         -- la app bloquea los botones de las ajenas y el servidor rechaza
         -- cualquier transicion sobre ellas (403 CITA_AJENA).
-        (pr.usuario_id = ?) AS es_propia
+        (pr.usuario_id = ?) AS es_propia,
+        -- CU73: la hora solo se puede confirmar si ya está pagada.
+        (SELECT t.tipo FROM Transaccion t
+             WHERE t.cita_id = c.cita_id AND t.estado = 'PAGADA' AND t.tipo <> 'DEVOLUCION'
+             ORDER BY t.transaccion_id DESC LIMIT 1) AS pago_tipo
       FROM Cita c
       LEFT JOIN Profesional pr ON pr.profesional_id = c.profesional_id
       LEFT JOIN Usuario u ON u.usuario_id = pr.usuario_id
@@ -170,19 +174,55 @@ exports.obtenerHistorialPaciente = async (req, res) => {
     const [episodios] = await db.query(
       `
       SELECT
-        episodio_clinico_id,
-        motivo_consulta,
-        fecha_inicio,
-        fecha_terminado,
-        estado,
-        paciente_id,
-        profesional_id
-      FROM Episodio_Clinico
-      WHERE paciente_id = ?
-      ORDER BY fecha_inicio DESC
+        ec.episodio_clinico_id,
+        ec.motivo_consulta,
+        ec.fecha_inicio,
+        ec.fecha_terminado,
+        ec.estado,
+        ec.paciente_id,
+        ec.profesional_id,
+        -- Mismo criterio que las citas: los episodios de OTROS profesionales se
+        -- listan para ver la trayectoria completa (CU28), pero marcados, porque
+        -- solo su responsable puede registrar en ellos.
+        (pr.usuario_id = ?) AS es_propio,
+        COALESCE(
+          NULLIF(TRIM(CONCAT_WS(' ', pu.nombres, pu.apellido_paterno, pu.apellido_materno)), ''),
+          CONCAT('Profesional #', ec.profesional_id)
+        ) AS profesional_responsable
+      FROM Episodio_Clinico ec
+      JOIN Profesional pr ON pr.profesional_id = ec.profesional_id
+      LEFT JOIN Usuario pu ON pu.usuario_id = pr.usuario_id
+      WHERE ec.paciente_id = ?
+      ORDER BY ec.fecha_inicio DESC
+      `,
+      [usuarioId, pacienteId]
+    );
+
+    // Las metas viven en el episodio y el avance de la evolución se calcula con
+    // ellas: si el historial no las muestra, el porcentaje no se puede verificar
+    // contra nada. Se adjuntan a su episodio.
+    const [metas] = await db.query(
+      `
+      SELECT
+        ot.objetivo_terapeutico_id,
+        ot.descripcion,
+        ot.meta_valor,
+        ot.valor_actual,
+        ot.unidad,
+        ot.episodio_clinico_id
+      FROM Objetivo_Terapeutico ot
+      JOIN Episodio_Clinico ec ON ec.episodio_clinico_id = ot.episodio_clinico_id
+      WHERE ec.paciente_id = ?
+      ORDER BY ot.objetivo_terapeutico_id
       `,
       [pacienteId]
     );
+
+    for (const episodio of episodios) {
+      episodio.metas = metas.filter(
+        (m) => m.episodio_clinico_id === episodio.episodio_clinico_id
+      );
+    }
 
     const [evoluciones] = await db.query(
       `
@@ -329,6 +369,15 @@ const EXTENSIONES_FOTO = ['jpg', 'jpeg', 'png', 'webp', 'heic'];
 const MAX_FOTO_BYTES = 5 * 1024 * 1024;
 
 async function perfilDeUsuario(usuarioId) {
+  return perfilDonde('p.usuario_id = ?', usuarioId);
+}
+
+// El mismo perfil, buscado por el profesional (lo que ve el paciente).
+async function perfilDeProfesional(profesionalId) {
+  return perfilDonde('p.profesional_id = ?', profesionalId);
+}
+
+async function perfilDonde(condicion, valor) {
   const [[perfil]] = await db.query(
     `SELECT p.profesional_id, p.num_registro_salud, p.reseña_curricular AS resena_curricular,
             p.areas_experticia, p.tipo_sede, p.foto_url, p.calificacion_promedio,
@@ -337,14 +386,70 @@ async function perfilDeUsuario(usuarioId) {
        FROM Profesional p
        JOIN Usuario u ON u.usuario_id = p.usuario_id
        LEFT JOIN Especialidad e ON e.especialidad_id = p.especialidad_id
-      WHERE p.usuario_id = ? LIMIT 1`,
-    [usuarioId]
+      WHERE ${condicion} LIMIT 1`,
+    [valor]
   );
   if (!perfil) return null;
   // 'default.jpg' es el marcador del registro: no es una URL utilizable.
   if (perfil.foto_url === 'default.jpg') perfil.foto_url = null;
+
+  // CU10/CU14: comunas donde atiende a domicilio. Sin ninguna declarada el
+  // profesional aparece en todas, para no dejar fuera a quien ya estaba
+  // registrado antes de que existiera esta pantalla.
+  const [comunas] = await db.query(
+    `SELECT c.comuna_id, c.nombre
+       FROM Profesional_Comuna pc
+       JOIN Comuna c ON c.comuna_id = pc.comuna_id
+      WHERE pc.profesional_id = ?
+      ORDER BY c.nombre`,
+    [perfil.profesional_id]
+  );
+  perfil.comunas = comunas;
+
+  // CU58: la calificación que ven los pacientes, para que el profesional sepa
+  // cómo aparece. Sin evaluaciones el promedio no significa nada.
+  const [[evaluaciones]] = await db.query(
+    `SELECT COUNT(*) AS total
+       FROM Evaluacion_Satisfaccion es
+       JOIN Cita c ON c.cita_id = es.cita_id
+      WHERE c.profesional_id = ?`,
+    [perfil.profesional_id]
+  );
+  perfil.total_evaluaciones = Number(evaluaciones.total) || 0;
+  perfil.calificacion_promedio = Number(perfil.calificacion_promedio) || 0;
   return perfil;
 }
+
+/**
+ * Reemplaza las comunas de atención del profesional. Se usa al editar el perfil
+ * y al registrarse: la lista que llega es la lista final, no un agregado.
+ */
+async function guardarComunasProfesional(conexion, profesionalId, comunas) {
+  const ids = [...new Set(
+    (Array.isArray(comunas) ? comunas : [])
+      .map((valor) => Number(valor))
+      .filter((valor) => Number.isInteger(valor) && valor > 0)
+  )];
+
+  await conexion.query('DELETE FROM Profesional_Comuna WHERE profesional_id = ?', [profesionalId]);
+  if (ids.length === 0) return [];
+
+  // Solo comunas que existen: un identificador inventado reventaría la clave
+  // foránea y tumbaría el guardado completo del perfil.
+  const [validas] = await conexion.query(
+    `SELECT comuna_id FROM Comuna WHERE comuna_id IN (${ids.map(() => '?').join(',')})`,
+    ids
+  );
+  for (const fila of validas) {
+    await conexion.query(
+      'INSERT INTO Profesional_Comuna (profesional_id, comuna_id) VALUES (?, ?)',
+      [profesionalId, fila.comuna_id]
+    );
+  }
+  return validas.map((f) => f.comuna_id);
+}
+
+exports.guardarComunasProfesional = guardarComunasProfesional;
 
 async function auditarPerfil(req, accion, datos) {
   try {
@@ -373,6 +478,25 @@ exports.obtenerMiPerfil = async (req, res) => {
   } catch (error) {
     console.error('[obtenerMiPerfil]', error);
     return res.status(500).json({ error: 'No se pudo cargar tu perfil.' });
+  }
+};
+
+/**
+ * GET /profesionales/:profesional_id/perfil-publico
+ * CU10/CU14: el perfil que ve el paciente al tocar el nombre en el buscador,
+ * de solo lectura. Solo lo público: sin correo ni datos de contacto.
+ */
+exports.obtenerPerfilPublico = async (req, res) => {
+  try {
+    const perfil = await perfilDeProfesional(Number(req.params.profesional_id));
+    if (!perfil) {
+      return res.status(404).json({ error: 'No se encontró el perfil del profesional.' });
+    }
+    const { email, ...publico } = perfil;
+    return res.status(200).json(publico);
+  } catch (error) {
+    console.error('[obtenerPerfilPublico]', error);
+    return res.status(500).json({ error: 'No se pudo cargar el perfil del profesional.' });
   }
 };
 
@@ -413,8 +537,29 @@ exports.actualizarMiPerfil = async (req, res) => {
     if (resultado.affectedRows === 0) {
       return res.status(404).json({ error: 'No se encontró tu perfil profesional.' });
     }
-    await auditarPerfil(req, 'ACTUALIZACION_PERFIL_PROFESIONAL', { modalidad, largo_resena: resena.length });
-    return res.status(200).json({ mensaje: 'Perfil actualizado. Los pacientes ya ven la información nueva.' });
+
+    // CU14: las comunas de atención se envían como lista completa. Solo se
+    // tocan si el cuerpo las trae, para no borrarlas desde un cliente antiguo.
+    let comunasGuardadas = null;
+    if (Array.isArray(req.body?.comunas)) {
+      const [[fila]] = await db.query(
+        'SELECT profesional_id FROM Profesional WHERE usuario_id = ? LIMIT 1',
+        [req.user.usuario_id]
+      );
+      if (fila) {
+        comunasGuardadas = await guardarComunasProfesional(db, fila.profesional_id, req.body.comunas);
+      }
+    }
+
+    await auditarPerfil(req, 'ACTUALIZACION_PERFIL_PROFESIONAL', {
+      modalidad,
+      largo_resena: resena.length,
+      comunas: comunasGuardadas,
+    });
+    return res.status(200).json({
+      mensaje: 'Perfil actualizado. Los pacientes ya ven la información nueva.',
+      comunas: comunasGuardadas,
+    });
   } catch (error) {
     console.error('[actualizarMiPerfil]', error);
     // CU10 Exc.6: fallo de persistencia.
@@ -473,5 +618,141 @@ exports.subirFotoPerfil = async (req, res) => {
       error: 'CARGA_INTERRUMPIDA',
       mensaje: 'No se pudo subir la fotografía al repositorio. Intenta nuevamente.',
     });
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Jornada semanal del profesional (bloques horarios por día)
+// Antes solo se definía al registrarse. Ahora el profesional la gestiona desde
+// su perfil: agrega, edita y elimina bloques. La búsqueda de horas recorre cada
+// bloque de hora en hora, por eso se exigen horas en punto.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const MODALIDADES_BLOQUE = ['DOMICILIO', 'ONLINE', 'AMBOS'];
+const PATRON_HORA_PUNTO = /^([01]\d|2[0-3]):00$/;
+const MAX_BLOQUES = 40;
+
+async function profesionalDeUsuario(usuarioId) {
+  const [[fila]] = await db.query(
+    `SELECT profesional_id, tipo_sede FROM Profesional WHERE usuario_id = ? LIMIT 1`,
+    [usuarioId]
+  );
+  return fila || null;
+}
+
+/** GET /api/profesionales/mi-horario */
+exports.obtenerMiHorario = async (req, res) => {
+  try {
+    const profesional = await profesionalDeUsuario(req.user.usuario_id);
+    if (!profesional) return res.status(404).json({ error: 'Perfil profesional no encontrado.' });
+
+    const [bloques] = await db.query(
+      `SELECT dia_semana,
+              DATE_FORMAT(hora_inicio, '%H:%i') AS hora_inicio,
+              DATE_FORMAT(hora_fin, '%H:%i') AS hora_fin,
+              modalidad
+         FROM Profesional_Disponibilidad
+        WHERE profesional_id = ?
+        ORDER BY dia_semana, hora_inicio`,
+      [profesional.profesional_id]
+    );
+    return res.status(200).json({ bloques, modalidad_general: profesional.tipo_sede });
+  } catch (error) {
+    console.error('[obtenerMiHorario]', error);
+    return res.status(500).json({ error: 'No se pudo cargar tu jornada.' });
+  }
+};
+
+/**
+ * PUT /api/profesionales/mi-horario   { bloques: [{dia_semana, hora_inicio, hora_fin, modalidad}] }
+ *
+ * La lista que llega es la jornada completa: reemplaza a la anterior. Las
+ * citas ya agendadas no se tocan; solo cambia lo que se ofrece desde ahora.
+ */
+exports.guardarMiHorario = async (req, res) => {
+  const bloques = Array.isArray(req.body?.bloques) ? req.body.bloques : null;
+  if (!bloques) return res.status(400).json({ error: 'Envía la lista de bloques.' });
+  if (bloques.length === 0) {
+    return res.status(400).json({
+      error: 'SIN_BLOQUES',
+      mensaje: 'Deja al menos un bloque horario: sin jornada los pacientes no podrán reservar contigo.',
+    });
+  }
+  if (bloques.length > MAX_BLOQUES) {
+    return res.status(400).json({ error: 'DEMASIADOS_BLOQUES', mensaje: `Máximo ${MAX_BLOQUES} bloques.` });
+  }
+
+  // Validación completa antes de escribir nada.
+  const normalizados = [];
+  for (const [i, b] of bloques.entries()) {
+    const dia = Number(b?.dia_semana);
+    const inicio = String(b?.hora_inicio || '').slice(0, 5);
+    const fin = String(b?.hora_fin || '').slice(0, 5);
+    const modalidad = String(b?.modalidad || '').toUpperCase();
+    const n = i + 1;
+
+    if (!Number.isInteger(dia) || dia < 1 || dia > 7) {
+      return res.status(400).json({ error: 'DIA_INVALIDO', mensaje: `El bloque ${n} no tiene un día válido.` });
+    }
+    if (!PATRON_HORA_PUNTO.test(inicio) || !PATRON_HORA_PUNTO.test(fin)) {
+      return res.status(400).json({ error: 'HORA_INVALIDA', mensaje: `El bloque ${n} debe usar horas en punto (ej. 08:00).` });
+    }
+    if (inicio >= fin) {
+      return res.status(400).json({ error: 'RANGO_INVALIDO', mensaje: `En el bloque ${n} la hora de término debe ser posterior al inicio.` });
+    }
+    if (!MODALIDADES_BLOQUE.includes(modalidad)) {
+      return res.status(400).json({ error: 'MODALIDAD_INVALIDA', mensaje: `Elige la modalidad del bloque ${n}.` });
+    }
+    normalizados.push({ dia, inicio, fin, modalidad });
+  }
+
+  // Dos bloques del mismo día no pueden pisarse.
+  const DIAS = ['', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo'];
+  const ordenados = [...normalizados].sort((a, b) => a.dia - b.dia || a.inicio.localeCompare(b.inicio));
+  for (let i = 1; i < ordenados.length; i++) {
+    const previo = ordenados[i - 1];
+    const actual = ordenados[i];
+    if (previo.dia === actual.dia && actual.inicio < previo.fin) {
+      return res.status(409).json({
+        error: 'BLOQUES_SUPERPUESTOS',
+        mensaje: `El ${DIAS[actual.dia]} tienes bloques que se superponen (${previo.inicio}–${previo.fin} y ${actual.inicio}–${actual.fin}).`,
+      });
+    }
+  }
+
+  const profesional = await profesionalDeUsuario(req.user.usuario_id).catch(() => null);
+  if (!profesional) return res.status(404).json({ error: 'Perfil profesional no encontrado.' });
+
+  const conexion = await db.getConnection();
+  try {
+    await conexion.beginTransaction();
+    await conexion.execute(
+      `DELETE FROM Profesional_Disponibilidad WHERE profesional_id = ?`,
+      [profesional.profesional_id]
+    );
+    for (const b of ordenados) {
+      await conexion.execute(
+        `INSERT INTO Profesional_Disponibilidad (profesional_id, dia_semana, hora_inicio, hora_fin, modalidad)
+         VALUES (?, ?, ?, ?, ?)`,
+        [profesional.profesional_id, b.dia, `${b.inicio}:00`, `${b.fin}:00`, b.modalidad]
+      );
+    }
+    await conexion.execute(
+      `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+       VALUES ('JORNADA_ACTUALIZADA', 'Profesional_Disponibilidad', ?, ?, ?)`,
+      [req.ip || null, JSON.stringify({ bloques: ordenados }), req.user.usuario_id]
+    );
+    await conexion.commit();
+
+    return res.status(200).json({
+      mensaje: 'Jornada actualizada. Los pacientes ya ven tus nuevos horarios; las citas agendadas se mantienen.',
+      bloques: ordenados.length,
+    });
+  } catch (error) {
+    await conexion.rollback().catch(() => {});
+    console.error('[guardarMiHorario]', error);
+    return res.status(500).json({ error: 'No se pudo guardar tu jornada. Intenta nuevamente.' });
+  } finally {
+    conexion.release();
   }
 };

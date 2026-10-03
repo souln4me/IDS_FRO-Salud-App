@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 
 const profesionalController = require('../controllers/profesionalController');
+const evaluacionController = require('../controllers/evaluacionController');
 const { verifyToken } = require('../middlewares/authMiddleware');
 const { authorizeRoles } = require('../middlewares/roleMiddleware');
 
@@ -29,6 +30,13 @@ router.get('/mi-perfil',
 router.put('/mi-perfil',
   verifyToken, authorizeRoles(['Profesional']),
   profesionalController.actualizarMiPerfil);
+// Jornada semanal: el profesional gestiona sus bloques horarios.
+router.get('/mi-horario',
+  verifyToken, authorizeRoles(['Profesional']),
+  profesionalController.obtenerMiHorario);
+router.put('/mi-horario',
+  verifyToken, authorizeRoles(['Profesional']),
+  profesionalController.guardarMiHorario);
 router.post('/mi-perfil/foto',
   verifyToken, authorizeRoles(['Profesional']),
   cargaFoto.single('foto'), manejarErrorFoto,
@@ -51,5 +59,15 @@ router.get(
   verifyToken, authorizeRoles(['Profesional', 'Administrador']),
   profesionalController.obtenerHistorialPaciente
 );
+
+// CU10/CU14 — Perfil público de un profesional, de solo lectura.
+router.get('/:profesional_id/perfil-publico',
+  verifyToken,
+  profesionalController.obtenerPerfilPublico);
+
+// CU58 — Calificación y testimonios publicados de un profesional.
+router.get('/:profesional_id/resenas',
+  verifyToken,
+  evaluacionController.resenasPublicas);
 
 module.exports = router;
