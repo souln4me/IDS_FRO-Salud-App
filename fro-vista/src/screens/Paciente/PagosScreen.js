@@ -19,10 +19,11 @@ import { Picker } from '@react-native-picker/picker';
 import apiClient from '../../api/client';
 import ErrorRetry from '../../components/ErrorRetry';
 import VistaConTeclado from '../../components/VistaConTeclado';
-import { formatearFechaHora } from '../../utils/fechas';
-import { colores, espacio, radio } from '../../theme';
+import { formatearFechaHora, parsearFecha } from '../../utils/fechas';
+import { colores, espacio, radio, tipografia } from '../../theme';
 import EtiquetaEstado from '../../components/EtiquetaEstado';
-import { etiquetaEstado } from '../../utils/estados';
+import { etiquetaEstado, esEstadoTerminal } from '../../utils/estados';
+import SeccionHistorial from '../../components/SeccionHistorial';
 import DialogoAviso from '../../components/DialogoAviso';
 
 const METODOS = [
@@ -30,6 +31,13 @@ const METODOS = [
   { valor: 'TARJETA_LENTA', etiqueta: 'Tarjeta terminada en 2222 (lenta)' },
   { valor: 'TARJETA_RECHAZADA', etiqueta: 'Tarjeta terminada en 9999 (sin fondos)' },
 ];
+
+/** La cita ya terminó o su hora pasó hace más de un día. */
+function citaCerrada(cita) {
+  if (esEstadoTerminal(cita.estado)) return true;
+  const inicio = parsearFecha(cita.fecha_hora_inicio);
+  return Boolean(inicio) && Date.now() - inicio.getTime() > 24 * 60 * 60 * 1000;
+}
 
 const pesos = (n) => `$${Number(n || 0).toLocaleString('es-CL')}`;
 
@@ -51,7 +59,7 @@ export default function PagosScreen() {
   const [metodoPago, setMetodoPago] = useState('TARJETA_OK');
 
   // Compra de paquetes
-  const [sesionesPlan, setSesionesPlan] = useState('4');
+  const [sesionesPlan, setSesionesPlan] = useState('10');
   const [metodoPlan, setMetodoPlan] = useState('TARJETA_OK');
   const [comprandoPlan, setComprandoPlan] = useState(false);
 
@@ -148,6 +156,129 @@ export default function PagosScreen() {
 
   const formatearFecha = (valor) => formatearFechaHora(valor);
 
+  // Arriba queda lo que requiere acción o está por venir; al historial va lo
+  // ya pagado de citas terminadas o pasadas. Una deuda nunca se esconde.
+  const citas = resumen?.citas || [];
+  const citasHistorial = citas.filter((c) => c.pagada && citaCerrada(c));
+  const citasVigentes = citas.filter((c) => !(c.pagada && citaCerrada(c)));
+  const planesActivos = (resumen?.paquetes || []).filter((p) => p.estado === 'ACTIVO');
+  const planesCerrados = (resumen?.paquetes || []).filter((p) => p.estado !== 'ACTIVO');
+
+  // Tarjeta de una cita con su cobro: se usa arriba y dentro del historial.
+  const renderCitaPago = (cita) => {
+    const procesando = procesandoId === cita.cita_id;
+    const bonoValidado = cita.estado_validacion === 'VALIDADO';
+    const enTransito = cita.transacciones?.some((t) => t.estado === 'EN_TRANSITO');
+
+    return (
+      <View key={cita.cita_id} style={estilos.tarjeta}>
+        <View style={estilos.filaTitulo}>
+          <Text style={estilos.tituloCita}>
+            {formatearFecha(cita.fecha_hora_inicio)}
+          </Text>
+          <EtiquetaEstado
+            estado={cita.pagada ? 'PAGADA' : enTransito ? 'EN_TRANSITO' : 'PENDIENTE'}
+            style={estilos.badge}
+          />
+        </View>
+        <Text style={estilos.detalle}>
+          {cita.nombre_profesional} · cita {cita.estado.toLowerCase()}
+        </Text>
+
+        {/* Estado del bono */}
+        {cita.folio ? (
+          <Text style={estilos.detalle}>
+            Bono {cita.folio} ({cita.nombre_institucion}):{' '}
+            <Text style={{ color: bonoValidado ? colores.exito : colores.error, fontWeight: '700' }}>
+              {etiquetaEstado(cita.estado_validacion)}
+            </Text>
+            {bonoValidado ? ` · cobertura ${pesos(cita.monto_cobertura)}` : ''}
+          </Text>
+        ) : (
+          <Text style={estilos.detalle}>Sin bono registrado.</Text>
+        )}
+
+        {!cita.pagada && (
+          <Text style={estilos.copago}>Copago exigible: {pesos(cita.copago_exigible)}</Text>
+        )}
+
+        {/* Acciones */}
+        {!cita.pagada && (
+          <>
+            {!bonoValidado &&
+              ['AGENDADA', 'CONFIRMADA'].includes(cita.estado) &&
+              (bonoAbiertoEn === cita.cita_id ? (
+                <View style={estilos.formBono}>
+                  <TextInput
+                    style={estilos.input}
+                    placeholder="Folio del bono (BON-123456)"
+                    autoCapitalize="characters"
+                    value={folio}
+                    onChangeText={setFolio}
+                  />
+                  <View style={estilos.selector}>
+                    <Picker selectedValue={financiadorId} onValueChange={(v) => setFinanciadorId(String(v))}>
+                      {(resumen.financiadores || []).map((financiador) => (
+                        <Picker.Item
+                          key={financiador.financiador_id}
+                          label={financiador.nombre_institucion}
+                          value={String(financiador.financiador_id)}
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                  <TouchableOpacity
+                    style={[estilos.botonPrimario, procesando && estilos.deshabilitado]}
+                    onPress={() => registrarBono(cita)}
+                    disabled={procesando}
+                  >
+                    {procesando ? (
+                      <ActivityIndicator color={colores.superficie} />
+                    ) : (
+                      <Text style={estilos.botonPrimarioTexto}>Validar bono</Text>
+                    )}
+                  </TouchableOpacity>
+                  <TouchableOpacity onPress={() => setBonoAbiertoEn(null)}>
+                    <Text style={estilos.enlace}>Cancelar</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (
+                <TouchableOpacity
+                  style={estilos.botonSecundario}
+                  onPress={() => setBonoAbiertoEn(cita.cita_id)}
+                >
+                  <Text style={estilos.botonSecundarioTexto}>
+                    {cita.folio ? 'Reintentar bono' : 'Registrar bono'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+
+            <View style={estilos.selector}>
+              <Picker selectedValue={metodoPago} onValueChange={setMetodoPago}>
+                {METODOS.map((m) => (
+                  <Picker.Item key={m.valor} label={m.etiqueta} value={m.valor} />
+                ))}
+              </Picker>
+            </View>
+            <TouchableOpacity
+              style={[estilos.botonPrimario, procesando && estilos.deshabilitado]}
+              onPress={() => pagar(cita)}
+              disabled={procesando}
+            >
+              {procesando ? (
+                <ActivityIndicator color={colores.superficie} />
+              ) : (
+                <Text style={estilos.botonPrimarioTexto}>
+                  {enTransito ? 'Conciliar pago en tránsito' : `Pagar ${pesos(cita.copago_exigible)}`}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </>
+        )}
+      </View>
+    );
+  };
+
   if (cargando) {
     return (
       <View style={estilos.centrado}>
@@ -182,122 +313,10 @@ export default function PagosScreen() {
         calcular el copago; sin bono, se paga el arancel completo.
       </Text>
 
-      {resumen?.citas?.length === 0 ? (
-        <Text style={estilos.sinDatos}>No tienes citas con cobros asociados.</Text>
+      {citasVigentes.length === 0 ? (
+        <Text style={estilos.sinDatos}>No tienes cobros pendientes ni citas próximas.</Text>
       ) : (
-        resumen.citas.map((cita) => {
-          const procesando = procesandoId === cita.cita_id;
-          const bonoValidado = cita.estado_validacion === 'VALIDADO';
-          const enTransito = cita.transacciones?.some((t) => t.estado === 'EN_TRANSITO');
-
-          return (
-            <View key={cita.cita_id} style={estilos.tarjeta}>
-              <View style={estilos.filaTitulo}>
-                <Text style={estilos.tituloCita}>
-                  {formatearFecha(cita.fecha_hora_inicio)}
-                </Text>
-                <EtiquetaEstado
-                  estado={cita.pagada ? 'PAGADA' : enTransito ? 'EN_TRANSITO' : 'PENDIENTE'}
-                  style={estilos.badge}
-                />
-              </View>
-              <Text style={estilos.detalle}>
-                {cita.nombre_profesional} · cita {cita.estado.toLowerCase()}
-              </Text>
-
-              {/* Estado del bono */}
-              {cita.folio ? (
-                <Text style={estilos.detalle}>
-                  Bono {cita.folio} ({cita.nombre_institucion}):{' '}
-                  <Text style={{ color: bonoValidado ? colores.exito : colores.error, fontWeight: '700' }}>
-                    {etiquetaEstado(cita.estado_validacion)}
-                  </Text>
-                  {bonoValidado ? ` · cobertura ${pesos(cita.monto_cobertura)}` : ''}
-                </Text>
-              ) : (
-                <Text style={estilos.detalle}>Sin bono registrado.</Text>
-              )}
-
-              {!cita.pagada && (
-                <Text style={estilos.copago}>Copago exigible: {pesos(cita.copago_exigible)}</Text>
-              )}
-
-              {/* Acciones */}
-              {!cita.pagada && (
-                <>
-                  {!bonoValidado &&
-                    ['AGENDADA', 'CONFIRMADA'].includes(cita.estado) &&
-                    (bonoAbiertoEn === cita.cita_id ? (
-                      <View style={estilos.formBono}>
-                        <TextInput
-                          style={estilos.input}
-                          placeholder="Folio del bono (BON-123456)"
-                          autoCapitalize="characters"
-                          value={folio}
-                          onChangeText={setFolio}
-                        />
-                        <View style={estilos.selector}>
-                          <Picker selectedValue={financiadorId} onValueChange={(v) => setFinanciadorId(String(v))}>
-                            {(resumen.financiadores || []).map((financiador) => (
-                              <Picker.Item
-                                key={financiador.financiador_id}
-                                label={financiador.nombre_institucion}
-                                value={String(financiador.financiador_id)}
-                              />
-                            ))}
-                          </Picker>
-                        </View>
-                        <TouchableOpacity
-                          style={[estilos.botonPrimario, procesando && estilos.deshabilitado]}
-                          onPress={() => registrarBono(cita)}
-                          disabled={procesando}
-                        >
-                          {procesando ? (
-                            <ActivityIndicator color={colores.superficie} />
-                          ) : (
-                            <Text style={estilos.botonPrimarioTexto}>Validar bono</Text>
-                          )}
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => setBonoAbiertoEn(null)}>
-                          <Text style={estilos.enlace}>Cancelar</Text>
-                        </TouchableOpacity>
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={estilos.botonSecundario}
-                        onPress={() => setBonoAbiertoEn(cita.cita_id)}
-                      >
-                        <Text style={estilos.botonSecundarioTexto}>
-                          {cita.folio ? 'Reintentar bono' : 'Registrar bono'}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-
-                  <View style={estilos.selector}>
-                    <Picker selectedValue={metodoPago} onValueChange={setMetodoPago}>
-                      {METODOS.map((m) => (
-                        <Picker.Item key={m.valor} label={m.etiqueta} value={m.valor} />
-                      ))}
-                    </Picker>
-                  </View>
-                  <TouchableOpacity
-                    style={[estilos.botonPrimario, procesando && estilos.deshabilitado]}
-                    onPress={() => pagar(cita)}
-                    disabled={procesando}
-                  >
-                    {procesando ? (
-                      <ActivityIndicator color={colores.superficie} />
-                    ) : (
-                      <Text style={estilos.botonPrimarioTexto}>
-                        {enTransito ? 'Conciliar pago en tránsito' : `Pagar ${pesos(cita.copago_exigible)}`}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                </>
-              )}
-            </View>
-          );
-        })
+        citasVigentes.map(renderCitaPago)
       )}
 
       {/* ── Planes de sesiones ── */}
@@ -307,7 +326,7 @@ export default function PagosScreen() {
         automáticamente al finalizar cada atención.
       </Text>
 
-      {(resumen?.paquetes || []).map((paquete) => (
+      {planesActivos.map((paquete) => (
         <View key={paquete.paquete_sesiones_id} style={estilos.tarjetaPlan}>
           <View style={estilos.filaTitulo}>
             <Text style={estilos.tituloPlan}>Plan de {paquete.sesiones_total} sesiones</Text>
@@ -322,9 +341,9 @@ export default function PagosScreen() {
       <View style={estilos.tarjeta}>
         <View style={estilos.selector}>
           <Picker selectedValue={sesionesPlan} onValueChange={setSesionesPlan}>
-            <Picker.Item label="Plan de 4 sesiones" value="4" />
-            <Picker.Item label="Plan de 8 sesiones" value="8" />
-            <Picker.Item label="Plan de 12 sesiones" value="12" />
+            <Picker.Item label="Plan de 10 sesiones" value="10" />
+            <Picker.Item label="Plan de 15 sesiones" value="15" />
+            <Picker.Item label="Plan de 20 sesiones" value="20" />
           </Picker>
         </View>
         <View style={estilos.selector}>
@@ -346,6 +365,44 @@ export default function PagosScreen() {
           )}
         </TouchableOpacity>
       </View>
+
+      {/* ── Historial: lo ya pagado y cerrado, las devoluciones y los planes
+          terminados. Se despliega a pedido para no estorbar lo pendiente. ── */}
+      <SeccionHistorial
+        titulo="Historial de pagos"
+        cantidad={citasHistorial.length + (resumen?.devoluciones?.length || 0) + planesCerrados.length}
+        ayuda="Citas pagadas ya realizadas, devoluciones y planes terminados"
+      >
+        {citasHistorial.map(renderCitaPago)}
+        {resumen?.devoluciones?.length > 0 ? (
+          <>
+            <Text style={estilos.subseccion}>Devoluciones</Text>
+          {resumen.devoluciones.map((d) => (
+            <View key={d.transaccion_id} style={estilos.tarjetaDevolucion}>
+              <View style={estilos.filaTitulo}>
+                <Text style={estilos.tituloDevolucion}>+ {pesos(d.monto_total)}</Text>
+                <EtiquetaEstado estado="DEVOLUCION" tamano="sm" />
+              </View>
+              <Text style={estilos.detalle}>
+                Cita cancelada del {formatearFecha(d.fecha_hora_inicio)} con {d.nombre_profesional}
+              </Text>
+              <Text style={estilos.detalle}>Devuelto el {formatearFecha(d.momento_pago)}</Text>
+            </View>
+          ))}
+          </>
+        ) : null}
+        {planesCerrados.map((paquete) => (
+          <View key={paquete.paquete_sesiones_id} style={estilos.tarjeta}>
+            <View style={estilos.filaTitulo}>
+              <Text style={estilos.tituloCita}>Plan de {paquete.sesiones_total} sesiones</Text>
+              <EtiquetaEstado estado={paquete.estado} tamano="sm" />
+            </View>
+            <Text style={estilos.detalle}>
+              Usadas {paquete.sesiones_usadas} de {paquete.sesiones_total} · {pesos(paquete.precio_total)}
+            </Text>
+          </View>
+        ))}
+      </SeccionHistorial>
 
       <Text style={estilos.notaDemo}>
         Demo del financiador: un folio terminado en 9 simula rechazo biométrico y
@@ -371,6 +428,7 @@ const estilos = StyleSheet.create({
   contenido: { padding: 16, paddingBottom: 40 },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
 
+  subseccion: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, marginTop: espacio.sm, marginBottom: espacio.sm },
   seccion: { fontSize: 17, fontWeight: 'bold', color: colores.primario, marginTop: 10, marginBottom: 6 },
   ayuda: { color: colores.textoSuave, fontSize: 13, marginBottom: 12 },
   sinDatos: { color: colores.textoSuave, fontStyle: 'italic', marginBottom: 10 },
@@ -437,6 +495,16 @@ const estilos = StyleSheet.create({
     marginBottom: 8,
   },
   tituloPlan: { fontWeight: 'bold', color: colores.exito },
+
+  tarjetaDevolucion: {
+    backgroundColor: colores.infoSuave,
+    borderRadius: radio.md,
+    borderWidth: 1,
+    borderColor: colores.infoBorde,
+    padding: 12,
+    marginBottom: 8,
+  },
+  tituloDevolucion: { fontWeight: 'bold', color: colores.primario, fontSize: 15 },
 
   notaDemo: { color: colores.textoTenue, fontSize: 11, textAlign: 'center', marginTop: 14, fontStyle: 'italic' },
 });

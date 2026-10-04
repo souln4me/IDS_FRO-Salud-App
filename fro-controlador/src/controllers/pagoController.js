@@ -13,7 +13,8 @@ const { leerParametroEntero } = require('../services/agenda/agendaService');
 
 const REGEX_FOLIO = /^BON-\d{6}$/;
 const METODOS_PAGO = ['TARJETA_OK', 'TARJETA_RECHAZADA', 'TARJETA_LENTA'];
-const SESIONES_PAQUETE = [4, 8, 12];
+// RF73: planes de 10, 15 y 20 sesiones, como pide el documento.
+const SESIONES_PAQUETE = [10, 15, 20];
 
 /** Arancel vigente de una prestación (editable por el administrador). */
 async function arancelVigente() {
@@ -235,6 +236,15 @@ exports.registrarBono = async (req, res) => {
       copago: resultado.datos.copago,
     });
   } catch (error) {
+    // El folio es único en todo el sistema: un mismo bono no puede cubrir dos
+    // citas. Sin esto, reutilizar un folio de prueba caía en "error interno".
+    if (error.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        error: 'FOLIO_YA_REGISTRADO',
+        mensaje:
+          'Ese folio ya está registrado en otra cita. Cada bono cubre una sola atención: usa el folio que te entregó tu institución para esta cita.',
+      });
+    }
     console.error('[registrarBono]', error);
     return res.status(500).json({ error: 'Error interno al registrar el bono.' });
   }
@@ -295,13 +305,30 @@ exports.resumenPagos = async (req, res) => {
       `SELECT financiador_id, nombre_institucion FROM Financiador WHERE convenio_activo = TRUE`
     );
 
+    // RF74: la devolución queda asociada a una cita cancelada, que la lista de
+    // arriba no muestra. Se entrega aparte para que el paciente la vea.
+    const [devoluciones] = await pool.query(
+      `SELECT t.transaccion_id, t.cita_id, t.monto_total, t.metodo_pago, t.momento_pago,
+              c.fecha_hora_inicio,
+              CONCAT(u.nombres, ' ', u.apellido_paterno) AS nombre_profesional
+         FROM Transaccion t
+         JOIN Cita c ON c.cita_id = t.cita_id
+         JOIN Paciente pac ON pac.paciente_id = c.paciente_id
+         JOIN Profesional prof ON prof.profesional_id = c.profesional_id
+         JOIN Usuario u ON u.usuario_id = prof.usuario_id
+        WHERE pac.usuario_id = ? AND t.tipo = 'DEVOLUCION' AND t.estado = 'PAGADA'
+        ORDER BY t.transaccion_id DESC`,
+      [req.user.usuario_id]
+    );
+
     return res.status(200).json({
       arancel,
       financiadores,
       paquetes,
+      devoluciones,
       citas: citas.map((cita) => {
         const pagos = porCita.get(cita.cita_id) || [];
-        const pagada = pagos.some((t) => t.estado === 'PAGADA');
+        const pagada = pagos.some((t) => t.estado === 'PAGADA' && t.tipo !== 'DEVOLUCION');
         const copagoExigible =
           cita.estado_validacion === 'VALIDADO' ? cita.copago : arancel;
         return {
