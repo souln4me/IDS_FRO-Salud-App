@@ -1,6 +1,6 @@
-# Guía de Instalación y Despliegue - FRO Salud
+# Guía de Instalación y Despliegue - Punto Paz Salud
 
-Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el entorno de desarrollo local de la aplicación FRO Salud (Vista y Controlador).
+Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el entorno de desarrollo local de la aplicación Punto Paz Salud (Vista y Controlador).
 
 [Video guía de instalación del Sistema - Incremento 1](https://drive.google.com/file/d/1eLFtI8UtEgKLBEWcWh41RKkWUYzGCzV2/view?usp=sharing)
 
