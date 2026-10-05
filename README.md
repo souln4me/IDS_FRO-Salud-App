@@ -6,6 +6,8 @@ Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el 
 
 [Video guía de instalación del Sistema - Incremento 2](https://drive.google.com/file/d/1_xMmd3us80S_haojx5Ob2dhY5-8mHdj7/view?usp=sharing)
 
+[Video guía de instalación del Sistema - Incremento 3](https://drive.google.com/file/d/1Te3ZVsdT2w2XvmSlFMz2knO7yfjF3HiU/view?usp=sharing)
+
 ## 1. Requisitos Previos (Herramientas necesarias)
 Antes de comenzar, asegúrese de tener instalados los siguientes programas en su computador:
 
@@ -53,11 +55,13 @@ npm install
 ```
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
-SMTP_USER=tucorreo@gmail.com
-SMTP_PASS=xxxxxxxxxxxxxxxx
+SMTP_USER=frosalud.app@gmail.com
+SMTP_PASS=qbss vdqm knra dqob
 ```
 
 > **Nota:** las credenciales de base de datos, correo y Cloudinary ya están generadas y son compartidas por el equipo. No es necesario instalar MySQL localmente, generar una Contraseña de Aplicación propia en Gmail, ni ejecutar `npm run db:importar` o el `schema.sql`, ya que la base de datos vive en Aiven y ya está creada con sus tablas y datos iniciales.
+
+4. Guarde el archivo (Control + S).
 
 ## 3. Configuración de la Aplicación Móvil (Vista)
 
@@ -71,12 +75,11 @@ La dirección del servidor se define en un archivo de entorno, así cada uno usa
 2. Escriba adentro la dirección del servidor:
 
 ```
-EXPO_PUBLIC_API_URL=http://enlacedeejemplo.com/
+EXPO_PUBLIC_API_URL=https://fro-salud-api.onrender.com/
 ```
+3. Guarde el archivo (Control + S).
 
-   Reemplace `http://enlacedeejemplo.com/` por la dirección real de Render.com.
-
-3. Cada vez que cambie este archivo, reinicie Expo con `npx expo start -c` para que tome la nueva dirección.
+4. Cada vez que cambie este archivo, reinicie Expo con `npx expo start -c` para que tome la nueva dirección.
 
 ### Paso 3.2: Levantar la Vista (Modo Desarrollo)
 1. Ejecute el siguiente comando para iniciar el empaquetador de Expo:
