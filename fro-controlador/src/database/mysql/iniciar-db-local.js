@@ -2,25 +2,6 @@
  * Deja la base de datos lista en el computador de quien lo ejecute, de una
  * sola vez y sin pasos manuales. Vive junto a schema.sql porque es la forma
  * recomendada de cargarlo.
- *
- * Uso (desde la carpeta fro-controlador):
- *   npm run db:local
- *
- * Qué hace, en orden:
- *   1. Si no existe el archivo .env, lo crea a partir de .env.example.
- *   2. Pregunta el usuario y la contraseña de MySQL si no están en el .env y
- *      los deja guardados ahí para la próxima vez.
- *   3. Prueba la conexión al servidor MySQL local.
- *   4. Crea la base de datos (fro_salud_db) si no existe y carga schema.sql
- *      (tablas + datos iniciales). Si ya tiene tablas, no las toca; con
- *      --reiniciar las borra y parte de cero.
- *   5. Aplica las migraciones pendientes (scripts/migrar-db.js), las mismas
- *      que el servidor aplica al arrancar.
- *   6. Verifica que todo quedó en orden y dice cómo seguir.
- *
- * Requisitos: Node 20+ y un MySQL 8 instalado y encendido en este computador.
- * No hace falta MySQL Workbench ni el cliente de consola: usa la misma
- * librería (mysql2) que ya ocupa el servidor.
  */
 
 const fs = require('fs');
