@@ -20,13 +20,7 @@ Antes de comenzar, asegúrese de tener instalados los siguientes programas en su
 - Expo Go. [Expo.apk Drive Download](https://drive.google.com/file/d/1TRcHjcN04z99trjF9duqZB4O9h5sxXJX/view?usp=sharing)
 
 ## 2. Configuración del Servidor (Controlador)
-
-El controlador está construido con Node.js y Express, y es el encargado de gestionar la lógica de negocio. La base de datos, el envío de correos y el almacenamiento de archivos **ya viven en la nube**, por lo que no es necesario instalar MySQL, generar contraseñas de aplicación en Gmail, ni ejecutar scripts de creación de base de datos. Aun así, es necesario instalar sus dependencias localmente para poder trabajar sobre el código; la aplicación móvil, por su parte, se conecta directamente al controlador ya desplegado en la nube (Render.com).
-
-- **Aiven.io**: aloja la base de datos en la nube.
-- **Render.com**: aloja las APIs y el controlador en su versión desplegada.
-- **Brevo.com**: gestiona el envío de correos (OTP y notificaciones).
-- **Cloudinary**: almacena los archivos e imágenes subidos desde la app.
+El controlador está construido con Node.js y Express, y es el encargado de gestionar la lógica de negocio y la conexión con la base de datos.
 
 ### Paso 2.1: Instalación de Dependencias
 1. Abra una terminal y navegue hasta la carpeta del controlador:
@@ -38,74 +32,86 @@ cd fro-controlador
 ```
 npm install
 ```
-3. Abra otra terminal y navegue hasta la carpeta de la vista:
-```
-cd fro-vista
-```
-4. Instale los módulos necesarios ejecutando nuevamente:
-```
-npm install
-```
+### Paso 2.2: Inicialización de la Base de Datos
 
-### Paso 2.2: Configuración de Variables de Entorno (.env)
-1. Dentro de la carpeta `fro-controlador`, busque el archivo llamado **.env.example**.
-2. Haga una copia de ese archivo y renómbrela a **.env**.
-3. Complete el archivo con las credenciales de conexión a la base de datos en la nube (Aiven.io) y con las credenciales del servicio de correo (Brevo o SMTP). A continuación se muestra un ejemplo:
-
-```
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=frosalud.app@gmail.com
-SMTP_PASS=qbss vdqm knra dqob
-```
-
-> **Nota:** las credenciales de base de datos, correo y Cloudinary ya están generadas y son compartidas por el equipo. No es necesario instalar MySQL localmente, generar una Contraseña de Aplicación propia en Gmail, ni ejecutar `npm run db:importar` o el `schema.sql`, ya que la base de datos vive en Aiven y ya está creada con sus tablas y datos iniciales.
-
-4. Guarde el archivo (Control + S).
-
-### Paso 2.3 (opcional): Base de datos en su propio computador
-
-Solo si quiere trabajar **sin** la base de la nube (por ejemplo para desarrollar
-el servidor sin afectar los datos del equipo). Con MySQL 8 instalado y
-encendido, ejecute dentro de `fro-controlador`:
+Con MySQL instalado y encendido, ejecute dentro de `fro-controlador`:
 
 ```
 npm run db:local
 ```
 
 El script (`src/database/mysql/iniciar-db-local.js`, junto a `schema.sql`) hace
-todo solo: crea el `.env` si no existe y le pregunta la contraseña de MySQL,
-crea la base `fro_salud_db`, carga `schema.sql` (tablas y datos iniciales),
-aplica las migraciones pendientes y verifica que todo quedó en orden. Se puede
-repetir las veces que quiera: si la base ya existe no la toca. Para partir de
-cero: `npm run db:local -- --reiniciar`.
+todo solo: crea el `.env` si no existe y le pregunta el usuario y la contraseña
+de MySQL, crea la base `fro_salud_db`, carga `schema.sql` (tablas y datos
+iniciales), aplica las migraciones pendientes y verifica que todo quedó en
+orden. Se puede volver a ejecutar las veces que quiera: si la base ya existe no
+la toca. Para partir de cero: `npm run db:local -- --reiniciar`.
 
-> Si su `.env` tiene `DATABASE_URL` (la base de Aiven), el script se detiene
-> para no confundir las dos bases: comente esa línea con `#` mientras trabaje
-> en local y vuelva a activarla después.
+Además deja tres cuentas de prueba activas para entrar desde la app sin pasar
+por el correo de verificación (RUT / contraseña):
+
+| Rol | RUT | Contraseña |
+|---|---|---|
+| Administrador | `111111111` | `Prueba.2026` |
+| Profesional | `222222222` | `Prueba.2026` |
+| Paciente | `333333333` | `Prueba.2026` |
+
+### Paso 2.3: Levantar el Controlador
+1. En la misma terminal que abrió en la carpeta fro-controlador, inicie el servidor:
+
+```
+npm start
+```
+(Debería ver un mensaje indicando "Servidor corriendo en el puerto 3000" y "Conectado a la base de datos MySQL").
 
 ## 3. Configuración de la Aplicación Móvil (Vista)
+La vista está construido con React Native y Expo. Para que la aplicación en el celular pueda hablar con el servidor en su computador, necesitamos sincronizar sus direcciones IP.
 
-La vista está construida con React Native y Expo. Para que la aplicación en el celular pueda hablar con el controlador desplegado en la nube (Render.com), solo necesita apuntar al `.env` a la URL correspondiente.
+### Paso 3.1: Descubrir su Dirección IP local
+1. Abra una nueva terminal (deje el controlador corriendo en la otra).
 
-### Paso 3.1: Configurar la conexión (archivo .env)
+2. En cmd o powershell, ejecute el comando ipconfig.
 
-La dirección del servidor se define en un archivo de entorno, así cada uno usa la suya sin generar conflictos en Git.
+3. Busque la línea que dice "Dirección IPv4" (ej. 192.168.1.80) y anótela.
 
-1. Dentro de la carpeta `fro-vista`, copie el archivo `.env.example` y renómbrelo a `.env`.
+### Paso 3.2: Configurar la conexión (archivo .env)
+
+Ya **no** se edita `client.js` a mano. La dirección del servidor se define en un
+archivo de entorno, así cada uno usa la suya sin generar conflictos en Git.
+
+1. Dentro de la carpeta `fro-vista`, copie el archivo `.env.example` y renómbrelo
+   a `.env`.
+
 2. Escriba adentro la dirección del servidor:
 
 ```
-EXPO_PUBLIC_API_URL=https://fro-salud-api.onrender.com/
+EXPO_PUBLIC_API_URL=http://192.168.1.130:3000
 ```
-3. Guarde el archivo (Control + S).
 
-4. Cada vez que cambie este archivo, reinicie Expo con `npx expo start -c` para que tome la nueva dirección.
+   Reemplace `192.168.1.130` por la IP que acaba de anotar. **No use
+   `localhost`**: desde el celular, "localhost" apunta al propio celular.
 
-### Paso 3.2: Levantar la Vista (Modo Desarrollo)
+   Si en vez del controlador local quiere usar el de la nube, ponga ahí la dirección
+   que compartió el equipo.
+
+3. Cada vez que cambie este archivo, reinicie Expo con `npx expo start -c` para
+   que tome la nueva dirección.
+
+### Paso 3.3: Instalación de Dependencias
+1. En su terminal, navegue a la carpeta de la vista:
+
+```
+cd fro-vista
+```
+2. Instale los módulos ejecutando:
+
+```
+npm install
+```
+### Paso 3.4: Levantar la Vista (Modo Desarrollo)
 1. Ejecute el siguiente comando para iniciar el empaquetador de Expo:
 
 ```
-npx expo start -c
+npx expo start
 ```
 2. Aparecerá un código QR en la terminal. Escanéelo con la aplicación Expo Go en su celular (asegúrese de que el celular y el PC estén conectados a la misma red Wi-Fi).
