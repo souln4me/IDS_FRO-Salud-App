@@ -63,6 +63,27 @@ SMTP_PASS=qbss vdqm knra dqob
 
 4. Guarde el archivo (Control + S).
 
+### Paso 2.3 (opcional): Base de datos en su propio computador
+
+Solo si quiere trabajar **sin** la base de la nube (por ejemplo para desarrollar
+el servidor sin afectar los datos del equipo). Con MySQL 8 instalado y
+encendido, ejecute dentro de `fro-controlador`:
+
+```
+npm run db:local
+```
+
+El script (`src/database/mysql/iniciar-db-local.js`, junto a `schema.sql`) hace
+todo solo: crea el `.env` si no existe y le pregunta la contraseña de MySQL,
+crea la base `fro_salud_db`, carga `schema.sql` (tablas y datos iniciales),
+aplica las migraciones pendientes y verifica que todo quedó en orden. Se puede
+repetir las veces que quiera: si la base ya existe no la toca. Para partir de
+cero: `npm run db:local -- --reiniciar`.
+
+> Si su `.env` tiene `DATABASE_URL` (la base de Aiven), el script se detiene
+> para no confundir las dos bases: comente esa línea con `#` mientras trabaje
+> en local y vuelva a activarla después.
+
 ## 3. Configuración de la Aplicación Móvil (Vista)
 
 La vista está construida con React Native y Expo. Para que la aplicación en el celular pueda hablar con el controlador desplegado en la nube (Render.com), solo necesita apuntar al `.env` a la URL correspondiente.

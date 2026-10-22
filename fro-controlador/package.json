@@ -9,6 +9,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node --watch server.js",
+    "db:local": "node src/database/mysql/iniciar-db-local.js",
     "db:importar": "node scripts/importar-schema.js",
     "db:validar": "node scripts/validar-schema.js",
     "db:migrar": "node scripts/migrar-db.js",
