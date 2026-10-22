@@ -23,24 +23,61 @@ function paso(numero, texto) {
   console.log(`\n${numero}. ${texto}`);
 }
 
+// Una sola interfaz de lectura para todas las preguntas. Las líneas que
+// lleguen antes de que se pregunte (por ejemplo, si la entrada viene de un
+// archivo o de otro comando) se guardan y se usan en orden.
+let lectura = null;
+let resolverPendiente = null;
+const lineasEnEspera = [];
+
+function interfazLectura() {
+  if (lectura) return lectura;
+  lectura = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: Boolean(process.stdin.isTTY) });
+  lectura.oculto = false;
+  // La contraseña no se muestra mientras se escribe (solo aplica en terminal).
+  lectura._writeToOutput = function (cadena) {
+    if (this.oculto && !/^\r?\n$/.test(cadena)) return;
+    this.output.write(cadena);
+  };
+  lectura.on('line', (linea) => {
+    if (resolverPendiente) {
+      const resolver = resolverPendiente;
+      resolverPendiente = null;
+      resolver(linea);
+    } else {
+      lineasEnEspera.push(linea);
+    }
+  });
+  lectura.on('close', () => {
+    if (resolverPendiente) {
+      console.error('\n❌ Se cerró la entrada antes de responder. Vuelve a ejecutar el comando.');
+      process.exit(1);
+    }
+  });
+  return lectura;
+}
+
 function preguntar(texto, { oculto = false } = {}) {
   return new Promise((resolver) => {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    if (oculto) {
-      // La contraseña no se muestra mientras se escribe.
-      rl.stdoutMuted = true;
-      rl._writeToOutput = function (cadena) {
-        if (this.stdoutMuted && !/^\r?\n$/.test(cadena)) return;
-        rl.output.write(cadena);
-      };
-      process.stdout.write(texto);
-    }
-    rl.question(oculto ? '' : texto, (respuesta) => {
-      rl.close();
+    const rl = interfazLectura();
+    process.stdout.write(texto);
+    const entregar = (linea) => {
+      rl.oculto = false;
       if (oculto) process.stdout.write('\n');
-      resolver(respuesta.trim());
-    });
+      resolver(String(linea || '').trim());
+    };
+    if (lineasEnEspera.length > 0) {
+      entregar(lineasEnEspera.shift());
+      return;
+    }
+    rl.oculto = oculto;
+    resolverPendiente = entregar;
   });
+}
+
+function cerrarLectura() {
+  if (lectura) lectura.close();
+  lectura = null;
 }
 
 // ── 1. Archivo .env ──────────────────────────────────────────────────────────
@@ -145,8 +182,8 @@ function explicarErrorConexion(error) {
       '   Si lo instalaste con XAMPP/WAMP, enciende MySQL desde su panel.';
   }
   if (codigo === 'ER_ACCESS_DENIED_ERROR') {
-    return 'Usuario o contraseña incorrectos. Corrige DB_USER / DB_PASSWORD en el .env\n' +
-      '   (borra la línea DB_PASSWORD para que el script la vuelva a preguntar).';
+    return 'Usuario o contraseña incorrectos tres veces seguidas. Revisa la clave de MySQL\n' +
+      '   (la que pusiste al instalarlo) y vuelve a ejecutar npm run db:local.';
   }
   if (codigo === 'ENOTFOUND' || codigo === 'EAI_AGAIN') {
     return 'No se encontró el servidor. Revisa DB_HOST en el .env (en local es localhost).';
@@ -369,14 +406,29 @@ async function main() {
   const datos = await prepararEnv();
 
   paso(2, 'Conexión al servidor MySQL');
-  try {
-    const prueba = await conectar(datos, false);
-    const [[version]] = await prueba.query('SELECT VERSION() AS v');
-    await prueba.end();
-    console.log(`   ✅ MySQL ${version.v} responde.`);
-  } catch (error) {
-    console.error(`   ❌ No se pudo conectar: ${explicarErrorConexion(error)}`);
-    process.exit(1);
+  // Si el usuario o la contraseña del .env están mal, se piden de nuevo aquí
+  // mismo (tres oportunidades) y lo correcto queda guardado en el .env.
+  for (let intento = 1; ; intento++) {
+    try {
+      const prueba = await conectar(datos, false);
+      const [[version]] = await prueba.query('SELECT VERSION() AS v');
+      await prueba.end();
+      console.log(`   ✅ MySQL ${version.v} responde.`);
+      break;
+    } catch (error) {
+      const credenciales = error.code === 'ER_ACCESS_DENIED_ERROR';
+      // El primer intento usa el .env; después hay tres oportunidades más.
+      if (!credenciales || intento > 3) {
+        console.error(`   ❌ No se pudo conectar: ${explicarErrorConexion(error)}`);
+        process.exit(1);
+      }
+      console.log(`   ⚠️  MySQL rechazó el usuario "${datos.user}" o su contraseña. Escríbelos de nuevo (intento ${intento} de 3):`);
+      const usuario = await preguntar(`   Usuario de MySQL [${datos.user}]: `);
+      if (usuario) datos.user = usuario;
+      datos.password = await preguntar(`   Contraseña de MySQL del usuario ${datos.user} (Enter si no tiene): `, { oculto: true });
+      guardarEnEnv('DB_USER', datos.user);
+      guardarEnEnv('DB_PASSWORD', datos.password);
+    }
   }
 
   await cargarEsquema(datos);
@@ -384,6 +436,7 @@ async function main() {
   await crearCuentasPrueba(datos);
   await verificar(datos, total);
 
+  cerrarLectura();
   console.log('\n✅ Base de datos lista. Para levantar el servidor:');
   console.log('   npm run dev');
   console.log('   y abre http://localhost:3000/api/diagnostico/base-datos para comprobarlo.');
