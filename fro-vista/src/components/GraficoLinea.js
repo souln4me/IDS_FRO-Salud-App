@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU45; también lo usa CU64.
+ */
 // Ruta: fro-vista/src/components/GraficoLinea.js
 //
 // Gráfico de líneas dibujado a mano con SVG. No se suma una librería de

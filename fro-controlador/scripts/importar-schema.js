@@ -74,7 +74,14 @@ async function main() {
     }
 
     console.log('Cargando el esquema…');
-    await conexion.query(sql);
+    // Sin comprobar llaves foráneas durante la carga: el archivo puede
+    // referenciar una tabla que crea más abajo. Al final se reactivan.
+    await conexion.query('SET FOREIGN_KEY_CHECKS = 0');
+    try {
+      await conexion.query(sql);
+    } finally {
+      await conexion.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
+    }
     console.log('✅ Esquema y datos iniciales cargados correctamente.');
 
     const [tablas] = await conexion.query('SHOW TABLES');

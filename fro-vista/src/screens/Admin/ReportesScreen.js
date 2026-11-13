@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Informes"
+ * Casos de uso: CU63.
+ */
 // Ruta: fro-vista/src/screens/Admin/ReportesScreen.js
 //
 // CU63 — Generación y exportación de informes operativos.
@@ -47,6 +51,7 @@ export default function ReportesScreen() {
   // Excepción 4: cuando el informe viene partido, aquí quedan sus tomos.
   const [tomosPendientes, setTomosPendientes] = useState(null);
 
+  // CU63 — cargar los tipos de informe disponibles
   useEffect(() => {
     getTiposDeInforme()
       .then((d) => setInformes(d.informes || []))
@@ -76,6 +81,7 @@ export default function ReportesScreen() {
     else setHasta(texto);
   };
 
+  // CU63 — Generando y exportando reportes operativos: descargar y compartir el archivo
   const descargar = async (tomo = 1) => {
     setGenerando(true);
     try {

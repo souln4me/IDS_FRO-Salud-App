@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU20, CU28 y CU41.
+ */
 // Ruta: fro-vista/src/utils/modalidad.js
 //
 // La modalidad de una cita es DOMICILIO u ONLINE. Antes algunas pantallas

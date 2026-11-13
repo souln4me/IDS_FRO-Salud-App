@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Firma de conformidad"
+ * Casos de uso: CU42.
+ */
 // Ruta: fro-vista/src/screens/Profesional/FirmaConformidadScreen.js
 //
 // CU42: el paciente firma su conformidad en el teléfono del profesional.
@@ -32,6 +36,7 @@ export default function FirmaConformidadScreen({ route, navigation }) {
   const [pedirRechazo, setPedirRechazo] = useState(false);
   const [aviso, setAviso] = useState(null);
 
+  // CU42 — cargar la declaración legal de conformidad
   // Excepción 2: sin declaración legal renderizada, el lienzo queda bloqueado.
   const cargarDeclaracion = async () => {
     setErrorCarga(false);
@@ -47,6 +52,7 @@ export default function FirmaConformidadScreen({ route, navigation }) {
     cargarDeclaracion();
   }, []);
 
+  // CU42 — Capturando firma manuscrita de conformidad
   const enviar = async (cuerpo, exitoTitulo) => {
     setGuardando(true);
     try {
@@ -60,6 +66,7 @@ export default function FirmaConformidadScreen({ route, navigation }) {
     }
   };
 
+  // CU42 — guardar la firma dibujada en el lienzo
   const guardarFirma = () => {
     // Excepción 4: un trazo vacío no constituye firma.
     if (!trazos.some((t) => t.length >= 2)) {
@@ -69,6 +76,7 @@ export default function FirmaConformidadScreen({ route, navigation }) {
     enviar({ trazos }, 'Firma registrada');
   };
 
+  // CU42 — conformidad validada por correo
   const enviarPorCorreo = () => {
     // Excepción 1: sin interfaz táctil operativa, conformidad por correo.
     Alert.alert(

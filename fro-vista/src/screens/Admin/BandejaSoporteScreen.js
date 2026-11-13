@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Soporte"
+ * Casos de uso: CU61, CU60.
+ */
 // Ruta: fro-vista/src/screens/Admin/BandejaSoporteScreen.js
 //
 // CU61 — Bandeja del operador de soporte.
@@ -48,6 +52,7 @@ export default function BandejaSoporteScreen() {
   const [imagenAbierta, setImagenAbierta] = useState(null);
   const [misAreas, setMisAreas] = useState([]);
 
+  // CU61 — Enrutando automáticamente solicitudes por categoría: cargar la bandeja del operador
   const cargar = useCallback(
     async (cual = filtro, esRefresco = false) => {
       if (esRefresco) setRefrescando(true);
@@ -75,6 +80,7 @@ export default function BandejaSoporteScreen() {
       .catch(() => {});
   }, [cargar, filtro]);
 
+  // CU61 — guardar las áreas que atiende el operador (base del enrutamiento)
   const alternarArea = async (clave) => {
     const nuevas = misAreas.includes(clave)
       ? misAreas.filter((a) => a !== clave)
@@ -89,6 +95,7 @@ export default function BandejaSoporteScreen() {
     }
   };
 
+  // CU61, CU60 — tomar o resolver el ticket; la respuesta la ve el solicitante en su seguimiento
   const actualizar = async (ticket, payload) => {
     setPorResolver(null);
     setProcesando(ticket.ticket_soporte_id);

@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU73, CU74, CU75.
+ *
  * CU73 — Comercialización con restricción de cobro anticipado.
  * CU74 — Actualización a paquete y devoluciones.
  * CU75 — Liquidación de ganancias del profesional.
@@ -10,21 +13,17 @@
  * reserva es temporal y se revoca si el cobro no prospera.
  */
 
-const pool = require('./../config/database');
-const {
-  leerParametroEntero,
-  notificarUsuario,
-  ofrecerCupoListaEspera,
-  obtenerContactosCita,
-} = require('../services/agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Despachador_Notificaciones = require('../componentes/C_Despachador_Notificaciones');
+const C_Motor_Agendamiento = require('../componentes/C_Motor_Agendamiento');
 
 const METODOS_PAGO = ['TARJETA_OK', 'TARJETA_RECHAZADA', 'TARJETA_LENTA'];
 
-/** Con la hora pagada, el profesional ya puede confirmarla: se le avisa. */
+/** CU73, CU52 — con la hora pagada, el profesional ya puede confirmarla: se le avisa. */
 async function avisarHoraPagada(conexion, citaId) {
-  const contactos = await obtenerContactosCita(conexion, citaId).catch(() => null);
+  const contactos = await C_Motor_Agendamiento.obtenerContactosCita(conexion, citaId).catch(() => null);
   if (!contactos?.usuario_profesional) return;
-  await notificarUsuario(
+  await C_Despachador_Notificaciones.notificarUsuario(
     conexion,
     contactos.usuario_profesional,
     'CAMBIO_ESTADO_CITA',
@@ -34,17 +33,19 @@ async function avisarHoraPagada(conexion, citaId) {
 }
 const SESIONES_PAQUETE = [10, 15, 20];
 
-async function arancelVigente(conexion = pool) {
-  return leerParametroEntero(conexion, 'ARANCEL_ESPECIALIDAD', 40000);
+// Apoyo común: arancel vigente (parámetro de CU59), usado por CU73, CU74 y CU75
+async function arancelVigente(conexion = C_Capa_de_Acceso_a_Datos) {
+  return C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'ARANCEL_ESPECIALIDAD', 40000);
 }
 
-/** Precio de un plan: arancel por sesión menos el descuento parametrizado. */
+/** CU73, CU74 — precio de un plan: arancel por sesión menos el descuento parametrizado. */
 async function precioPaquete(conexion, sesiones) {
   const arancel = await arancelVigente(conexion);
-  const descuento = await leerParametroEntero(conexion, 'DESCUENTO_PAQUETE_PORCENTAJE', 10);
+  const descuento = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'DESCUENTO_PAQUETE_PORCENTAJE', 10);
   return Math.round(arancel * sesiones * (1 - descuento / 100));
 }
 
+// Apoyo común: paciente asociado a la cuenta que hace la petición
 async function pacienteDe(conexion, usuarioId) {
   const [[fila]] = await conexion.query(
     `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
@@ -58,6 +59,7 @@ async function pacienteDe(conexion, usuarioId) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU73 — opciones y precios para pagar la hora
  * GET /api/finanzas/citas/:id/opciones   (Paciente)
  *
  * Lo que el paciente necesita para elegir: cuánto cuesta una sesión suelta,
@@ -68,10 +70,10 @@ async function pacienteDe(conexion, usuarioId) {
  */
 exports.opcionesDeCompra = async (req, res) => {
   try {
-    const pacienteId = await pacienteDe(pool, req.user.usuario_id);
+    const pacienteId = await pacienteDe(C_Capa_de_Acceso_a_Datos, req.user.usuario_id);
     if (!pacienteId) return res.status(404).json({ error: 'No se encontró tu registro de paciente.' });
 
-    const [[cita]] = await pool.query(
+    const [[cita]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT c.cita_id, c.estado, c.fecha_hora_inicio, c.paciente_id
          FROM Cita c WHERE c.cita_id = ? LIMIT 1`,
       [req.params.id]
@@ -81,18 +83,18 @@ exports.opcionesDeCompra = async (req, res) => {
     }
 
     const arancel = await arancelVigente();
-    const descuento = await leerParametroEntero(pool, 'DESCUENTO_PAQUETE_PORCENTAJE', 10);
+    const descuento = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'DESCUENTO_PAQUETE_PORCENTAJE', 10);
 
     const planes = [];
     for (const sesiones of SESIONES_PAQUETE) {
       planes.push({
         sesiones,
-        precio: await precioPaquete(pool, sesiones),
+        precio: await precioPaquete(C_Capa_de_Acceso_a_Datos, sesiones),
         precio_sin_descuento: arancel * sesiones,
       });
     }
 
-    const [[paquete]] = await pool.query(
+    const [[paquete]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT paquete_sesiones_id, sesiones_total, sesiones_usadas
          FROM Paquete_Sesiones
         WHERE paciente_id = ? AND estado = 'ACTIVO' AND sesiones_usadas < sesiones_total
@@ -100,7 +102,7 @@ exports.opcionesDeCompra = async (req, res) => {
       [pacienteId]
     );
 
-    const [[pagada]] = await pool.query(
+    const [[pagada]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT transaccion_id, monto_total, tipo FROM Transaccion
         WHERE cita_id = ? AND estado = 'PAGADA' AND tipo <> 'DEVOLUCION'
         ORDER BY transaccion_id DESC LIMIT 1`,
@@ -134,6 +136,7 @@ exports.opcionesDeCompra = async (req, res) => {
 };
 
 /**
+ * CU73 — Comercializando prestaciones con restricción de cobro anticipado
  * POST /api/finanzas/citas/:id/comprar   (Paciente)
  * { modalidad: 'UNITARIA' | 'PAQUETE' | 'USAR_PAQUETE', sesiones, metodo_pago }
  *
@@ -162,9 +165,12 @@ exports.comprarPrestacion = async (req, res) => {
     return res.status(400).json({ error: 'METODO_INVALIDO', mensaje: 'Elige un método de pago.' });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
+    // La transacción abre ANTES de leer la cita: así el FOR UPDATE de abajo
+    // sí la bloquea y dos pagos simultáneos de la misma hora no se pisan.
+    await conexion.beginTransaction();
     const pacienteId = await pacienteDe(conexion, req.user.usuario_id);
     const [[cita]] = await conexion.execute(
       `SELECT cita_id, estado, paciente_id FROM Cita WHERE cita_id = ? LIMIT 1 FOR UPDATE`,
@@ -203,7 +209,6 @@ exports.comprarPrestacion = async (req, res) => {
       [req.params.id]
     );
     if (enTransito) {
-      await conexion.beginTransaction();
       await conexion.execute(
         `UPDATE Transaccion SET estado = 'PAGADA' WHERE transaccion_id = ?`,
         [enTransito.transaccion_id]
@@ -258,7 +263,6 @@ exports.comprarPrestacion = async (req, res) => {
 
     // ── Camino A: usar una sesión de un plan ya comprado ────────────────
     if (modalidad === 'USAR_PAQUETE') {
-      await conexion.beginTransaction();
 
       const [[paquete]] = await conexion.execute(
         `SELECT paquete_sesiones_id, sesiones_total, sesiones_usadas
@@ -319,7 +323,6 @@ exports.comprarPrestacion = async (req, res) => {
 
     // Excepciones 3 y 4: la entidad rechaza y la reserva temporal se revoca.
     if (metodo === 'TARJETA_RECHAZADA') {
-      await conexion.beginTransaction();
       await conexion.execute(
         `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
          VALUES (?, ?, 'RECHAZADA', ?, ?)`,
@@ -335,7 +338,7 @@ exports.comprarPrestacion = async (req, res) => {
       await conexion.commit();
 
       // El bloque liberado se ofrece a quien esté esperando (CU19).
-      await ofrecerCupoListaEspera(pool, req.params.id);
+      await C_Motor_Agendamiento.ofrecerCupoListaEspera(C_Capa_de_Acceso_a_Datos, req.params.id);
 
       return res.status(402).json({
         error: 'PAGO_RECHAZADO',
@@ -346,8 +349,6 @@ exports.comprarPrestacion = async (req, res) => {
       });
     }
 
-    await conexion.beginTransaction();
-
     const estadoPago = metodo === 'TARJETA_LENTA' ? 'EN_TRANSITO' : 'PAGADA';
     await conexion.execute(
       `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
@@ -355,7 +356,7 @@ exports.comprarPrestacion = async (req, res) => {
       [monto, modalidad === 'PAQUETE' ? 'PAQUETE' : 'PRESTACION', estadoPago, metodo, req.params.id]
     );
 
-    // RF73: con el pago ÍNTEGRO la hora queda pagada y lista para que el
+    // CU73 (RF73): con el pago ÍNTEGRO la hora queda pagada y lista para que el
     // profesional la confirme. Un pago en tránsito todavía no habilita eso.
     if (estadoPago === 'PAGADA') {
       if (modalidad === 'PAQUETE') {
@@ -416,6 +417,9 @@ exports.comprarPrestacion = async (req, res) => {
       mensaje: 'No pudimos procesar el pago. Tu reserva sigue vigente: inténtalo otra vez.',
     });
   } finally {
+    // Cierra cualquier transacción que haya quedado abierta por una salida
+    // temprana (tras un commit no hace nada).
+    await conexion.rollback().catch(() => {});
     conexion.release();
   }
 };
@@ -425,6 +429,7 @@ exports.comprarPrestacion = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU74 — Actualizando y devolviendo transacciones financieras
  * POST /api/finanzas/citas/:id/actualizar-a-paquete   (Paciente)
  * { sesiones, metodo_pago }
  *
@@ -445,9 +450,12 @@ exports.actualizarAPaquete = async (req, res) => {
     return res.status(400).json({ error: 'METODO_INVALIDO', mensaje: 'Elige un método de pago.' });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
+    // La transacción abre ANTES de leer la cita: así el FOR UPDATE de abajo
+    // sí la bloquea y dos pagos simultáneos de la misma hora no se pisan.
+    await conexion.beginTransaction();
     const pacienteId = await pacienteDe(conexion, req.user.usuario_id);
     const [[cita]] = await conexion.execute(
       `SELECT cita_id, estado, fecha_hora_inicio, paciente_id
@@ -500,6 +508,7 @@ exports.actualizarAPaquete = async (req, res) => {
           req.user.usuario_id,
         ]
       );
+      await conexion.commit(); // la alerta de auditoría debe quedar guardada
       return res.status(409).json({
         error: 'PAGO_PREVIO_INCONSISTENTE',
         mensaje:
@@ -511,12 +520,11 @@ exports.actualizarAPaquete = async (req, res) => {
     // Excepción 1: la actualización es del MISMO DÍA de la prestación. Fuera
     // de esa ventana no se actualiza: se devuelve el pago completo y el
     // paciente agenda de nuevo.
-    const horasVentana = await leerParametroEntero(conexion, 'HORAS_ANTICIPACION_DEVOLUCION', 24);
+    const horasVentana = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'HORAS_ANTICIPACION_DEVOLUCION', 24);
     const horasHastaLaCita =
       (new Date(cita.fecha_hora_inicio).getTime() - Date.now()) / 3600000;
 
     if (horasHastaLaCita > horasVentana) {
-      await conexion.beginTransaction();
       await conexion.execute(
         `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
          VALUES (?, 'DEVOLUCION', 'PAGADA', ?, ?)`,
@@ -531,7 +539,8 @@ exports.actualizarAPaquete = async (req, res) => {
       );
       await conexion.commit();
 
-      await ofrecerCupoListaEspera(pool, req.params.id);
+      // CU19: el bloque liberado se ofrece a la lista de espera.
+      await C_Motor_Agendamiento.ofrecerCupoListaEspera(C_Capa_de_Acceso_a_Datos, req.params.id);
 
       return res.status(200).json({
         devolucion: true,
@@ -554,14 +563,13 @@ exports.actualizarAPaquete = async (req, res) => {
          VALUES (?, 'ACTUALIZACION', 'RECHAZADA', ?, ?)`,
         [diferencia, metodo, req.params.id]
       );
+      await conexion.commit(); // el intento rechazado queda registrado
       return res.status(402).json({
         error: 'PAGO_RECHAZADO',
         mensaje:
           'El pago del diferencial no se completó. Tu prestación sigue vigente como sesión unitaria.',
       });
     }
-
-    await conexion.beginTransaction();
 
     await conexion.execute(
       `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
@@ -612,12 +620,15 @@ exports.actualizarAPaquete = async (req, res) => {
       mensaje: 'La red tardó demasiado al registrar la actualización. Inténtalo nuevamente.',
     });
   } finally {
+    // Cierra cualquier transacción que haya quedado abierta por una salida
+    // temprana (tras un commit no hace nada).
+    await conexion.rollback().catch(() => {});
     conexion.release();
   }
 };
 
 /**
- * RF74 — Devolución total por cancelación anticipada.
+ * CU74 (RF74) — Devolución total por cancelación anticipada.
  *
  * La llama la máquina de estados de la cita cuando el paciente cancela. No
  * lanza: una devolución fallida no puede impedir que la cita se cancele.
@@ -631,7 +642,7 @@ exports.actualizarAPaquete = async (req, res) => {
  */
 async function devolverPorCancelacion(conexion, citaId, fechaHoraInicio, req) {
   try {
-    const horas = await leerParametroEntero(conexion, 'HORAS_ANTICIPACION_DEVOLUCION', 24);
+    const horas = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'HORAS_ANTICIPACION_DEVOLUCION', 24);
     const anticipacion = (new Date(fechaHoraInicio).getTime() - Date.now()) / 3600000;
     if (anticipacion < horas) return null;
 
@@ -673,7 +684,7 @@ async function devolverPorCancelacion(conexion, citaId, fechaHoraInicio, req) {
       ]
     );
 
-    // El aviso queda en la campana (y sale por correo/push si corresponde).
+    // CU52: el aviso queda en la campana (y sale por correo/push si corresponde).
     const [[paciente]] = await conexion.execute(
       `SELECT pa.usuario_id FROM Cita c
          JOIN Paciente pa ON pa.paciente_id = c.paciente_id
@@ -681,7 +692,7 @@ async function devolverPorCancelacion(conexion, citaId, fechaHoraInicio, req) {
       [citaId]
     );
     if (paciente) {
-      await notificarUsuario(
+      await C_Despachador_Notificaciones.notificarUsuario(
         conexion,
         paciente.usuario_id,
         'DEVOLUCION_PAGO',
@@ -705,6 +716,7 @@ exports.devolverPorCancelacion = devolverPorCancelacion;
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU75 — Liquidando ganancias en panel financiero
  * GET /api/finanzas/liquidaciones?anio=&mes=   (Administrador)
  *
  * Calcula el monto del mes para cada profesional a partir de sus prestaciones
@@ -722,11 +734,11 @@ exports.liquidacionesDelMes = async (req, res) => {
 
   try {
     const arancel = await arancelVigente();
-    const porcentaje = await leerParametroEntero(pool, 'PORCENTAJE_HONORARIO_PROFESIONAL', 70);
+    const porcentaje = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'PORCENTAJE_HONORARIO_PROFESIONAL', 70);
 
     // Una prestación cuenta cuando la sesión quedó certificada (CU41): ese es
     // el "estado Validada" del caso de uso.
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT p.profesional_id,
               COALESCE(
                 NULLIF(TRIM(CONCAT_WS(' ', u.nombres, u.apellido_paterno)), ''),
@@ -769,9 +781,9 @@ exports.liquidacionesDelMes = async (req, res) => {
 
     const duracion = Date.now() - inicio;
     // Excepción 4: el cálculo que pasa del tope queda anotado.
-    const tope = await leerParametroEntero(pool, 'LATENCIA_MAXIMA_LIQUIDACION_MS', 2000);
+    const tope = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'LATENCIA_MAXIMA_LIQUIDACION_MS', 2000);
     if (duracion > tope) {
-      pool
+      C_Capa_de_Acceso_a_Datos
         .query(
           `INSERT INTO Bitacora_Auditoria
               (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
@@ -800,6 +812,7 @@ exports.liquidacionesDelMes = async (req, res) => {
 };
 
 /**
+ * CU75 — emitir la liquidación del mes
  * POST /api/finanzas/liquidaciones   (Administrador)
  * { profesional_id, anio, mes, bonificacion, observacion }
  *
@@ -825,7 +838,7 @@ exports.emitirLiquidacion = async (req, res) => {
     });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     const [[yaEmitida]] = await conexion.execute(
@@ -843,7 +856,7 @@ exports.emitirLiquidacion = async (req, res) => {
     }
 
     const arancel = await arancelVigente(conexion);
-    const porcentaje = await leerParametroEntero(conexion, 'PORCENTAJE_HONORARIO_PROFESIONAL', 70);
+    const porcentaje = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'PORCENTAJE_HONORARIO_PROFESIONAL', 70);
     const valorSesion = Math.round(arancel * (porcentaje / 100));
 
     const [[conteo]] = await conexion.execute(
@@ -892,15 +905,16 @@ exports.emitirLiquidacion = async (req, res) => {
 
     await conexion.commit();
 
-    const [[profesional]] = await pool.query(
+    const [[profesional]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT u.usuario_id FROM Profesional p
          JOIN Usuario u ON u.usuario_id = p.usuario_id
         WHERE p.profesional_id = ? LIMIT 1`,
       [profesionalId]
     );
+    // CU52: aviso al profesional.
     if (profesional) {
-      notificarUsuario(
-        pool,
+      C_Despachador_Notificaciones.notificarUsuario(
+        C_Capa_de_Acceso_a_Datos,
         profesional.usuario_id,
         'LIQUIDACION_EMITIDA',
         `Tu liquidación de ${String(mes).padStart(2, '0')}/${anio} quedó emitida por $${total.toLocaleString('es-CL')}.`,
@@ -924,10 +938,10 @@ exports.emitirLiquidacion = async (req, res) => {
   }
 };
 
-/** GET /api/finanzas/mis-liquidaciones   (Profesional) — solo lectura. */
+/** CU75 — GET /api/finanzas/mis-liquidaciones   (Profesional) — solo lectura. */
 exports.misLiquidaciones = async (req, res) => {
   try {
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT l.liquidacion_id, l.anio, l.mes, l.sesiones_validadas, l.monto_prestaciones,
               l.bonificacion, l.monto_total, l.observacion, l.momento_emision
          FROM Liquidacion l

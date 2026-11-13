@@ -1,6 +1,14 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU79, CU08, CU52; registra las pantallas de todos los CU de la app.
+ *
+ * Navegador principal: según el rol del token, arma un entorno de pantallas
+ * distinto para el visitante, el paciente, el profesional y el administrador.
+ */
 // Ruta: fro-vista/src/navigation/AppNavigator.js
 import React, { useContext, useEffect, useState } from 'react';
 import { View, ActivityIndicator } from 'react-native';
+import { registrarVista } from '../utils/registroApp';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StatusBar } from 'expo-status-bar';
@@ -26,6 +34,7 @@ import GestionDisponibilidadScreen from '../screens/Profesional/GestionDisponibi
 import FichaClinicaScreen from '../screens/Profesional/FichaClinica/FichaClinicaScreen';
 import MisHorariosScreen from '../screens/Profesional/MisHorariosScreen';
 import MisLiquidacionesScreen from '../screens/Profesional/MisLiquidacionesScreen';
+import InformeAltaScreen from '../screens/Profesional/InformeAltaScreen';
 // Pantallas — Administrador
 import ParametrosScreen from '../screens/Admin/ParametrosScreen';
 import SesionesSuspendidasScreen from '../screens/Admin/SesionesSuspendidasScreen';
@@ -33,6 +42,11 @@ import PalabrasRestringidasScreen from '../screens/Admin/PalabrasRestringidasScr
 import ModeracionResenasScreen from '../screens/Admin/ModeracionResenasScreen';
 import PanelAdminScreen from '../screens/Admin/PanelAdminScreen';
 import BandejaSoporteScreen from '../screens/Admin/BandejaSoporteScreen';
+import EventosCriticosScreen from '../screens/Admin/EventosCriticosScreen';
+import DerivacionInternaScreen from '../screens/Profesional/DerivacionInternaScreen';
+import DerivacionesRecibidasScreen from '../screens/Profesional/DerivacionesRecibidasScreen';
+import ContingenciaBonosScreen from '../screens/Comun/ContingenciaBonosScreen';
+import MisDatosScreen from '../screens/Paciente/MisDatosScreen';
 import ReportesScreen from '../screens/Admin/ReportesScreen';
 import LiquidacionesScreen from '../screens/Admin/LiquidacionesScreen';
 // Pantallas — Comunes a los tres roles
@@ -73,6 +87,7 @@ function estiloBarraDeEstado(estado) {
   return !ruta || PANTALLAS_DE_ARRIBA_CLARA.includes(ruta) ? 'dark' : 'light';
 }
 
+// CU79 — Segregando interfaces según rol de acceso
 export default function AppNavigator() {
   const { userToken, userData, isLoading } = useContext(AuthContext);
 
@@ -85,6 +100,7 @@ export default function AppNavigator() {
   const actualizarBarra = () => setEstiloBarra(estiloBarraDeEstado(refNavegacion.getRootState?.()));
   const [recargas, setRecargas] = useState(0);
 
+  // CU08 Exc. 1: ruta no disponible para el rol
   const alFallarNavegacion = (accion) => {
     if (!ACCIONES_DE_RUTEO.includes(accion.type)) {
       console.warn('[navegacion] Acción no atendida:', accion.type);
@@ -129,8 +145,15 @@ export default function AppNavigator() {
       ref={refNavegacion}
       key={recargas}
       onUnhandledAction={alFallarNavegacion}
-      onReady={actualizarBarra}
-      onStateChange={(estado) => setEstiloBarra(estiloBarraDeEstado(estado))}
+      onReady={() => {
+        actualizarBarra();
+        registrarVista(refNavegacion.getCurrentRoute()?.name);
+      }}
+      onStateChange={(estado) => {
+        setEstiloBarra(estiloBarraDeEstado(estado));
+        // Registro de actividad: la pantalla que quedó a la vista.
+        registrarVista(refNavegacion.getCurrentRoute()?.name);
+      }}
     >
       <StatusBar style={estiloBarra} />
       <Stack.Navigator
@@ -151,15 +174,20 @@ export default function AppNavigator() {
         }}
       >
         {userToken == null ? (
+          // CU79: cada rol recibe solo sus pantallas.
           // ── ESCENARIO A: Rutas Públicas (Sin iniciar sesión) ──
           <>
+            {/* CU05: inicio de sesión */}
             <Stack.Screen name="Login" component={LoginScreen} options={{ headerShown: false }} />
+            {/* CU01, CU02, CU03: registro de paciente o profesional */}
             <Stack.Screen name="Register" component={RegisterScreen} options={{ title: 'Crear Cuenta' }} />
+            {/* CU06, CU07: recuperar la contraseña */}
             <Stack.Screen
               name="RecuperarContrasena"
               component={RecuperarContrasenaScreen}
               options={{ title: 'Recuperar Contraseña' }}
             />
+            {/* CU04: verificación con código OTP */}
             <Stack.Screen
               name="OTP"
               component={OTPScreen}
@@ -169,7 +197,7 @@ export default function AppNavigator() {
         ) : userData?.rol === 'Paciente' ? (
           // ── ESCENARIO B: Paciente Autenticado ──
           <>
-            {/* Barra inferior: Inicio (Mis citas) · Mi tratamiento · ＋ ·
+            {/* CU79: barra inferior del paciente: Inicio (Mis citas) · Mi tratamiento · ＋ ·
                 Mensajes · Mi perfil. Lo demás se abre encima de ella. */}
             <Stack.Screen
               name={PESTANAS_PACIENTE}
@@ -182,56 +210,78 @@ export default function AppNavigator() {
             <Stack.Screen name="PerfilProfesional" component={PerfilProfesionalScreen} options={{ title: 'Perfil del profesional' }} />
             {/* CU73: cobro anticipado antes de confirmar la hora */}
             <Stack.Screen name="PagarReserva" component={PagarReservaScreen} options={{ title: 'Pagar tu hora' }} />
+            {/* CU66, CU67: bonos de cobertura y copagos */}
             <Stack.Screen name="Pagos" component={PagosScreen} options={{ title: 'Pagos y Bonos' }} />
+            {/* Datos de contacto editables del paciente (dentro del CU09) */}
+            <Stack.Screen name="MisDatos" component={MisDatosScreen} options={{ title: 'Mis datos' }} />
+            {/* CU39, CU43: evidencia de la sesión (GPS y teleconsulta) */}
             <Stack.Screen name="EvidenciaSesion" component={EvidenciaSesionScreen} options={{ title: 'Evidencia de Sesión' }} />
+            {/* CU14, CU15, CU17, CU19: buscar, reservar o reprogramar una hora */}
             <Stack.Screen
               name="BuscarCita"
               component={BuscarCitaScreen}
               options={{ title: 'Buscar y Agendar Cita' }}
             />
+            {/* CU52: centro de notificaciones */}
             <Stack.Screen name="Notificaciones" component={CentroNotificacionesScreen} options={{ title: 'Notificaciones' }} />
             {/* CU60: solicitudes de soporte y su seguimiento */}
             <Stack.Screen name="Soporte" component={SoporteScreen} options={{ title: 'Ayuda y soporte' }} />
+            {/* CU53, CU57: mensajería clínica */}
             <Stack.Screen name="ChatClinico" component={ChatClinicoScreen} options={{ title: 'Mensajes' }} />
             {/* CU35: el paciente consulta su repositorio con el visor embebido */}
             <Stack.Screen name="Documentos" component={DocumentosScreen} options={{ title: 'Mis Documentos' }} />
+            {/* CU35: visor embebido de documentos */}
             <Stack.Screen name="VisorDocumento" component={VisorDocumentoScreen} options={{ title: 'Visor de Documento' }} />
           </>
         ) : userData?.rol === 'Profesional' ? (
           // ── ESCENARIO C: Profesional Autenticado ──
           <>
-            {/* Barra inferior: Inicio (fichas y banderas rojas) · Mi jornada ·
+            {/* CU79: barra inferior del profesional: Inicio (fichas y banderas rojas) · Mi jornada ·
                 Mensajes · Perfil. Lo demás se abre encima de ella. */}
             <Stack.Screen
               name={PESTANAS_PROFESIONAL}
               component={PestanasProfesional}
               options={{ headerShown: false, gestureEnabled: false }}
             />
-            {/* Ficha clínica consolidada: historial, anamnesis, episodios, evolución e intervención */}
+            {/* CU28, CU78: ficha clínica consolidada: historial, anamnesis, episodios, evolución e intervención */}
             <Stack.Screen name="FichaClinica" component={FichaClinicaScreen} options={{ title: 'Ficha Clínica' }} />
+            {/* CU37: informe de alta y cierre del episodio, desde la pestaña Episodios */}
+            <Stack.Screen name="InformeAlta" component={InformeAltaScreen} options={{ title: 'Informe de alta' }} />
+            {/* CU65: derivaciones internas; CU72: bonos por contingencia */}
+            <Stack.Screen name="DerivacionInterna" component={DerivacionInternaScreen} options={{ title: 'Derivación interna' }} />
+            {/* CU65: derivaciones que recibe el profesional */}
+            <Stack.Screen name="DerivacionesRecibidas" component={DerivacionesRecibidasScreen} options={{ title: 'Derivaciones recibidas' }} />
+            {/* CU72: bonos por contingencia */}
+            <Stack.Screen name="ContingenciaBonos" component={ContingenciaBonosScreen} options={{ title: 'Bonos por contingencia' }} />
+            {/* CU16: restringir disponibilidad de la agenda */}
             <Stack.Screen
               name="GestionDisponibilidad"
               component={GestionDisponibilidadScreen}
               options={{ title: 'Gestión de Agenda' }}
             />
-            {/* Jornada semanal: el profesional gestiona sus bloques horarios */}
+            {/* CU10: jornada semanal: el profesional gestiona sus bloques horarios */}
             <Stack.Screen name="MisHorarios" component={MisHorariosScreen} options={{ title: 'Mis horarios de atención' }} />
             {/* CU58: el profesional ve sus propias evaluaciones publicadas */}
             <Stack.Screen name="ResenasProfesional" component={ResenasProfesionalScreen} options={{ title: 'Evaluaciones' }} />
             {/* CU75: historial de liquidaciones, solo lectura */}
             <Stack.Screen name="MisLiquidaciones" component={MisLiquidacionesScreen} options={{ title: 'Mis Liquidaciones' }} />
+            {/* CU52: centro de notificaciones */}
             <Stack.Screen name="Notificaciones" component={CentroNotificacionesScreen} options={{ title: 'Notificaciones' }} />
             {/* CU60: solicitudes de soporte y su seguimiento */}
             <Stack.Screen name="Soporte" component={SoporteScreen} options={{ title: 'Ayuda y soporte' }} />
+            {/* CU53, CU57: mensajería clínica */}
             <Stack.Screen name="ChatClinico" component={ChatClinicoScreen} options={{ title: 'Mensajes' }} />
+            {/* CU39, CU43: evidencia de la sesión (GPS y teleconsulta) */}
             <Stack.Screen name="EvidenciaSesion" component={EvidenciaSesionScreen} options={{ title: 'Evidencia de Sesión' }} />
+            {/* CU42: firma manuscrita de conformidad */}
             <Stack.Screen name="FirmaConformidad" component={FirmaConformidadScreen} options={{ title: 'Firma de Conformidad' }} />
             {/* CU33/CU34/CU35: repositorio multimedia del paciente en atención */}
             <Stack.Screen name="Documentos" component={DocumentosScreen} options={{ title: 'Documentos del Paciente' }} />
+            {/* CU35: visor embebido de documentos */}
             <Stack.Screen name="VisorDocumento" component={VisorDocumentoScreen} options={{ title: 'Visor de Documento' }} />
           </>
         ) : userData?.rol === 'Administrador' ? (
-          // ── ESCENARIO D: Administrador Autenticado (CU59) ──
+          // ── ESCENARIO D: Administrador Autenticado (CU79) ──
           <>
             {/* CU64: el panel de indicadores es lo primero que ve el
                 administrador. Parámetros pasa a ser una herramienta más. */}
@@ -252,7 +302,9 @@ export default function AppNavigator() {
                 headerRight: () => <CampanaNotificaciones navigation={navigation} />,
               })}
             />
+            {/* CU52: centro de notificaciones */}
             <Stack.Screen name="Notificaciones" component={CentroNotificacionesScreen} options={{ title: 'Notificaciones' }} />
+            {/* CU07, CU08: contraseña y sesiones activas */}
             <Stack.Screen name="Seguridad" component={SeguridadScreen} options={{ title: 'Seguridad de la Cuenta' }} />
             {/* CU41 Exc.2 (D11): sesiones derivadas a revisión */}
             <Stack.Screen name="SesionesSuspendidas" component={SesionesSuspendidasScreen} options={{ title: 'Sesiones suspendidas' }} />
@@ -260,21 +312,27 @@ export default function AppNavigator() {
             <Stack.Screen name="PalabrasRestringidas" component={PalabrasRestringidasScreen} options={{ title: 'Términos restringidos' }} />
             {/* CU56: moderación de testimonios públicos */}
             <Stack.Screen name="ModeracionResenas" component={ModeracionResenasScreen} options={{ title: 'Testimonios' }} />
+            {/* CU59: parámetros globales del sistema */}
             <Stack.Screen name="Parametros" component={ParametrosScreen} options={{ title: 'Parámetros Globales' }} />
             {/* CU61: bandeja de tickets enrutados al operador */}
             <Stack.Screen name="BandejaSoporte" component={BandejaSoporteScreen} options={{ title: 'Soporte' }} />
+            {/* CU62: eventos críticos escalados a supervisión */}
+            <Stack.Screen name="EventosCriticos" component={EventosCriticosScreen} options={{ title: 'Eventos críticos' }} />
+            {/* CU72: contingencia de bonos */}
+            <Stack.Screen name="ContingenciaBonos" component={ContingenciaBonosScreen} options={{ title: 'Contingencia de bonos' }} />
             {/* CU63: informes operativos exportables */}
             <Stack.Screen name="Reportes" component={ReportesScreen} options={{ title: 'Informes' }} />
             {/* CU75: liquidación mensual de los profesionales */}
             <Stack.Screen name="Liquidaciones" component={LiquidacionesScreen} options={{ title: 'Liquidaciones' }} />
           </>
         ) : (
-          // ── ESCENARIO E: Rol Desconocido ──
+          // ── ESCENARIO E: Rol Desconocido (CU79) ──
           <>
             <Stack.Screen name="Login" component={LoginScreen} options={{ title: 'Rol no autorizado' }} />
           </>
         )}
       </Stack.Navigator>
+      {/* CU08 Exc. 1: aviso de error de navegación y recarga */}
       <DialogoAviso
         visible={errorNavegacion !== null}
         titulo="Error de navegación"

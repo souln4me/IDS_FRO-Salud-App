@@ -1,5 +1,12 @@
-const pool = require('../config/database');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU16.
+ *
+ * Bloqueos de agenda: el profesional inhabilita rangos de fechas.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
 
+// Apoyo común: fecha DD/MM/AAAA a formato MySQL
 // Convierte DD/MM/AAAA a formato MySQL YYYY-MM-DD.
 // La fecha de inicio parte a las 00:00:00 y la de término cierra a las
 // 23:59:59: así el ÚLTIMO día del bloqueo también queda inhabilitado
@@ -16,7 +23,7 @@ const convertirFecha = (fechaStr, esFechaFin = false) => {
  */
 exports.listarBloqueos = async (req, res) => {
     try {
-        const [bloqueos] = await pool.query(
+        const [bloqueos] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT b.bloqueo_id, b.fecha_inicio, b.fecha_fin, b.motivo
                FROM Bloqueo_Agenda b
                JOIN Profesional p ON p.profesional_id = b.profesional_id
@@ -31,22 +38,42 @@ exports.listarBloqueos = async (req, res) => {
     }
 };
 
+// CU16 — Restringiendo disponibilidad administrativa
 exports.restringirDisponibilidad = async (req, res) => {
     const { profesional_id, fecha_inicio, fecha_fin, motivo } = req.body;
-    const connection = await pool.getConnection();
+    const esAdministrador = req.user?.nombre_rol === 'Administrador';
+    const PATRON = /^\d{2}\/\d{2}\/\d{4}$/;
+    if (!PATRON.test(String(fecha_inicio || '')) || !PATRON.test(String(fecha_fin || ''))) {
+        return res.status(400).json({ mensaje: 'Indica las fechas en formato DD/MM/AAAA.' });
+    }
+    // El administrador indica a qué profesional bloquea; el profesional solo
+    // puede bloquear su propia agenda, diga lo que diga la petición.
+    if (esAdministrador && !(Number(profesional_id) > 0)) {
+        return res.status(400).json({ mensaje: 'Indica el número de profesional a bloquear.' });
+    }
+    const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
     try {
         await connection.beginTransaction();
 
-        // 1. Buscamos el profesional_id real
-        const [profesionales] = await connection.execute(
-            'SELECT profesional_id FROM Profesional WHERE usuario_id = ? OR profesional_id = ? LIMIT 1',
-            [profesional_id, profesional_id]
-        );
+        // 1. El profesional cuya agenda se bloquea
+        const [profesionales] = esAdministrador
+            ? await connection.execute(
+                'SELECT profesional_id FROM Profesional WHERE profesional_id = ? LIMIT 1',
+                [Number(profesional_id)]
+              )
+            : await connection.execute(
+                'SELECT profesional_id FROM Profesional WHERE usuario_id = ? LIMIT 1',
+                [req.user.usuario_id]
+              );
 
         if (profesionales.length === 0) {
             await connection.rollback();
-            return res.status(404).json({ mensaje: 'Error: Esta cuenta no tiene un perfil de profesional asociado en la base de datos.' });
+            return res.status(404).json({
+                mensaje: esAdministrador
+                    ? 'No existe un profesional con ese número.'
+                    : 'Esta cuenta no tiene un perfil de profesional asociado.',
+            });
         }
 
         const idRealProfesional = profesionales[0].profesional_id;

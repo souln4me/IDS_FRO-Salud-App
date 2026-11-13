@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Entrevista previa"
+ * Casos de uso: CU27, CU23, CU24, CU26.
+ */
 // Ruta: fro-vista/src/screens/Paciente/TriajeScreen.js
 //
 // CU27 → CU23 → CU24 en un solo flujo:
@@ -77,6 +81,7 @@ export default function TriajeScreen({ navigation }) {
   const respuestasRef = useRef({});
 
   // ── Arranque: estado del ciclo ─────────────────────────────────────────────
+  // CU23, CU27 — decide si mostrar el disclaimer, la entrevista o lo ya completado
   const iniciar = async () => {
     setFase('cargando');
     try {
@@ -84,6 +89,7 @@ export default function TriajeScreen({ navigation }) {
 
       if (data.triaje?.estado === 'COMPLETADO') {
         setFechaCompletado(data.triaje.momento_completado);
+        // CU26: sugerencia de especialidad vigente
         const vigente = await getMiDerivacion().catch(() => null);
         setDerivacion(vigente?.hay_triaje ? vigente.derivacion || null : null);
         setFase('completado');
@@ -113,6 +119,7 @@ export default function TriajeScreen({ navigation }) {
     iniciar();
   }, []);
 
+  // CU23 — Ejecutando entrevista clínica automatizada de triaje
   const cargarArbol = async (previas) => {
     const { data } = await apiClient.get('/clinica/triaje/arbol');
     setArbol(data);
@@ -139,6 +146,7 @@ export default function TriajeScreen({ navigation }) {
   };
 
   // ── CU27: aceptación / rechazo ─────────────────────────────────────────────
+  // CU27 — Registrando aceptación de disclaimer legal
   const aceptarDisclaimer = async () => {
     setProcesando(true);
     try {
@@ -219,6 +227,7 @@ export default function TriajeScreen({ navigation }) {
   };
 
   // ── Volver a la pregunta anterior ──────────────────────────────────────────
+  // CU23: corrige una respuesta ya dada
   // Se reabre la pregunta previa con su respuesta a la vista (en las de texto
   // o número queda escrita para corregirla). Se descartan esa respuesta y las
   // que venían después: al cambiarla, el camino del árbol puede ser otro.
@@ -246,6 +255,7 @@ export default function TriajeScreen({ navigation }) {
   };
 
   // ── CU24: completar e integrar ─────────────────────────────────────────────
+  // CU24 — Estructurando datos de sintomatología a Ficha Clínica
   const completar = async (finales) => {
     setProcesando(true);
     setFase('cargando');

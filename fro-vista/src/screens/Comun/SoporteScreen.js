@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Ayuda y soporte"
+ * Casos de uso: CU60, CU61.
+ */
 // Ruta: fro-vista/src/screens/Comun/SoporteScreen.js
 //
 // CU60 — Registro y seguimiento de solicitudes de soporte, común al paciente y
@@ -47,6 +51,7 @@ export default function SoporteScreen() {
   const [errores, setErrores] = useState([]);
   const [aviso, setAviso] = useState(null);
 
+  // CU60 — Registrando y siguiendo solicitudes de soporte: cargar mis solicitudes
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -99,6 +104,7 @@ export default function SoporteScreen() {
     });
   };
 
+  // CU60 — registrar la solicitud de soporte
   const enviar = async () => {
     // Excepción 3: validación estricta antes de salir a la red.
     const faltantes = [];
@@ -124,6 +130,7 @@ export default function SoporteScreen() {
       setCategoria('');
       setDescripcion('');
       setAdjunto(null);
+      // CU61: el servidor informa si la enrutó a un operador del área
       setAviso({
         tono: 'ok',
         titulo: `Solicitud #${datos.ticket_soporte_id}`,

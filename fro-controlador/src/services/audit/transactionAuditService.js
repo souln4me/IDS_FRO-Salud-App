@@ -1,14 +1,24 @@
-const TransactionAuditModel = require('../../models/transactionAuditModel');
+/**
+ * Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+ * Casos de uso: CU69, CU70.
+ *
+ * Bitácora de las transacciones con proveedores externos: guarda cada intento,
+ * su latencia y sus fallos. Lo usan providerAdapter y externalHttpClient.
+ */
+
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
 
 const UMBRAL_LATENCIA_MS = parseInt(process.env.LATENCIA_UMBRAL_MS || '5000', 10);
 const ACCION = 'INTEGRACION_EXTERNA';
 
+// Apoyo común: convierte el payload a texto para la bitácora
 function serializar(payload) {
   if (payload == null) return null;
   if (typeof payload === 'string') return payload;
   try { return JSON.stringify(payload); } catch { return String(payload); }
 }
 
+// CU69 — Registrando en Bitácora de Transacciones Externas
 function atributosFaltantes({ proveedor, operacion }) {
   const faltantes = [];
   if (!proveedor) faltantes.push('proveedor');
@@ -16,10 +26,11 @@ function atributosFaltantes({ proveedor, operacion }) {
   return faltantes;
 }
 
+// CU69 — Registrando en Bitácora de Transacciones Externas
 // Escribe UNA fila de evento en Bitacora_Auditoria.
 async function escribirEvento({ proveedor, operacion, usuarioId, estado, datos }) {
   try {
-    await TransactionAuditModel.registrar({
+    await C_Capa_de_Acceso_a_Datos.TransactionAuditModel.registrar({
       accion: ACCION,
       entidad_afectada: proveedor || 'DESCONOCIDO',
       usuario_id: usuarioId || null,
@@ -30,7 +41,8 @@ async function escribirEvento({ proveedor, operacion, usuarioId, estado, datos }
   }
 }
 
-// ─ Excepción 1 (standalone): payload sin atributos obligatorios. 
+// CU69 — Registrando en Bitácora de Transacciones Externas
+// ─ Excepción 1 (standalone): payload sin atributos obligatorios.
 async function registrarFalloSintaxis({ proveedor, operacion, usuarioId = null, faltantes = [], payloadEnviado = null, error = null }) {
   await escribirEvento({
     proveedor, operacion, usuarioId,
@@ -43,6 +55,7 @@ async function registrarFalloSintaxis({ proveedor, operacion, usuarioId = null, 
   });
 }
 
+// CU69 — Registrando en Bitácora de Transacciones Externas
 // ─ Excepción 4 (standalone): respuesta con esquema divergente; aísla el paquete crudo.
 async function registrarEsquemaDivergente({ proveedor, operacion, usuarioId = null, payloadRecibido = null, error = null }) {
   await escribirEvento({
@@ -55,6 +68,7 @@ async function registrarEsquemaDivergente({ proveedor, operacion, usuarioId = nu
   });
 }
 
+// CU69, CU70 — bitácora del rechazo por formato
 // ─ CU70 Excepción 1: rechazo del proveedor por formato incompatible (HTTP 400). 
 async function registrarRechazoFormato(ctx, { codigoRespuesta = 400, payloadRecibido = null, error = null } = {}) {
   const latencia = ctx?.inicio ? Date.now() - ctx.inicio : null;
@@ -70,6 +84,7 @@ async function registrarRechazoFormato(ctx, { codigoRespuesta = 400, payloadReci
   });
 }
 
+// CU69, CU70 — bitácora del límite de reintentos
 // ─ CU70 Excepción 3: el proveedor persiste en error tras el límite máximo de intentos. 
 async function registrarEventoCritico(ctx, { error = null, codigoRespuesta = null, intentos = null } = {}) {
   const latencia = ctx?.inicio ? Date.now() - ctx.inicio : null;
@@ -86,6 +101,7 @@ async function registrarEventoCritico(ctx, { error = null, codigoRespuesta = nul
   });
 }
 
+// CU69, CU70 — bitácora de la consolidación fallida
 // ─ CU70 Excepción 4: la consolidación post-éxito falló (limpieza de recursos). 
 async function registrarInconsistenciaConsolidacion(ctx, { error = null, intentos = null } = {}) {
   await escribirEvento({
@@ -99,6 +115,7 @@ async function registrarInconsistenciaConsolidacion(ctx, { error = null, intento
   });
 }
 
+// CU69 — Registrando en Bitácora de Transacciones Externas
 // ─ Inicia la transacción (lifecycle de red). Valida proveedor/operacion (Excepción 1).
 async function iniciarTransaccion({ proveedor, operacion, payloadEnviado = null, usuarioId = null }) {
   const faltantes = atributosFaltantes({ proveedor, operacion });
@@ -111,6 +128,7 @@ async function iniciarTransaccion({ proveedor, operacion, payloadEnviado = null,
   return { proveedor, operacion, usuarioId, payloadEnviado, inicio: Date.now() };
 }
 
+// CU69 — Registrando en Bitácora de Transacciones Externas
 // ─ Éxito: mide latencia y la marca crítica si excede el umbral. 
 async function registrarExito(ctx, { codigoRespuesta = 200, payloadRecibido = null } = {}) {
   const latencia = Date.now() - ctx.inicio;
@@ -127,7 +145,8 @@ async function registrarExito(ctx, { codigoRespuesta = 200, payloadRecibido = nu
   return { estado, latencia };
 }
 
-// ─ Excepción 3 (timeout): latencia crítica explícita. 
+// CU69 — Registrando en Bitácora de Transacciones Externas
+// ─ Excepción 3 (timeout): latencia crítica explícita.
 async function registrarLatenciaCritica(ctx, { codigoRespuesta = null } = {}) {
   const latencia = ctx?.inicio ? Date.now() - ctx.inicio : null;
   await escribirEvento({

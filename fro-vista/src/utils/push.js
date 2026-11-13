@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU52.
+ */
 // Ruta: fro-vista/src/utils/push.js
 //
 // CU52 — Registro del teléfono para notificaciones push.
@@ -23,6 +27,7 @@ import Constants from 'expo-constants';
 
 import { registrarDispositivoPush, olvidarDispositivoPush } from '../api/client';
 
+import { registrar } from './registroApp';
 /** ¿Estamos corriendo dentro de Expo Go (el cliente de pruebas) o en una build propia? */
 function esExpoGo() {
   return (
@@ -77,6 +82,7 @@ function idDeProyecto() {
 }
 
 /**
+ * CU52 — Emitiendo notificaciones multicanal
  * Pide permiso, obtiene el token del teléfono y lo registra en el servidor.
  *
  * @returns {Promise<{estado: string, detalle?: string}>}
@@ -109,6 +115,7 @@ export async function registrarPush() {
       concedido = pedido.granted;
     }
     if (!concedido) {
+      registrar('🔔 notificaciones push: el usuario no dio permiso');
       return { estado: 'SIN_PERMISO' };
     }
 
@@ -120,15 +127,20 @@ export async function registrarPush() {
 
     await registrarDispositivoPush(token, Platform.OS);
     tokenActual = token;
+    registrar('🔔 notificaciones push: teléfono registrado en el servidor');
     return { estado: 'REGISTRADO' };
   } catch (error) {
     // Sin build propia esto cae siempre, y es lo esperado: no es un fallo que
     // deba molestar al usuario, así que se informa sin alarmar.
+    registrar('🔔 notificaciones push no disponibles en esta versión de la app (normal en Expo Go)');
     return { estado: 'NO_DISPONIBLE', detalle: error?.message };
   }
 }
 
-/** Da de baja el token al cerrar sesión, para que no le lleguen avisos ajenos. */
+/**
+ * CU52, CU08 — dar de baja el token push al cerrar sesión
+ * Da de baja el token al cerrar sesión, para que no le lleguen avisos ajenos.
+ */
 export async function olvidarPush() {
   if (!tokenActual) return;
   try {
@@ -141,6 +153,7 @@ export async function olvidarPush() {
 }
 
 /**
+ * CU52 — Emitiendo notificaciones multicanal
  * Escucha el toque sobre una notificación del sistema y entrega su carga útil
  * (la pantalla a la que hay que saltar). Devuelve la función para dejar de
  * escuchar; en entornos sin push devuelve una función vacía.

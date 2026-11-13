@@ -1,18 +1,32 @@
+/**
+ * Componentes: dos, según la parte del archivo.
+ *   - Códigos OTP (crearOTP, validarOTP): C_Seguridad_JWT_BCrypt
+ *     (puerta de entrada: src/componentes/C_Seguridad_JWT_BCrypt.js).
+ *   - Envío de correo (Brevo o SMTP): C_API_Adapter
+ *     (puerta de entrada: src/componentes/C_API_Adapter.js).
+ * Casos de uso: CU04, CU06, CU52.
+ *
+ * Genera y valida los códigos OTP de un solo uso, y es el único punto de
+ * salida de los correos del sistema.
+ */
+
 const crypto = require("crypto");
-const db = require("../../config/database");
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
 
 const OTP_EXPIRACION_MINUTOS = 10;
 
+// CU04, CU06 — genera el código de 6 dígitos (C_Seguridad_JWT_BCrypt)
 function generarCodigo() {
   return crypto.randomInt(100000, 999999).toString();
 }
 
-// ─ Crear OTP y guardarlo en columnas de Usuario 
+// CU04, CU06 — crear el código OTP (C_Seguridad_JWT_BCrypt)
+// ─ Crear OTP y guardarlo en columnas de Usuario
 async function crearOTP(usuarioId) {
   const codigo = generarCodigo();
   const expiracion = new Date(Date.now() + OTP_EXPIRACION_MINUTOS * 60 * 1000);
 
-  await db.query(
+  await C_Capa_de_Acceso_a_Datos.query(
     `UPDATE Usuario
         SET otp_codigo     = ?,
             otp_expiracion = ?
@@ -23,9 +37,10 @@ async function crearOTP(usuarioId) {
   return { codigo, expiracion };
 }
 
-// ─ Validar OTP ingresado 
+// CU04 — Verificando identidad mediante código OTP (C_Seguridad_JWT_BCrypt)
+// ─ Validar OTP ingresado
 async function validarOTP(usuarioId, codigoIngresado) {
-  const [rows] = await db.query(
+  const [rows] = await C_Capa_de_Acceso_a_Datos.query(
     `SELECT otp_codigo, otp_expiracion, cuenta_activo
        FROM Usuario
       WHERE usuario_id = ?`,
@@ -48,7 +63,7 @@ async function validarOTP(usuarioId, codigoIngresado) {
 
   // Excepción 3: código expirado
   if (new Date() > new Date(u.otp_expiracion)) {
-    await db.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Usuario SET otp_codigo = NULL, otp_expiracion = NULL WHERE usuario_id = ?`,
       [usuarioId]
     );
@@ -76,16 +91,19 @@ async function validarOTP(usuarioId, codigoIngresado) {
 // hay BREVO_API_KEY el correo sale por HTTPS (puerto 443, nunca bloqueado) y
 // SMTP queda solo como respaldo para desarrollo local y planes de pago.
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 function hayBrevo() {
   return Boolean(process.env.BREVO_API_KEY);
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 // Remitente: el correo verificado en Brevo. Si no se define uno aparte, se
 // reutiliza SMTP_USER, que ya es el correo del proyecto.
 function remitente() {
   return process.env.BREVO_SENDER || process.env.SMTP_USER || "";
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 // ─ Camino A: API HTTP de Brevo (funciona en Render gratuito) ─
 async function enviarPorBrevo({ destinatario, asunto, html }) {
   const respuesta = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -115,6 +133,7 @@ async function enviarPorBrevo({ destinatario, asunto, html }) {
   }
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 // ─ Camino B: SMTP directo (desarrollo local o instancia de pago) ─
 function crearTransporter() {
   const nodemailer = require("nodemailer");
@@ -135,6 +154,7 @@ function crearTransporter() {
   });
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 async function enviarPorSMTP({ destinatario, asunto, html }) {
   await crearTransporter().sendMail({
     from: `"Punto Paz Salud" <${process.env.SMTP_USER}>`,
@@ -144,19 +164,26 @@ async function enviarPorSMTP({ destinatario, asunto, html }) {
   });
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 // ─ Punto único de salida: elige el camino disponible ─
 async function entregarCorreo({ destinatario, asunto, html }) {
-  if (hayBrevo()) {
-    return enviarPorBrevo({ destinatario, asunto, html });
-  }
-  return enviarPorSMTP({ destinatario, asunto, html });
+  const proveedor = hayBrevo() ? 'Brevo' : 'SMTP';
+  const resultado = hayBrevo()
+    ? await enviarPorBrevo({ destinatario, asunto, html })
+    : await enviarPorSMTP({ destinatario, asunto, html });
+  // Registro de actividad: el asunto y el proveedor, nunca la dirección.
+  require('../registro/registroActividad').marcarServicioExterno(proveedor === 'Brevo' ? 'BREVO' : 'SMTP');
+  require('../registro/registroActividad').registrar('C_API_Adapter', `${proveedor}: correo enviado ("${String(asunto).replace(/ - Punto Paz Salud$/, "")}")`);
+  return resultado;
 }
 
+// CU52 — Emitiendo notificaciones multicanal (C_API_Adapter)
 // Envío genérico reutilizable (CU42: conformidad por correo, entre otros).
 async function enviarCorreo(destinatario, asunto, html) {
   await entregarCorreo({ destinatario, asunto, html });
 }
 
+// CU04, CU06 — correo con el código OTP (C_API_Adapter)
 // ─ Enviar OTP por Email ─
 // El mismo código sirve para dos propósitos muy distintos, y el correo debe
 // decir cuál: recibir "Verificación de cuenta" cuando pediste recuperar tu
@@ -253,6 +280,7 @@ async function enviarPorEmail(destinatario, codigo, proposito = "VERIFICACION") 
   });
 }
 
+// CU04 — Verificando identidad mediante código OTP (C_API_Adapter): explica por qué no salió el correo
 function explicarErrorSMTP(error) {
   const texto = `${error?.code || ""} ${error?.responseCode || ""} ${error?.message || ""}`;
 

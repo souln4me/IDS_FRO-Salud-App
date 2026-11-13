@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Pagar reserva"
+ * Casos de uso: CU73.
+ */
 // Ruta: fro-vista/src/screens/Paciente/PagarReservaScreen.js
 //
 // CU73 — Comercialización con restricción de cobro anticipado.
@@ -42,6 +46,7 @@ export default function PagarReservaScreen({ route, navigation }) {
   const [pagando, setPagando] = useState(false);
   const [aviso, setAviso] = useState(null);
 
+  // CU73: calcula el valor de la hora y las opciones de plan
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
@@ -65,6 +70,7 @@ export default function PagarReservaScreen({ route, navigation }) {
     cargar();
   }, [cargar]);
 
+  // CU73 — Comercializando prestaciones con restricción de cobro anticipado
   const pagar = async () => {
     // Excepción 1: sin modalidad elegida no se avanza de pantalla.
     if (!modalidad) {

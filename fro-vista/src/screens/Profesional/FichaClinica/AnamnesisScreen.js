@@ -1,3 +1,11 @@
+/**
+ * Componente: Cliente Móvil — Vista "Evaluación inicial (anamnesis)"
+ * Casos de uso: CU29, CU77, CU24.
+ *
+ * El profesional registra la anamnesis y los antecedentes del paciente (CU29),
+ * con la plantilla de su especialidad (CU77) y la entrevista de triaje del
+ * paciente anexada como lectura (CU24).
+ */
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, TextInput, StyleSheet, TouchableOpacity,
@@ -22,7 +30,10 @@ const claveBorrador = (pacienteId) => `cu77_borrador_${pacienteId}`;
 const TRIAJE_INICIO = '── TRIAJE AUTOMATIZADO';
 const TRIAJE_FIN = '── FIN TRIAJE ──';
 
-/** Extrae los bloques de triaje del texto y devuelve el resto editable. */
+/**
+ * CU24 — Estructurando datos de sintomatología a Ficha Clínica
+ * Extrae los bloques de triaje del texto y devuelve el resto editable.
+ */
 function separarTriajes(texto) {
   const bloques = [];
   let resto = texto;
@@ -50,6 +61,7 @@ function fechaDeTriaje(bloque) {
   return bloque.match(/\(([^)]+)\)/)?.[1] || '';
 }
 
+// CU24, CU77 — prellenar la plantilla con lo que respondió el paciente.
 // Valores del triaje que corresponden a campos de la plantilla de evaluación.
 // Solo se proponen si el campo está vacío; el profesional siempre puede
 // corregirlos.
@@ -58,7 +70,10 @@ const PRELLENADO_DESDE_TRIAJE = [
   { campoId: 'habitos', prefijo: 'Hábitos alimentarios declarados: ', limpiar: (v) => v.replace(/\.$/, '').trim() },
 ];
 
-/** Separa el bloque estructurado del texto libre de la anamnesis. */
+/**
+ * CU77 — Renderizando plantillas dinámicas de evaluación
+ * Separa el bloque estructurado del texto libre de la anamnesis.
+ */
 function separarBloque(texto) {
   const inicio = texto.indexOf(MARCA_INICIO);
   const fin = texto.indexOf(MARCA_FIN);
@@ -111,6 +126,7 @@ export default function AnamnesisScreen({ route, navigation }) {
   // Tras guardar, se indica el paso siguiente del flujo clínico.
   const [guardadaOk, setGuardadaOk] = useState(false);
 
+  // CU29, CU77 — cargar la ficha clínica y la plantilla de evaluación
   const cargarFicha = async () => {
     setCargando(true);
     try {
@@ -128,6 +144,7 @@ export default function AnamnesisScreen({ route, navigation }) {
         }
       }
 
+      // CU29: ficha clínica del paciente
       const data = await getFichaClinica(pacienteId);
 
       // Reconstruir los campos estructurados desde la anamnesis guardada.
@@ -222,7 +239,8 @@ export default function AnamnesisScreen({ route, navigation }) {
   const parsearLista = (texto) =>
     texto.split(',').map((s) => s.trim()).filter((s) => s.length > 0);
 
-  // ─ Excepción 2: validación de campos obligatorios 
+  // CU29, CU77 — validar campos obligatorios antes de guardar
+  // ─ Excepción 2: validación de campos obligatorios
   const validar = () => {
     const nuevosErrores = {};
     if (!anamnesis.trim()) nuevosErrores.anamnesis = true;
@@ -247,7 +265,8 @@ export default function AnamnesisScreen({ route, navigation }) {
     return true;
   };
 
-  // ─ Guardar (CU29 flujo principal) 
+  // CU29 — Registrando antecedentes en evaluación inicial
+  // ─ Guardar (CU29 flujo principal)
   const guardar = async () => {
     if (!validar()) return;
 
@@ -497,6 +516,7 @@ export default function AnamnesisScreen({ route, navigation }) {
         />
 
         {/* ─ Guardar */}
+        {/* CU40: enlace al paso siguiente, registrar la sesión clínica */}
         {guardadaOk && (
           <View style={styles.guiaSiguiente}>
             <Text style={styles.guiaTitulo}>✓ Anamnesis guardada</Text>

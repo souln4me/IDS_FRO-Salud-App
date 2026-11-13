@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU22; lo usan CU17, CU18, CU42, CU56 y CU61.
+ */
 // Ruta: fro-vista/src/components/DialogoMotivo.js
 //
 // Diálogo para pedir una justificación antes de una acción sobre la agenda

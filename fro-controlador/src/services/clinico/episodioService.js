@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Motor_Clinico (puerta de entrada: src/componentes/C_Motor_Clinico.js)
+ * Casos de uso: CU28, CU32, CU51, CU78.
+ *
  * Estado del episodio clínico (CU78, decisión D12).
  *
  * Un episodio nace ABIERTO y solo el profesional lo cierra. Una vez CERRADO
@@ -7,13 +10,16 @@
  * que cada controlador la aplique igual.
  */
 
+// CU78 — Agrupando registros bajo entidad episodio clínico
 const ESTADO_ABIERTO = 'ABIERTO';
 const ESTADO_CERRADO = 'CERRADO';
 
+// CU78 — Agrupando registros bajo entidad episodio clínico
 function estaCerrado(estado) {
   return String(estado || '').trim().toUpperCase() === ESTADO_CERRADO;
 }
 
+// CU78 — Agrupando registros bajo entidad episodio clínico
 /** Devuelve la fila del episodio (o null) con su estado normalizado. */
 async function obtenerEpisodio(conexion, episodioId) {
   const [filas] = await conexion.query(
@@ -25,6 +31,7 @@ async function obtenerEpisodio(conexion, episodioId) {
 }
 
 /**
+ * CU78 — Agrupando registros bajo entidad episodio clínico
  * Responde 409 EPISODIO_CERRADO si corresponde y devuelve true; si el
  * episodio está abierto (o no se indicó) devuelve false y no toca la respuesta.
  */
@@ -59,6 +66,7 @@ async function esProfesionalACargo(conexion, episodioId, usuarioId) {
 }
 
 /**
+ * CU28, CU32 — solo el profesional a cargo registra en el episodio
  * Responde 403 EPISODIO_AJENO y devuelve true cuando quien pide no es el
  * profesional a cargo. El Administrador queda fuera de la regla.
  */
@@ -74,6 +82,7 @@ async function rechazarSiAjeno(conexion, episodioId, req, res) {
 }
 
 /**
+ * CU32, CU51 — avance de las metas del episodio
  * Avance global de las metas del episodio, en porcentaje entero (0-100), o
  * null si el episodio todavía no tiene metas definidas.
  *

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU07, CU06.
+ */
 // Ruta: fro-vista/src/components/CambioContrasenaOTP.js
 //
 // CU07: cambio de contraseña en dos etapas. Lo usan la recuperación pública y
@@ -20,7 +24,8 @@ import { colores, espacio, radio, tipografia, interaccion } from '../theme';
 const LARGO_CODIGO = 6;
 
 /**
- * @param {string}   destino              correo al que llegó el código (para el texto)
+ * CU07 — Ejecutando cambio de contraseña
+ * @param {string}   destino             correo al que llegó el código (para el texto)
  * @param {Function} verificarCodigo      (codigo) => Promise
  * @param {Function} confirmarContrasena  (codigo, nuevaContrasena) => Promise<data>
  * @param {Function} reenviarCodigo       () => Promise

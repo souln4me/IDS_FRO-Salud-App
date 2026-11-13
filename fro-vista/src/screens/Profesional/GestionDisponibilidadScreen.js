@@ -1,3 +1,10 @@
+/**
+ * Componente: Cliente Móvil — Vista "Gestión de agenda"
+ * Casos de uso: CU16.
+ *
+ * El profesional bloquea periodos de su agenda (vacaciones, licencias) y ve
+ * los bloqueos que ya tiene.
+ */
 import React, { useState, useContext, useEffect, useCallback } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, StyleSheet, ActivityIndicator } from 'react-native';
 import apiClient from '../../api/client';
@@ -13,7 +20,9 @@ export default function GestionDisponibilidadScreen() {
     const [resultado, setResultado] = useState(null);
   const { userData, isLoading } = useContext(AuthContext);
 
-  const [profId, setProfId] = useState(userData?.role === 'Admin' ? '' : String(userData?.usuario_id || ''));
+  // El rol se guarda en userData.rol ('Administrador', 'Profesional', 'Paciente').
+  const esAdmin = userData?.rol === 'Administrador';
+  const [profId, setProfId] = useState('');
   const [inicio, setInicio] = useState('');
   const [fin, setFin] = useState('');
   const [show, setShow] = useState(false);
@@ -23,6 +32,7 @@ export default function GestionDisponibilidadScreen() {
   const [bloqueos, setBloqueos] = useState([]);
   const [cargandoBloqueos, setCargandoBloqueos] = useState(true);
 
+  // CU16 — cargar los bloqueos de agenda vigentes
   const cargarBloqueos = useCallback(async () => {
     setCargandoBloqueos(true);
     try {
@@ -64,31 +74,31 @@ export default function GestionDisponibilidadScreen() {
     }
   };
 
+    // CU16 — Restringiendo disponibilidad administrativa
     const bloquearAgenda = async () => {
         if (!inicio || !fin || !motivo.trim()) {
             return setResultado({ tono: "error", titulo: "Campos incompletos", mensaje: "Indica las fechas y el motivo del bloqueo." });
         }
 
-        if (userData?.role === 'Admin' && !profId.trim()) {
+        if (esAdmin && !profId.trim()) {
             return setResultado({ tono: "error", titulo: "Campos incompletos", mensaje: "Como administrador, debes indicar el identificador del profesional." });
         }
 
-        const idAEnviar = userData?.role === 'Admin' ? profId : (userData?.usuario_id || profId);
-        
-        console.log("Enviando bloqueo para el ID:", idAEnviar);
         try {
+            // El servidor bloquea siempre la agenda propia del profesional; el
+            // número solo lo envía el administrador.
             await apiClient.post('/clinica/disponibilidad/restringir', {
-                profesional_id: parseInt(idAEnviar, 10), 
+                ...(esAdmin ? { profesional_id: parseInt(profId, 10) } : {}),
                 fecha_inicio: inicio,
                 fecha_fin: fin,
                 motivo: motivo.trim()
             });
             
-            setResultado({ tono: "ok", titulo: "Bloqueo registrado", mensaje: "El horario quedó bloqueado en tu agenda." });
+            setResultado({ tono: "ok", titulo: "Bloqueo registrado", mensaje: "El horario quedó bloqueado en la agenda." });
             setInicio('');
             setFin('');
             setMotivo('');
-            if (userData?.role === 'Admin') setProfId('');
+            if (esAdmin) setProfId('');
             await cargarBloqueos();
             
         } catch (error) {
@@ -102,7 +112,7 @@ export default function GestionDisponibilidadScreen() {
         <Text style={styles.cardTitle}>Gestión de Agenda</Text>
         <Text style={styles.cardSubtitle}>Configure los periodos de inactividad</Text>
 
-        {userData?.role === 'Admin' && (
+        {esAdmin && (
           <View style={styles.inputContainer}>
             <Text style={styles.label}>ID Profesional</Text>
             <TextInput 
@@ -155,7 +165,7 @@ export default function GestionDisponibilidadScreen() {
 
         {/* Los periodos ya inhabilitados, para no duplicarlos ni perderlos de vista.
             El listado es de la agenda propia: el Admin bloquea agendas ajenas, no la suya. */}
-        {userData?.role !== 'Admin' && (
+        {!esAdmin && (
         <View style={styles.listaBloqueos}>
           <Text style={styles.listaTitulo}>Periodos bloqueados</Text>
           {cargandoBloqueos ? (

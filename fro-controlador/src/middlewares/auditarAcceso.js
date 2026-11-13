@@ -1,4 +1,11 @@
-const pool = require('../config/database');
+/**
+ * Componente: C_Seguridad_JWT_BCrypt
+ * Casos de uso: CU13.
+ *
+ * Deja en la bitácora de auditoría cada acceso a datos clínicos y bloquea
+ * lo que no sabe clasificar.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MIDDLEWARE CU13: interceptar_y_auditar_acceso()
@@ -30,6 +37,7 @@ const VERBOS = {
 };
 
 /**
+ * CU13 — Registrando bitácora de auditoría de seguridad
  * Devuelve { accion, entidad } en una sola búsqueda, o null si la ruta no está
  * registrada (Excepción 1).
  *
@@ -49,6 +57,7 @@ function clasificarEvento(req) {
     return { accion: `${verbo}_${entidad.sufijo}`, entidad: entidad.tabla };
 }
 
+// Apoyo común: IP de origen para la bitácora
 function obtenerIP(req) {
     return (
         req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -57,6 +66,7 @@ function obtenerIP(req) {
     );
 }
 
+// CU13 — Registrando bitácora de auditoría de seguridad
 async function auditarAccesoClinico(req, res, next) {
     const usuario_id = req.user?.usuario_id || null;
     const ip_origen = obtenerIP(req);
@@ -100,7 +110,7 @@ async function auditarAccesoClinico(req, res, next) {
 
     // Excepción 4: falla de escritura en bitácora
     try {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
             `INSERT INTO Bitacora_Auditoria 
                 (accion, entidad_afectada, ip_origen, usuario_id, datos_adicionales)
              VALUES (?, ?, ?, ?, ?)`,

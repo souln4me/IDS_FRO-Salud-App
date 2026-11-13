@@ -1,25 +1,26 @@
-const pool = require('../config/database');
-const {
-  leerParametroEntero,
-  registrarTrazabilidadAgenda,
-  obtenerTrazabilidadCita,
-  notificarUsuario,
-  pedirEvaluacion,
-  obtenerContactosCita,
-  descontarSesionPaquete,
-  ofrecerCupoListaEspera,
-} = require('../services/agenda/agendaService');
-const { cerrarSolicitudPorApp } = require('../services/agenda/confirmacionService');
-const { actualizarIndicador } = require('../services/clinico/adherenciaService');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU14, CU15, CU17, CU18, CU20, CU22, CU76.
+ * También toca de paso CU16, CU19, CU21, CU44, CU52, CU55, CU73 y CU74.
+ *
+ * Endpoints de la agenda: buscar y reservar horas, cambiar el estado de la
+ * cita, reprogramarla, consultar su historial y listar las citas por rol.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Motor_Agendamiento = require('../componentes/C_Motor_Agendamiento');
+const C_Despachador_Notificaciones = require('../componentes/C_Despachador_Notificaciones');
+const C_Motor_Clinico = require('../componentes/C_Motor_Clinico');
+const C_Control_Acceso_Clinico = require('../componentes/C_Control_Acceso_Clinico');
 const { devolverPorCancelacion } = require('./finanzasController');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //   CU14 — Buscar disponibilidad
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU14 — especialidades para el filtro de búsqueda
 exports.obtenerEspecialidades = async (req, res) => {
   try {
-    const [especialidades] = await pool.query(
+    const [especialidades] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT especialidad_id, nombre, descripcion
        FROM Especialidad
        ORDER BY nombre ASC`
@@ -32,6 +33,7 @@ exports.obtenerEspecialidades = async (req, res) => {
 };
 
 /**
+ * Apoyo común: usado por CU14 y CU15.
  * Formatea una fecha como texto DATETIME de MySQL usando la hora local del
  * proceso (hora de pared chilena). No usar toISOString(): convierte a UTC y
  * desplaza la hora.
@@ -44,6 +46,7 @@ function aTextoSQL(fecha) {
   );
 }
 
+// CU14 — Buscando y seleccionando cita en el motor de agendamiento
 exports.buscarDisponibilidad = async (req, res) => {
   const { especialidad_id, tipo_sede, fecha } = req.query;
   // Búsqueda por nombre del profesional: opcional, se suma a los filtros de
@@ -62,7 +65,7 @@ exports.buscarDisponibilidad = async (req, res) => {
     // la comuna de su cuenta; una teleconsulta no depende del lugar, así que
     // ese filtro solo se aplica a los bloques a domicilio.
     let comunaPaciente = null;
-    const [[fichaPaciente]] = await pool.query(
+    const [[fichaPaciente]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT pa.paciente_id, pa.comuna_id, c.nombre
          FROM Paciente pa
          LEFT JOIN Comuna c ON c.comuna_id = pa.comuna_id
@@ -77,7 +80,7 @@ exports.buscarDisponibilidad = async (req, res) => {
       ? `AND CONCAT_WS(' ', u.nombres, u.apellido_paterno, u.apellido_materno) LIKE ?`
       : '';
 
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           p.profesional_id,
           u.nombres, u.apellido_paterno, u.apellido_materno,
@@ -88,9 +91,8 @@ exports.buscarDisponibilidad = async (req, res) => {
           p.foto_url, p.reseña_curricular AS resena_curricular, p.areas_experticia,
           -- CU58: promedio y cantidad de evaluaciones, para las estrellas.
           p.calificacion_promedio,
-          (SELECT COUNT(*) FROM Evaluacion_Satisfaccion es
-             JOIN Cita ce ON ce.cita_id = es.cita_id
-            WHERE ce.profesional_id = p.profesional_id) AS total_evaluaciones,
+          (SELECT COUNT(es.puntuacion) FROM Evaluacion_Satisfaccion es
+            WHERE es.profesional_id = p.profesional_id AND es.puntuacion IS NOT NULL) AS total_evaluaciones,
           -- CU14: comunas declaradas y si cubren la del paciente. Sin comunas
           -- declaradas se entiende que atiende en cualquiera.
           (SELECT GROUP_CONCAT(c2.nombre ORDER BY c2.nombre SEPARATOR ', ')
@@ -126,7 +128,7 @@ exports.buscarDisponibilidad = async (req, res) => {
     // CU19: para marcar los bloques ocupados hace falta saber quién pregunta
     // (para no ofrecerle esperar su propia hora) y cuál es el tope de la lista.
     const pacienteQueBusca = fichaPaciente?.paciente_id || 0;
-    const maximoListaEspera = await leerParametroEntero(pool, 'MAX_PACIENTES_LISTA_ESPERA', 5);
+    const maximoListaEspera = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'MAX_PACIENTES_LISTA_ESPERA', 5);
 
     for (const fila of filas) {
       // La modalidad la define cada bloque horario del profesional.
@@ -174,7 +176,7 @@ exports.buscarDisponibilidad = async (req, res) => {
         }
 
         // 1. Validar choque con citas existentes
-        const [ocupadas] = await pool.query(
+        const [ocupadas] = await C_Capa_de_Acceso_a_Datos.query(
           `SELECT cita_id, paciente_id FROM Cita
            WHERE profesional_id = ?
              AND estado NOT LIKE 'CANCELADA%'
@@ -184,7 +186,7 @@ exports.buscarDisponibilidad = async (req, res) => {
         );
 
         // 2. NUEVA VALIDACIÓN: Choque con bloqueos de agenda (CU16)
-        const [bloqueos] = await pool.query(
+        const [bloqueos] = await C_Capa_de_Acceso_a_Datos.query(
           `SELECT bloqueo_id FROM Bloqueo_Agenda
            WHERE profesional_id = ?
              AND fecha_inicio <= ?
@@ -196,7 +198,7 @@ exports.buscarDisponibilidad = async (req, res) => {
         //     Los bloqueos de agenda no: ese horario no existe para nadie.
         if (ocupadas.length > 0 && bloqueos.length === 0) {
           const ocupada = ocupadas[0];
-          const [[espera]] = await pool.query(
+          const [[espera]] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT
                 COUNT(*) AS en_espera,
                 MAX(CASE WHEN paciente_id = ? THEN posicion END) AS mi_posicion
@@ -275,6 +277,7 @@ exports.buscarDisponibilidad = async (req, res) => {
   }
 };
 
+// CU14, CU15 — revisar que el bloque siga libre antes de reservarlo
 exports.validarBloque = async (req, res) => {
   const { profesional_id, fecha_hora_inicio } = req.body;
 
@@ -289,7 +292,7 @@ exports.validarBloque = async (req, res) => {
     // según el huso del servidor y hacía fallar la comparación contra la base.
     const fechaHoraFin = aTextoSQL(fin);
 
-    const [ocupadas] = await pool.query(
+    const [ocupadas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT cita_id FROM Cita
        WHERE profesional_id = ?
          AND estado NOT LIKE 'CANCELADA%'
@@ -298,7 +301,12 @@ exports.validarBloque = async (req, res) => {
       [profesional_id, fechaHoraFin, fecha_hora_inicio]
     );
 
-    return res.status(200).json({ disponible: ocupadas.length === 0 });
+    // CU16: un periodo bloqueado por el profesional tampoco está disponible.
+    const bloqueada = await C_Motor_Agendamiento.agendaBloqueada(
+      C_Capa_de_Acceso_a_Datos, profesional_id, fecha_hora_inicio, fechaHoraFin
+    );
+
+    return res.status(200).json({ disponible: ocupadas.length === 0 && !bloqueada });
   } catch (error) {
     console.error('[validarBloque]', error);
     return res.status(500).json({ error: 'Error interno al validar el bloque.' });
@@ -309,9 +317,10 @@ exports.validarBloque = async (req, res) => {
 //   CU15 — Bloquear horario
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU14, CU15 — profesionales activos para elegir a quién reservar
 exports.obtenerProfesionales = async (req, res) => {
   try {
-    const [profesionales] = await pool.query(
+    const [profesionales] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT p.profesional_id, u.nombres, u.apellido_paterno,
               e.nombre AS especialidad, p.calificacion_promedio
        FROM Profesional p
@@ -326,11 +335,12 @@ exports.obtenerProfesionales = async (req, res) => {
   }
 };
 
+// CU14, CU15 — jornada semanal de un profesional
 exports.obtenerDisponibilidad = async (req, res) => {
   const { profesional_id } = req.params;
 
   try {
-    const [bloques] = await pool.query(
+    const [bloques] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT pd.dia_semana, pd.hora_inicio, pd.hora_fin,
               p.profesional_id,
               u.nombres, u.apellido_paterno,
@@ -354,6 +364,7 @@ exports.obtenerDisponibilidad = async (req, res) => {
   }
 };
 
+// CU15 — Controlando concurrencia de bloqueo de agendamiento
 exports.bloquearHorario = async (req, res) => {
   const { profesional_id, sede_id, fecha_hora_inicio, fecha_hora_fin } = req.body;
 
@@ -371,7 +382,7 @@ exports.bloquearHorario = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -406,6 +417,15 @@ exports.bloquearHorario = async (req, res) => {
       return res.status(409).json({
         error:   'BLOQUE_OCUPADO',
         mensaje: 'Este horario acaba de ser reservado por otro paciente. Por favor selecciona un bloque alternativo.',
+      });
+    }
+
+    // CU16: el profesional bloqueó ese periodo (vacaciones, licencia).
+    if (await C_Motor_Agendamiento.agendaBloqueada(connection, profesional_id, fecha_hora_inicio, fecha_hora_fin)) {
+      await connection.rollback();
+      return res.status(409).json({
+        error:   'AGENDA_BLOQUEADA',
+        mensaje: 'El profesional no atiende en la fecha elegida. Elige otro bloque.',
       });
     }
 
@@ -472,6 +492,7 @@ function estadoCancelacion(rolActor) {
   return rolActor === 'Paciente' ? 'CANCELADA_PACIENTE' : 'CANCELADA_PROFESIONAL';
 }
 
+// CU20 — Transicionando máquina de estados de cita
 function evaluarMaquinaEstados(estadoActual, evento, rolActor) {
   if (ESTADOS_TERMINALES.has(estadoActual)) {
     const err = new Error(
@@ -494,6 +515,7 @@ function evaluarMaquinaEstados(estadoActual, evento, rolActor) {
 }
 
 /**
+ * CU20 — Transicionando máquina de estados de cita
  * POST /citas/:id/transicionar
  *
  * CU20 (máquina de estados) ampliado por el Incremento 2:
@@ -513,6 +535,23 @@ exports.transicionarEstadoCita = async (req, res) => {
     return res.status(400).json({ error: 'El campo "evento" es requerido.' });
   }
 
+  // Iniciar y finalizar la atención pasan por las marcas temporales (CU38),
+  // que registran la hora, el GPS (CU39) y la certificación (CU41). Por aquí
+  // se saltaban todo eso.
+  if (evento === 'INICIAR' || evento === 'FINALIZAR') {
+    return res.status(409).json({
+      error: 'USAR_MARCAS_TEMPORALES',
+      mensaje: 'Inicia y finaliza la atención con los botones "Iniciar" y "Finalizar atención" del historial del paciente.',
+    });
+  }
+  // El paciente solo confirma o cancela su cita; el resto lo hace su profesional.
+  if (rolActor === 'Paciente' && !['CONFIRMAR', 'CANCELAR'].includes(evento)) {
+    return res.status(403).json({
+      error: 'EVENTO_NO_PERMITIDO',
+      mensaje: 'Desde tu cuenta solo puedes confirmar o cancelar tus citas.',
+    });
+  }
+
   // CU22 — Excepción 3: una cancelación sin justificación no se guarda.
   if (evento === 'CANCELAR' && !motivo) {
     return res.status(400).json({
@@ -521,7 +560,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -541,7 +580,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     const cita = rows[0];
     const estado_anterior = cita.estado;
 
-    // Solo el profesional o el paciente de la cita pueden moverla de estado.
+    // CU12: solo el profesional o el paciente de la cita pueden moverla de estado.
     // Antes bastaba con conocer el id: otro profesional podia confirmar,
     // iniciar o cancelar citas ajenas desde la ficha del paciente.
     if (rolActor === 'Profesional') {
@@ -573,7 +612,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     // 2. Evaluar máquina de estados
     const nuevo_estado = evaluarMaquinaEstados(estado_anterior, evento, rolActor);
 
-    // RF73 — una cita solo pasa a CONFIRMADA con el pago íntegro, la confirme
+    // CU73 (RF73) — una cita solo pasa a CONFIRMADA con el pago íntegro, la confirme
     // el profesional desde la ficha o el paciente desde la solicitud del CU21.
     if (evento === 'CONFIRMAR') {
       const [[pago]] = await connection.execute(
@@ -594,7 +633,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     // CU18 — Excepción 1: el paciente solo puede cancelar dentro del plazo
     // reglamentario (parámetro editable por el administrador).
     if (evento === 'CANCELAR' && rolActor === 'Paciente') {
-      const horasMinimas = await leerParametroEntero(
+      const horasMinimas = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(
         connection, 'ANTICIPACION_MINIMA_CANCELACION_HORAS', 2
       );
       const horasRestantes =
@@ -628,7 +667,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     //    consume la sesión igual (penalización, Excepción 3 del CU76).
     let inventario = null;
     if (nuevo_estado === 'REALIZADA' || nuevo_estado === 'INASISTENCIA') {
-      inventario = await descontarSesionPaquete(
+      inventario = await C_Motor_Agendamiento.descontarSesionPaquete(
         connection,
         cita.paciente_id,
         nuevo_estado === 'INASISTENCIA' ? 'PENALIZACION_INASISTENCIA' : 'SESION_REALIZADA'
@@ -638,7 +677,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     // 5. CU22 — Trazabilidad con responsable y motivo (dentro de la
     //    transacción: si el log no se puede guardar, la operación se anula,
     //    porque la agenda de un sistema clínico no puede cambiar sin rastro).
-    await registrarTrazabilidadAgenda(connection, req, {
+    await C_Motor_Agendamiento.registrarTrazabilidadAgenda(connection, req, {
       accion: 'TRANSICION_CITA',
       cita_id: id,
       estado_anterior,
@@ -649,8 +688,8 @@ exports.transicionarEstadoCita = async (req, res) => {
       inventario,
     });
 
-    // 6. Avisos (tolerantes a fallo: no revierten la transición)
-    const contactos = await obtenerContactosCita(connection, id);
+    // 6. CU52 — Avisos (tolerantes a fallo: no revierten la transición)
+    const contactos = await C_Motor_Agendamiento.obtenerContactosCita(connection, id);
     let cupos_notificados = 0;
 
     if (contactos) {
@@ -658,9 +697,9 @@ exports.transicionarEstadoCita = async (req, res) => {
         evento === 'CANCELAR'
           ? `Tu cita fue cancelada. Motivo: ${motivo}`
           : `El estado de tu cita cambió a: ${nuevo_estado}`;
-      await notificarUsuario(connection, contactos.usuario_paciente, 'CAMBIO_ESTADO_CITA', texto);
+      await C_Despachador_Notificaciones.notificarUsuario(connection, contactos.usuario_paciente, 'CAMBIO_ESTADO_CITA', texto);
       // El profesional tiene su propia pantalla: el aviso lo lleva a su jornada.
-      await notificarUsuario(connection, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto, {
+      await C_Despachador_Notificaciones.notificarUsuario(connection, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto, {
         datos: { pantalla: 'MiJornada' },
       });
     }
@@ -668,17 +707,17 @@ exports.transicionarEstadoCita = async (req, res) => {
     // CU21 — si la cita tenía una solicitud de confirmación abierta, responder
     // desde la app la cierra: el enlace del correo deja de servir.
     if (evento === 'CONFIRMAR' || evento === 'CANCELAR') {
-      await cerrarSolicitudPorApp(
+      await C_Motor_Agendamiento.cerrarSolicitudPorApp(
         connection, id, evento === 'CONFIRMAR' ? 'CONFIRMADA' : 'CANCELADA'
       );
     }
 
     // CU55 — sesión cerrada por la máquina de estados: se pide la calificación.
     if (nuevo_estado === 'REALIZADA') {
-      await pedirEvaluacion(connection, id);
+      await C_Motor_Agendamiento.pedirEvaluacion(connection, id);
     }
 
-    // RF74 — la cancelación con la anticipación mínima da derecho a devolución
+    // CU74 (RF74) — la cancelación con la anticipación mínima da derecho a devolución
     // total. Va dentro de la transacción: o se cancela y se devuelve, o nada.
     let devolucion = null;
     if (esCancelada(nuevo_estado)) {
@@ -691,7 +730,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     // lista de espera, con plazo. Si no responde, el programador lo cede al
     // siguiente.
     if (esCancelada(nuevo_estado)) {
-      cupos_notificados = await ofrecerCupoListaEspera(connection, id);
+      cupos_notificados = await C_Motor_Agendamiento.ofrecerCupoListaEspera(connection, id);
     }
 
     await connection.commit();
@@ -700,7 +739,7 @@ exports.transicionarEstadoCita = async (req, res) => {
     // indicadores del paciente. Va fuera de la transacción y sin esperar: el
     // cambio de estado no puede depender de un cálculo de métricas.
     if (nuevo_estado === 'REALIZADA' || nuevo_estado === 'INASISTENCIA') {
-      actualizarIndicador(pool, cita.paciente_id).catch(() => {});
+      C_Motor_Clinico.actualizarIndicador(C_Capa_de_Acceso_a_Datos, cita.paciente_id).catch(() => {});
     }
 
     return res.status(200).json({
@@ -738,7 +777,33 @@ exports.transicionarEstadoCita = async (req, res) => {
 //   CU17 — Reprogramación de cita
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU12 — ¿Quien pide es parte de la cita? El paciente y el profesional de la
+// cita siempre lo son. Con `lectura`, además el administrador y el profesional
+// con acceso clínico al paciente (por ejemplo, por una derivación, CU65).
+async function puedeVerOGestionarCita(conexion, cita, req, { lectura = false } = {}) {
+  const rol = req.user?.nombre_rol || '';
+  const usuarioId = req.user?.usuario_id;
+  if (rol === 'Administrador') return lectura;
+  if (rol === 'Paciente') {
+    const [[fila]] = await conexion.execute(
+      `SELECT 1 AS ok FROM Paciente WHERE paciente_id = ? AND usuario_id = ? LIMIT 1`,
+      [cita.paciente_id, usuarioId]
+    );
+    return Boolean(fila);
+  }
+  if (rol === 'Profesional') {
+    const [[fila]] = await conexion.execute(
+      `SELECT 1 AS ok FROM Profesional WHERE profesional_id = ? AND usuario_id = ? LIMIT 1`,
+      [cita.profesional_id, usuarioId]
+    );
+    if (fila) return true;
+    return lectura && C_Control_Acceso_Clinico.profesionalTratante(conexion, usuarioId, cita.paciente_id);
+  }
+  return false;
+}
+
 /**
+ * CU17 — Gestionando reprogramación de cita
  * POST /citas/:id/reprogramar   { fecha_hora_inicio, fecha_hora_fin, motivo }
  */
 exports.reprogramarCita = async (req, res) => {
@@ -758,7 +823,7 @@ exports.reprogramarCita = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -776,6 +841,12 @@ exports.reprogramarCita = async (req, res) => {
     }
 
     const cita = rows[0];
+
+    // CU12: solo el paciente o el profesional de la cita pueden reprogramarla.
+    if (!(await puedeVerOGestionarCita(connection, cita, req))) {
+      await connection.rollback();
+      return res.status(403).json({ error: 'CITA_AJENA', mensaje: 'Solo puedes reprogramar tus propias citas.' });
+    }
 
     // Excepción 1 (CU17): una cita terminal no se puede modificar.
     if (ESTADOS_TERMINALES.has(cita.estado)) {
@@ -796,7 +867,7 @@ exports.reprogramarCita = async (req, res) => {
     // Excepción 2 (CU17): plazo mínimo de anticipación, parametrizado.
     // Aplica al paciente; el profesional gestiona su propia agenda.
     if (rolActor === 'Paciente') {
-      const horasMinimas = await leerParametroEntero(
+      const horasMinimas = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(
         connection, 'ANTICIPACION_MINIMA_REPROGRAMACION_HORAS', 24
       );
       const horasRestantes =
@@ -832,7 +903,7 @@ exports.reprogramarCita = async (req, res) => {
       });
     }
 
-    // El nuevo bloque tampoco puede caer en un periodo bloqueado (vacaciones).
+    // CU16: el nuevo bloque tampoco puede caer en un periodo bloqueado (vacaciones).
     const [bloqueos] = await connection.execute(
       `SELECT bloqueo_id FROM Bloqueo_Agenda
         WHERE profesional_id = ?
@@ -864,7 +935,7 @@ exports.reprogramarCita = async (req, res) => {
     );
 
     // CU22 — la reprogramación queda trazada con ambos bloques y el motivo.
-    await registrarTrazabilidadAgenda(connection, req, {
+    await C_Motor_Agendamiento.registrarTrazabilidadAgenda(connection, req, {
       accion: 'REPROGRAMACION_CITA',
       cita_id: id,
       estado_anterior: cita.estado,
@@ -876,11 +947,12 @@ exports.reprogramarCita = async (req, res) => {
     });
 
     // Excepción 4 (CU17): si el aviso falla, el cambio se mantiene igual.
-    const contactos = await obtenerContactosCita(connection, id);
+    // CU52: aviso al paciente y al profesional.
+    const contactos = await C_Motor_Agendamiento.obtenerContactosCita(connection, id);
     if (contactos) {
       const texto = `Tu cita fue reprogramada para ${fecha_hora_inicio}. Motivo: ${motivo}`;
-      await notificarUsuario(connection, contactos.usuario_paciente, 'CITA_REPROGRAMADA', texto);
-      await notificarUsuario(connection, contactos.usuario_profesional, 'CITA_REPROGRAMADA', texto);
+      await C_Despachador_Notificaciones.notificarUsuario(connection, contactos.usuario_paciente, 'CITA_REPROGRAMADA', texto);
+      await C_Despachador_Notificaciones.notificarUsuario(connection, contactos.usuario_profesional, 'CITA_REPROGRAMADA', texto);
     }
 
     await connection.commit();
@@ -907,12 +979,22 @@ exports.reprogramarCita = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU22 — Registrando trazabilidad de transiciones de agenda
  * GET /citas/:id/trazabilidad
  */
 exports.trazabilidadCita = async (req, res) => {
   const { id } = req.params;
   try {
-    const eventos = await obtenerTrazabilidadCita(pool, id);
+    // CU12: la trazabilidad la ve quien tiene acceso a la cita o el administrador.
+    const [[cita]] = await C_Capa_de_Acceso_a_Datos.execute(
+      `SELECT cita_id, paciente_id, profesional_id FROM Cita WHERE cita_id = ? LIMIT 1`,
+      [id]
+    );
+    if (!cita) return res.status(404).json({ error: `Cita con id "${id}" no encontrada.` });
+    if (!(await puedeVerOGestionarCita(C_Capa_de_Acceso_a_Datos, cita, req, { lectura: true }))) {
+      return res.status(403).json({ error: 'CITA_AJENA', mensaje: 'No tienes acceso a esta cita.' });
+    }
+    const eventos = await C_Motor_Agendamiento.obtenerTrazabilidadCita(C_Capa_de_Acceso_a_Datos, id);
     return res.status(200).json({ cita_id: Number(id), eventos });
   } catch (error) {
     console.error('[trazabilidadCita]', error);
@@ -921,19 +1003,24 @@ exports.trazabilidadCita = async (req, res) => {
 };
 
 /**
+ * CU20 — re-sincronizar el estado de la cita tras latencia de red (Excepción 3)
  * GET /citas/:id/estado
  */
 exports.obtenerEstadoCita = async (req, res) => {
   const { id } = req.params;
   try {
-    const [rows] = await pool.query(
-      `SELECT cita_id, estado FROM Cita WHERE cita_id = ? LIMIT 1`,
+    const [rows] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT cita_id, estado, paciente_id, profesional_id FROM Cita WHERE cita_id = ? LIMIT 1`,
       [id]
     );
     if (rows.length === 0) {
       return res.status(404).json({ error: `Cita con id "${id}" no encontrada.` });
     }
-    return res.status(200).json(rows[0]);
+    // CU12: el estado solo se informa a quien tiene acceso a la cita.
+    if (!(await puedeVerOGestionarCita(C_Capa_de_Acceso_a_Datos, rows[0], req, { lectura: true }))) {
+      return res.status(403).json({ error: 'CITA_AJENA', mensaje: 'No tienes acceso a esta cita.' });
+    }
+    return res.status(200).json({ cita_id: rows[0].cita_id, estado: rows[0].estado });
   } catch (error) {
     console.error('[obtenerEstadoCita]', error);
     return res.status(500).json({ error: 'Error interno al consultar el estado.' });
@@ -944,11 +1031,12 @@ exports.obtenerEstadoCita = async (req, res) => {
 //   CU20 — Listar citas por Rol (Paciente / Profesional)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU20 — citas del paciente con su estado
 exports.obtenerCitasPaciente = async (req, res) => {
   const usuario_id = req.user?.usuario_id;
 
   try {
-    const [citas] = await pool.query(
+    const [citas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT 
           c.cita_id, 
           c.fecha_hora_inicio, 
@@ -979,11 +1067,12 @@ exports.obtenerCitasPaciente = async (req, res) => {
   }
 };
 
+// CU20 — citas del profesional con su estado
 exports.obtenerCitasProfesional = async (req, res) => {
   const usuario_id = req.user?.usuario_id;
 
   try {
-    const [citas] = await pool.query(
+    const [citas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT 
           c.cita_id, 
           c.fecha_hora_inicio, 

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU38.
+ */
 // Ruta: fro-vista/src/components/BarraAtencionEnCurso.js
 //
 // Barra que aparece sola mientras el profesional tiene una atención abierta y
@@ -16,12 +20,14 @@ import { formatearHora } from '../utils/fechas';
 import { colores, espacio, radio, tipografia, interaccion } from '../theme';
 
 /**
+ * CU38 — Registrando marcas temporales de la prestación
  * @param {function} onAbrir  recibe la atención; decide a dónde llevar
  * @param {object}   navigation  si no se pasa onAbrir, abre la ficha del paciente
  */
 export default function BarraAtencionEnCurso({ onAbrir, navigation, recargarEn }) {
   const [atencion, setAtencion] = useState(null);
 
+  // CU38: atención abierta del profesional
   const consultar = useCallback(async () => {
     try {
       const datos = await getAtencionEnCurso();

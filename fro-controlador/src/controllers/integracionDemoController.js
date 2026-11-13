@@ -1,4 +1,10 @@
-const { ejecutarTransaccion } = require('../services/external/providerAdapter');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU68, CU70.
+ *
+ * Endpoint de demostración de la capa adaptadora con proveedores externos.
+ */
+const C_API_Adapter = require('../componentes/C_API_Adapter');
 
 //  ─────────────────────────────────────────────────────────────────────────
 // CU68/CU70 - ENDPOINT DE REFERENCIA
@@ -10,6 +16,7 @@ const { ejecutarTransaccion } = require('../services/external/providerAdapter');
 // SE DEBE: reemplazar por la integración real cuando exista un proveedor concreto.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU68, CU70 — traducir el error del adaptador a código HTTP
 // Map del err.code estandarizado del adaptador → código HTTP.
 function estadoHttpDeError(code) {
   switch (code) {
@@ -23,12 +30,13 @@ function estadoHttpDeError(code) {
   }
 }
 
+// CU68 — Intercambiando Datos con Proveedor Externo
 // POST /api/integracion-demo/ejecutar
 exports.ejecutar = async (req, res) => {
   const { proveedor, operacion, datosInternos, usuarioId = null, urlOverride = null } = req.body;
 
   try {
-    const resultado = await ejecutarTransaccion({ proveedor, operacion, datosInternos, usuarioId, urlOverride });
+    const resultado = await C_API_Adapter.ejecutarTransaccion({ proveedor, operacion, datosInternos, usuarioId, urlOverride });
     return res.status(200).json({ ok: true, ...resultado });
   } catch (error) {
     // Toda ruta de error devuelve una respuesta HTTP → no quedan hilos bloqueados (poscondición CU70).

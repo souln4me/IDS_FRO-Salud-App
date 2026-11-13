@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU01, CU02, CU06 y CU07.
+ */
 // Ruta: fro-vista/src/components/RequisitosContrasena.js
 //
 // Lista de requisitos de la contraseña, marcados en tiempo real mientras se

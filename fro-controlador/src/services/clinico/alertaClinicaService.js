@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Motor_Clinico (puerta de entrada: src/componentes/C_Motor_Clinico.js)
+ * Casos de uso: CU50.
+ *
  * CU50 — Alertas por deterioro clínico.
  *
  * El paciente reporta cómo va entre sesiones (dolor y limitación funcional).
@@ -7,9 +10,11 @@
  * persiste la alerta y la deja en el panel del profesional (RF50).
  */
 
-const { leerParametroEntero, notificarUsuario } = require('../agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Despachador_Notificaciones = require('../../componentes/C_Despachador_Notificaciones');
 
 /**
+ * CU50 — Generando y notificando alerta por deterioro clínico
  * Decide si un reporte de síntomas constituye deterioro.
  *
  * @param {object} actual    { nivel_dolor, limitacion_funcional }
@@ -44,6 +49,7 @@ function evaluarDeterioro(actual, anterior, umbrales) {
   };
 }
 
+// CU50 — Generando y notificando alerta por deterioro clínico
 /** Profesionales tratantes del paciente, para avisarles del deterioro. */
 async function profesionalesDelPaciente(conexion, pacienteId) {
   const [filas] = await conexion.execute(
@@ -65,6 +71,7 @@ async function profesionalesDelPaciente(conexion, pacienteId) {
 }
 
 /**
+ * CU50 — Generando y notificando alerta por deterioro clínico
  * Registra la alerta y avisa a los profesionales tratantes.
  *
  * Excepción 4 del CU50: si la alerta no se puede escribir, el reporte del
@@ -105,9 +112,10 @@ async function crearAlerta(conexion, { pacienteId, tipo, severidad, motivo, dato
         ? `${paciente?.nombre || 'Un paciente'} está dejando de cumplir su pauta`
         : `${paciente?.nombre || 'Un paciente'} reportó un deterioro`;
 
+    // CU52: aviso a los profesionales tratantes
     const tratantes = await profesionalesDelPaciente(conexion, pacienteId);
     for (const tratante of tratantes) {
-      await notificarUsuario(
+      await C_Despachador_Notificaciones.notificarUsuario(
         conexion,
         tratante.usuario_id,
         'ALERTA_DETERIORO',
@@ -131,11 +139,12 @@ async function crearAlerta(conexion, { pacienteId, tipo, severidad, motivo, dato
   }
 }
 
+// CU50 — Generando y notificando alerta por deterioro clínico
 /** Umbrales vigentes, editables por el administrador. */
 async function umbralesVigentes(conexion) {
   return {
-    dolorCritico: await leerParametroEntero(conexion, 'UMBRAL_DOLOR_CRITICO', 8),
-    alzaDolor: await leerParametroEntero(conexion, 'UMBRAL_ALZA_DOLOR', 3),
+    dolorCritico: await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'UMBRAL_DOLOR_CRITICO', 8),
+    alzaDolor: await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'UMBRAL_ALZA_DOLOR', 3),
   };
 }
 

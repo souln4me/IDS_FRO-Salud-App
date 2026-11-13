@@ -1,4 +1,10 @@
 /**
+ * Componente: C_Motor_Agendamiento (puerta de entrada: src/componentes/C_Motor_Agendamiento.js)
+ * Casos de uso: CU09, CU18, CU19, CU22, CU55, CU76.
+ * Excepciones: notificarUsuario es de C_Despachador_Notificaciones (CU52),
+ * leerParametroEntero es de C_Capa_de_Acceso_a_Datos (CU59) y
+ * revisarVencimientosListaEspera se expone por C_Programador_Agenda (CU19).
+ *
  * Servicios compartidos del módulo de agenda (Incremento 2, bloque de citas).
  *
  * Reúne la lógica que necesitan tanto la máquina de estados de la cita
@@ -7,12 +13,13 @@
  * efectos: trazabilidad (CU22), descuento de sesiones (CU76) y avisos (CU18).
  */
 
-const { despachar } = require('../notifications/despachador');
+const C_Despachador_Notificaciones = require('../../componentes/C_Despachador_Notificaciones');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Parámetros de negocio (editables por el administrador en Parámetros Globales)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU59 — Gestionando Parámetros Globales del Sistema (C_Capa_de_Acceso_a_Datos)
 async function leerParametroEntero(connection, clave, valorPorDefecto) {
   try {
     const [filas] = await connection.execute(
@@ -31,6 +38,7 @@ async function leerParametroEntero(connection, clave, valorPorDefecto) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU22 — Registrando trazabilidad de transiciones de agenda (C_Motor_Agendamiento)
  * Registra en la bitácora quién hizo qué sobre una cita, con motivo.
  * Usa las columnas reales de Bitacora_Auditoria (accion, entidad_afectada,
  * ip_origen, datos_adicionales, usuario_id).
@@ -50,6 +58,7 @@ async function registrarTrazabilidadAgenda(connection, req, datos) {
   );
 }
 
+// CU22 — Registrando trazabilidad de transiciones de agenda (C_Motor_Agendamiento)
 /** Devuelve el historial de cambios de una cita, más reciente primero. */
 async function obtenerTrazabilidadCita(connection, cita_id) {
   const [filas] = await connection.execute(
@@ -80,6 +89,7 @@ async function obtenerTrazabilidadCita(connection, cita_id) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU52 — Emitiendo notificaciones multicanal (C_Despachador_Notificaciones)
  * Deja un aviso en la bandeja del usuario. Nunca lanza: si el aviso falla,
  * la operación principal debe mantenerse (Excepción 4 de CU17/CU18).
  */
@@ -89,7 +99,7 @@ async function notificarUsuario(connection, usuario_id, tipo, contenido, extra =
     // CU52: el despachador decide los canales según las preferencias del
     // usuario. Antes esto escribía directo en la tabla y el aviso no salía de
     // la base de datos.
-    await despachar(connection, { usuario_id, tipo, contenido, ...extra });
+    await C_Despachador_Notificaciones.despachar(connection, { usuario_id, tipo, contenido, ...extra });
     return true;
   } catch (error) {
     console.error(`[notificarUsuario] Falló el aviso a usuario ${usuario_id}:`, error.message);
@@ -98,7 +108,8 @@ async function notificarUsuario(connection, usuario_id, tipo, contenido, extra =
 }
 
 /**
- * CU55 — Terminada la sesión, se le pide al PACIENTE que califique la
+ * CU55 — Evaluando satisfacción post-sesión (C_Motor_Agendamiento)
+ * Terminada la sesión, se le pide al PACIENTE que califique la
  * atención con un aviso en su propio teléfono. Antes el formulario aparecía
  * en el celular del profesional, que no es quien debe evaluarse a sí mismo.
  * El aviso abre Mis Citas con el formulario de esa cita ya desplegado.
@@ -120,8 +131,8 @@ async function pedirEvaluacion(connection, citaId) {
       connection,
       cita.usuario_id,
       'EVALUAR_SESION',
-      `¿Cómo te fue en tu sesión con ${cita.profesional || 'tu profesional'}? ` +
-        'Tócalo para calificar la atención: tu opinión ayuda a otros pacientes a elegir.',
+      `¿Quedaste satisfecho con tu sesión con ${cita.profesional || 'tu profesional'}? ` +
+        'Tócalo para responder y, si quieres, dejar un comentario.',
       { datos: { pantalla: 'MisCitas', evaluar_cita_id: Number(citaId) } }
     );
   } catch (error) {
@@ -130,6 +141,7 @@ async function pedirEvaluacion(connection, citaId) {
   }
 }
 
+// CU09 — Configurando privacidad de datos de contacto (C_Motor_Agendamiento)
 /** Ids de usuario del paciente y del profesional de una cita. */
 async function obtenerContactosCita(connection, cita_id) {
   const [filas] = await connection.execute(
@@ -153,6 +165,7 @@ async function obtenerContactosCita(connection, cita_id) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU76 — Ejecutando transacciones en máquina de estados de la cita (C_Motor_Agendamiento)
  * Descuenta una sesión del paquete activo del paciente. Si el paquete llega a
  * cero queda AGOTADO; si el paciente no tiene paquete activo, se omite la
  * sustracción (Excepción 4 del CU76) y se informa.
@@ -196,9 +209,32 @@ async function descontarSesionPaquete(connection, paciente_id, motivo) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  CU16 — Bloqueos de agenda
+// ─────────────────────────────────────────────────────────────────────────────
+
+// CU16 — Restringiendo disponibilidad administrativa (C_Motor_Agendamiento)
+/**
+ * ¿El bloque cae dentro de un periodo que el profesional bloqueó (vacaciones,
+ * licencia)? Un bloque así no existe para nadie: no se reserva, no se valida
+ * como libre y no se toma desde la lista de espera.
+ */
+async function agendaBloqueada(conexion, profesional_id, fecha_hora_inicio, fecha_hora_fin) {
+  const [bloqueos] = await conexion.execute(
+    `SELECT bloqueo_id FROM Bloqueo_Agenda
+      WHERE profesional_id = ?
+        AND fecha_inicio <= ?
+        AND fecha_fin    >= ?
+      LIMIT 1`,
+    [profesional_id, fecha_hora_fin, fecha_hora_inicio]
+  );
+  return bloqueos.length > 0;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  CU19 — Lista de espera secuencial
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU19 — Gestionando lista de espera secuencial (C_Motor_Agendamiento)
 /** Datos del bloque liberado, para poder describirlo en el aviso. */
 async function datosDelBloque(conexion, cita_id) {
   const [filas] = await conexion.execute(
@@ -218,6 +254,7 @@ async function datosDelBloque(conexion, cita_id) {
   return filas[0] || null;
 }
 
+// CU19 — Gestionando lista de espera secuencial (C_Motor_Agendamiento)
 /** "el martes 30/09/2026 a las 10:00", para los textos de los avisos. */
 function describirBloque(bloque) {
   if (!bloque?.fecha_hora_inicio) return 'el bloque que esperabas';
@@ -227,6 +264,7 @@ function describirBloque(bloque) {
 }
 
 /**
+ * CU18, CU19 — ofrecer el cupo liberado a la lista de espera (C_Motor_Agendamiento)
  * Ofrece el cupo liberado al PRIMERO de la lista que siga esperando, y a nadie
  * más: esa es la regla del CU19 (aviso secuencial por orden de llegada). Si ya
  * hay alguien con el turno vigente, no se toca nada hasta que venza.
@@ -291,6 +329,7 @@ async function ofrecerCupoListaEspera(connection, cita_id) {
     const bloque = await datosDelBloque(connection, cita_id);
     const cuando = describirBloque(bloque);
 
+    // CU52: aviso al primero de la lista
     await notificarUsuario(
       connection,
       siguiente.usuario_id,
@@ -319,6 +358,7 @@ async function ofrecerCupoListaEspera(connection, cita_id) {
 }
 
 /**
+ * CU19 — Gestionando lista de espera secuencial (C_Programador_Agenda)
  * Excepción 4 del CU19: al que no responde dentro del plazo se le revoca la
  * prioridad y el cupo pasa automáticamente al siguiente de la fila.
  *
@@ -374,4 +414,5 @@ module.exports = {
   revisarVencimientosListaEspera,
   datosDelBloque,
   describirBloque,
+  agendaBloqueada,
 };

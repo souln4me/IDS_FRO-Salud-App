@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU10; también lo usa CU02.
+ */
 // Ruta: fro-vista/src/components/EditorBloqueHorario.js
 //
 // Tarjeta para editar un bloque de la jornada semanal: día, desde/hasta (horas

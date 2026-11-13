@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/components/VistaConTeclado.js
 //
 // Contenedor con scroll que evita que el teclado tape los campos de texto.

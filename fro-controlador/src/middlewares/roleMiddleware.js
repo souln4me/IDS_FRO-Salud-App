@@ -1,12 +1,19 @@
-const pool = require('../config/database');
+/**
+ * Componente: C_Seguridad_JWT_BCrypt
+ * Casos de uso: CU12, CU13.
+ *
+ * Deja pasar solo a los roles permitidos en cada ruta y anota los bloqueos.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
 
+// CU13 — Registrando bitácora de auditoría de seguridad (bloqueos por rol)
 // D6: antes esto escribía en logs/security_audit.log. En Render el disco es
 // efímero y el archivo se perdía en cada despliegue, así que el bloqueo va a
 // la tabla Bitacora_Auditoria. Es mejor esfuerzo: un fallo al auditar no
 // puede convertirse en un 500 para el usuario.
 async function registrarBloqueo(req, userId, userRole) {
     try {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
             `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
              VALUES ('BLOQUEO_ACCESO_RBAC', 'Usuario', ?, ?, ?)`,
             [
@@ -21,6 +28,7 @@ async function registrarBloqueo(req, userId, userRole) {
 }
 
 /**
+ * CU12 — Controlando acceso basado en roles RBAC
  * Middleware de Autorización RBAC (Control de Acceso Basado en Roles)
  * @param {Array<string>} allowedRoles - Lista de roles permitidos (ej: ['Administrador', 'Profesional'])
  */

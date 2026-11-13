@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Motor_Clinico (puerta de entrada: src/componentes/C_Motor_Clinico.js)
+ * Casos de uso: CU23, CU24, CU27, CU77.
+ *
  * Triaje clínico automatizado (Incremento 2, bloque 4).
  * CU27: disclaimer legal previo al uso de la herramienta.
  * CU23: árbol de decisión dinámico para capturar sintomatología.
@@ -150,6 +153,7 @@ const ARBOL_TRIAJE = {
   },
 };
 
+// CU23, CU24 — etiquetas legibles de las opciones del árbol
 // Etiquetas legibles para reconstruir texto clínico desde los valores.
 const ETIQUETAS = {};
 for (const nodo of Object.values(ARBOL_TRIAJE.nodos)) {
@@ -160,6 +164,7 @@ for (const nodo of Object.values(ARBOL_TRIAJE.nodos)) {
   }
 }
 
+// CU24 — Estructurando datos de sintomatología a Ficha Clínica
 function etiquetaDe(nodoId, valor) {
   return ETIQUETAS[`${nodoId}.${valor}`] || String(valor);
 }
@@ -170,11 +175,13 @@ function etiquetaDe(nodoId, valor) {
 
 const NEGACIONES = new Set(['no', 'no.', 'ninguna', 'ninguno', 'nada', 'n/a', '-']);
 
+// CU24 — Estructurando datos de sintomatología a Ficha Clínica
 function esNegacion(texto) {
   return NEGACIONES.has(String(texto || '').trim().toLowerCase());
 }
 
 /**
+ * CU24 — Estructurando datos de sintomatología a Ficha Clínica
  * Convierte las respuestas crudas del triaje en datos categorizados listos
  * para integrarse a la ficha. Las claves desconocidas caen en la sección
  * "sin clasificar" (Excepción 4 del CU24) en vez de perderse.
@@ -296,6 +303,7 @@ const PLANTILLA_GENERAL = [
   { id: 'observaciones', etiqueta: 'Observaciones de la evaluación', tipo: 'texto', obligatorio: false },
 ];
 
+// CU77 — Renderizando plantillas dinámicas de evaluación
 function plantillaParaEspecialidad(nombreEspecialidad) {
   return {
     especialidad: nombreEspecialidad,

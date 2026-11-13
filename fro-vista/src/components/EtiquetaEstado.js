@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU20, CU38, CU47, CU48 y CU67.
+ */
 // Ruta: fro-vista/src/components/EtiquetaEstado.js
 //
 // Pastilla de estado: fondo relleno con el color del estado y texto claro.

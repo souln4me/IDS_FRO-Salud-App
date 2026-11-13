@@ -1,13 +1,16 @@
-const pool = require('../../config/database');
-const {
-  rechazarSiCerrado,
-  estaCerrado,
-  rechazarSiAjeno,
-  porcentajeObjetivosEpisodio,
-} = require('../../services/clinico/episodioService');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU32, CU51, CU40, CU78.
+ *
+ * Avance de las metas del episodio y apertura de la evolución de una sesión clínica.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Motor_Clinico = require('../../componentes/C_Motor_Clinico');
+const C_Gestor_Alta_Clinica = require('../../componentes/C_Gestor_Alta_Clinica');
 
 // CU32
 
+// Apoyo común: IP de origen para la bitácora
 function obtenerIP(req) {
   return (
     req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -16,6 +19,7 @@ function obtenerIP(req) {
   );
 }
 
+// CU32 — Definiendo metas y objetivos terapéuticos (registro del avance)
 // PUT /api/clinica/objetivos/avance
 exports.actualizarAvance = async (req, res) => {
   const { objetivo_terapeutico_id, valor_actual } = req.body;
@@ -37,7 +41,7 @@ exports.actualizarAvance = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -62,11 +66,11 @@ exports.actualizarAvance = async (req, res) => {
 
     // El avance es un registro clínico: solo lo anota el profesional a cargo y
     // solo mientras el episodio siga abierto (CU28 / CU78 Exc.3).
-    if (await rechazarSiAjeno(connection, episodioId, req, res)) {
+    if (await C_Motor_Clinico.rechazarSiAjeno(connection, episodioId, req, res)) {
       await connection.rollback();
       return;
     }
-    if (await rechazarSiCerrado(connection, episodioId, res)) {
+    if (await C_Motor_Clinico.rechazarSiCerrado(connection, episodioId, res)) {
       await connection.rollback();
       return;
     }
@@ -107,7 +111,7 @@ exports.actualizarAvance = async (req, res) => {
 
     // La evolución de la sesión abierta guarda el avance global del episodio:
     // así el historial muestra un porcentaje real en vez de "No informado".
-    const porcentajeEpisodio = await porcentajeObjetivosEpisodio(connection, episodioId);
+    const porcentajeEpisodio = await C_Motor_Clinico.porcentajeObjetivosEpisodio(connection, episodioId);
     if (porcentajeEpisodio !== null) {
       await connection.execute(
         `UPDATE Evolucion_Clinica
@@ -120,6 +124,17 @@ exports.actualizarAvance = async (req, res) => {
 
     await connection.commit();
 
+    // CU51: con la meta actualizada, ¿el paciente ya alcanzó el umbral de
+    // egreso? Si falla, el avance ya quedó guardado: no se revierte.
+    let preparacionAlta = null;
+    try {
+      preparacionAlta = await C_Gestor_Alta_Clinica.evaluarPreparacionAlta(C_Capa_de_Acceso_a_Datos, episodioId, {
+        registrar: true, usuarioId: usuario_id, ip: obtenerIP(req),
+      });
+    } catch (errorAlta) {
+      console.error('[actualizarAvance] evaluación del alta:', errorAlta.message);
+    }
+
     // Porcentaje calculado para el panel gráfico (la Excepción 4 se maneja en frontend)
     const porcentaje = metaValor > 0 ? Math.round((nuevoValor / metaValor) * 100) : 0;
 
@@ -129,7 +144,11 @@ exports.actualizarAvance = async (req, res) => {
       valor_actual: nuevoValor,
       meta_valor: metaValor,
       porcentaje_cumplimiento: porcentaje,
-      porcentaje_episodio: porcentajeEpisodio
+      porcentaje_episodio: porcentajeEpisodio,
+      // CU51: para que la pantalla avise cuando se habilita la preparación.
+      umbral_egreso: preparacionAlta?.umbral ?? null,
+      preparacion_alta_habilitada: Boolean(preparacionAlta?.habilitada),
+      preparacion_alta_recien_habilitada: Boolean(preparacionAlta?.recien_habilitada),
     });
 
   } catch (error) {
@@ -143,12 +162,13 @@ exports.actualizarAvance = async (req, res) => {
   }
 };
 
+// CU40, CU78 — abrir la evolución en blanco de la sesión clínica dentro del episodio
 // POST /api/clinica/episodio/:episodio_id/evolucion
 exports.crearEvolucionEnBlanco = async (req, res) => {
   const { episodio_id } = req.params;
   const usuario_id = req.user?.usuario_id;
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     // 1. Obtener el ID del Profesional real a partir del ID del Usuario logueado
@@ -164,7 +184,7 @@ exports.crearEvolucionEnBlanco = async (req, res) => {
     const profesional_id = profesionales[0].profesional_id;
 
     // CU78 Exc.3 (D12): un episodio cerrado no abre sesiones nuevas.
-    if (await rechazarSiCerrado(connection, episodio_id, res)) return;
+    if (await C_Motor_Clinico.rechazarSiCerrado(connection, episodio_id, res)) return;
 
     // 2. Insertar la evolución clínica en blanco, ligada al episodio
     const [result] = await connection.query(`

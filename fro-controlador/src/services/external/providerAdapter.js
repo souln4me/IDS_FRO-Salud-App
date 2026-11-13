@@ -1,3 +1,11 @@
+/**
+ * Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+ * Casos de uso: CU68, CU69, CU70.
+ *
+ * Adaptador único hacia los proveedores externos (financiador, pasarela de
+ * pago y otros): traduce los datos, los valida, los envía y los audita.
+ */
+
 const { enviarPeticion } = require('../../utils/externalHttpClient');
 const { MAPPERS } = require('../../utils/dataMappers');
 const { ESQUEMAS, validarPayloadSalida, validarPayloadEntrada } = require('../../validators/externalSchemas');
@@ -9,6 +17,7 @@ const audit = require('../audit/transactionAuditService');
 // El núcleo solo invoca ejecutarTransaccion() y queda agnóstico del formato externo.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU68 — Intercambiando Datos con Proveedor Externo
 // Especialización por proveedor: endpoint + autenticación.
 // URLs y credenciales reales se inyectan por entorno al conectar cada servicio.
 const PROVIDERS = {
@@ -39,6 +48,7 @@ const PROVIDERS = {
   }
 };
 
+// CU68, CU69, CU70 — transacción completa con un proveedor externo
 async function ejecutarTransaccion({
   proveedor,
   operacion,
@@ -63,6 +73,7 @@ async function ejecutarTransaccion({
   // 2. Excepción 1: validar sintaxis de salida ANTES de transmitir
   const vSalida = validarPayloadSalida(payloadSalida, esquema.salida);
   if (!vSalida.valido) {
+    // CU69: queda en la bitácora de transacciones externas
     await audit.registrarFalloSintaxis({
       proveedor, operacion, usuarioId,
       faltantes: vSalida.faltantes,
@@ -74,6 +85,7 @@ async function ejecutarTransaccion({
     throw err;
   }
 
+  // CU70: los reintentos los aplica el http client
   // 3. Transmitir — el http client maneja Excepciones 2 y 3 y audita el round-trip
   const respuesta = await enviarPeticion({
     proveedor,
@@ -88,6 +100,7 @@ async function ejecutarTransaccion({
   // 4. Excepción 4: validar estructura entrante
   const vEntrada = validarPayloadEntrada(respuesta.data, esquema.entrada);
   if (!vEntrada.valido) {
+    // CU69: queda en la bitácora de transacciones externas
     await audit.registrarEsquemaDivergente({
       proveedor, operacion, usuarioId,
       payloadRecibido: respuesta.raw, // se aísla la respuesta cruda incompatible
@@ -98,6 +111,13 @@ async function ejecutarTransaccion({
     err.detalle = vEntrada;
     throw err;
   }
+
+  // Registro de actividad: proveedor, operación, respuesta e intentos.
+  require('../registro/registroActividad').marcarServicioExterno(proveedor);
+  require('../registro/registroActividad').registrar(
+    'C_API_Adapter',
+    `${proveedor} · ${operacion}: respondió ${respuesta.status} en ${respuesta.latencia} ms (${respuesta.intentos} intento${respuesta.intentos === 1 ? '' : 's'})`
+  );
 
   // 5. Transformar al modelo interno y retornar el éxito al núcleo
   return {

@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU19, CU73, CU52, CU22.
+ *
  * CU19 — Lista de espera secuencial.
  *
  * El paciente se inscribe en un bloque que está ocupado. Cuando ese bloque se
@@ -7,16 +10,12 @@
  * automáticamente al siguiente (Excepción 4).
  */
 
-const pool = require('../config/database');
-const {
-  leerParametroEntero,
-  notificarUsuario,
-  ofrecerCupoListaEspera,
-  revisarVencimientosListaEspera,
-  datosDelBloque,
-  describirBloque,
-} = require('../services/agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Despachador_Notificaciones = require('../componentes/C_Despachador_Notificaciones');
+const C_Motor_Agendamiento = require('../componentes/C_Motor_Agendamiento');
+const C_Programador_Agenda = require('../componentes/C_Programador_Agenda');
 
+// Apoyo común: paciente_id del usuario con sesión
 async function pacienteDe(conexion, usuario_id) {
   const [[fila]] = await conexion.execute(
     `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
@@ -26,6 +25,7 @@ async function pacienteDe(conexion, usuario_id) {
 }
 
 /**
+ * CU19 — Gestionando lista de espera secuencial
  * POST /api/citas/:id/lista-espera
  *
  * Inscribe al paciente en la lista del bloque ocupado. La posición sale del
@@ -33,7 +33,7 @@ async function pacienteDe(conexion, usuario_id) {
  */
 exports.inscribirse = async (req, res) => {
   const cita_id = req.params.id;
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await conexion.beginTransaction();
@@ -83,7 +83,7 @@ exports.inscribirse = async (req, res) => {
     }
 
     // Excepción 1: la lista tiene un tope, y lleno se deshabilita la inscripción.
-    const maximo = await leerParametroEntero(conexion, 'MAX_PACIENTES_LISTA_ESPERA', 5);
+    const maximo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'MAX_PACIENTES_LISTA_ESPERA', 5);
     const [[conteo]] = await conexion.execute(
       `SELECT COUNT(*) AS activos FROM Lista_Espera
         WHERE cita_id = ? AND estado IN ('ESPERANDO', 'NOTIFICADO')`,
@@ -134,12 +134,13 @@ exports.inscribirse = async (req, res) => {
       );
     }
 
-    const bloque = await datosDelBloque(conexion, cita_id);
-    await notificarUsuario(
+    // CU52: aviso al paciente
+    const bloque = await C_Motor_Agendamiento.datosDelBloque(conexion, cita_id);
+    await C_Despachador_Notificaciones.notificarUsuario(
       conexion,
       req.user.usuario_id,
       'LISTA_ESPERA_INSCRITO',
-      `Quedaste en la lista de espera de ${describirBloque(bloque)}` +
+      `Quedaste en la lista de espera de ${C_Motor_Agendamiento.describirBloque(bloque)}` +
       `${bloque?.profesional ? ` con ${bloque.profesional}` : ''}, en la posición ${posicion}. ` +
       'Si el bloque se libera te avisamos, y si eres el primero tendrás un plazo para tomarlo.'
     );
@@ -164,15 +165,18 @@ exports.inscribirse = async (req, res) => {
   }
 };
 
-/** DELETE /api/citas/:id/lista-espera — salir de la lista por decisión propia. */
+/**
+ * CU19 — Gestionando lista de espera secuencial
+ * DELETE /api/citas/:id/lista-espera — salir de la lista por decisión propia.
+ */
 exports.salir = async (req, res) => {
   try {
-    const paciente_id = await pacienteDe(pool, req.user.usuario_id);
+    const paciente_id = await pacienteDe(C_Capa_de_Acceso_a_Datos, req.user.usuario_id);
     if (!paciente_id) {
       return res.status(403).json({ error: 'SOLO_PACIENTES' });
     }
 
-    const [resultado] = await pool.query(
+    const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Lista_Espera SET estado = 'CANCELADO'
         WHERE cita_id = ? AND paciente_id = ? AND estado IN ('ESPERANDO', 'NOTIFICADO')`,
       [req.params.id, paciente_id]
@@ -183,7 +187,7 @@ exports.salir = async (req, res) => {
     }
 
     // Si quien salió tenía el turno, el cupo pasa al siguiente de inmediato.
-    await ofrecerCupoListaEspera(pool, req.params.id);
+    await C_Motor_Agendamiento.ofrecerCupoListaEspera(C_Capa_de_Acceso_a_Datos, req.params.id);
 
     return res.status(200).json({ mensaje: 'Saliste de la lista de espera.' });
   } catch (error) {
@@ -192,17 +196,20 @@ exports.salir = async (req, res) => {
   }
 };
 
-/** GET /api/citas/mis-listas-espera */
+/**
+ * CU19 — Gestionando lista de espera secuencial
+ * GET /api/citas/mis-listas-espera
+ */
 exports.misListas = async (req, res) => {
   try {
     // Oportunista: en Render gratuito el servidor se duerme y el temporizador
     // no corre, así que cada consulta aprovecha de vencer los turnos caducados.
-    await revisarVencimientosListaEspera(pool);
+    await C_Programador_Agenda.revisarVencimientosListaEspera(C_Capa_de_Acceso_a_Datos);
 
-    const paciente_id = await pacienteDe(pool, req.user.usuario_id);
+    const paciente_id = await pacienteDe(C_Capa_de_Acceso_a_Datos, req.user.usuario_id);
     if (!paciente_id) return res.status(200).json({ listas: [] });
 
-    const [listas] = await pool.query(
+    const [listas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT le.lista_espera_id, le.posicion, le.estado, le.momento_inscripcion,
               le.momento_expira,
               c.cita_id, c.fecha_hora_inicio, c.fecha_hora_fin, c.estado AS estado_cita,
@@ -232,6 +239,7 @@ exports.misListas = async (req, res) => {
 };
 
 /**
+ * CU19 — Gestionando lista de espera secuencial
  * Toma del cupo, compartida por la app y por el enlace del correo.
  *
  * @param {object} p
@@ -242,7 +250,7 @@ exports.misListas = async (req, res) => {
  * @returns {Promise<{status: number, body: object}>}
  */
 async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await conexion.beginTransaction();
@@ -289,7 +297,7 @@ async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
       };
     }
 
-    const bloque = await datosDelBloque(conexion, turno.cita_id);
+    const bloque = await C_Motor_Agendamiento.datosDelBloque(conexion, turno.cita_id);
     if (!bloque) {
       await conexion.rollback();
       return { status: 404, body: { error: 'BLOQUE_NO_ENCONTRADO', mensaje: 'El bloque ya no existe.' } };
@@ -314,6 +322,20 @@ async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
       return {
         status: 409,
         body: { error: 'BLOQUE_OCUPADO', mensaje: 'El bloque volvió a ocuparse. Busca otro horario disponible.' },
+      };
+    }
+
+    // CU16: si el profesional bloqueó ese periodo después de ofrecer el cupo,
+    // el bloque ya no existe.
+    if (await C_Motor_Agendamiento.agendaBloqueada(conexion, bloque.profesional_id, bloque.fecha_hora_inicio, bloque.fecha_hora_fin)) {
+      await conexion.execute(
+        `UPDATE Lista_Espera SET estado = 'VENCIDO' WHERE lista_espera_id = ?`,
+        [turno.lista_espera_id]
+      );
+      await conexion.commit();
+      return {
+        status: 409,
+        body: { error: 'AGENDA_BLOQUEADA', mensaje: 'El profesional ya no atiende en ese horario. Busca otro horario disponible.' },
       };
     }
 
@@ -345,25 +367,27 @@ async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
         `UPDATE Lista_Espera SET estado = 'CERRADO', token_cupo = NULL WHERE lista_espera_id = ?`,
         [otro.lista_espera_id]
       );
-      await notificarUsuario(
+      // CU52: aviso al resto de la fila
+      await C_Despachador_Notificaciones.notificarUsuario(
         conexion,
         otro.usuario_id,
         'CUPO_CEDIDO',
-        `El cupo de ${describirBloque(bloque)} fue tomado por otro paciente de la lista. ` +
+        `El cupo de ${C_Motor_Agendamiento.describirBloque(bloque)} fue tomado por otro paciente de la lista. ` +
         'Puedes buscar otro horario o inscribirte en otro bloque.'
       );
     }
 
     // CU73: la hora tomada es una reserva como cualquier otra: falta pagarla.
-    await notificarUsuario(
+    await C_Despachador_Notificaciones.notificarUsuario(
       conexion,
       turno.usuario_id,
       'CAMBIO_ESTADO_CITA',
-      `Tomaste el cupo de ${describirBloque(bloque)}${bloque.profesional ? ` con ${bloque.profesional}` : ''}. ` +
+      `Tomaste el cupo de ${C_Motor_Agendamiento.describirBloque(bloque)}${bloque.profesional ? ` con ${bloque.profesional}` : ''}. ` +
       'Ahora completa el pago desde Mis Citas para que el profesional pueda confirmarla.',
       { datos: { pantalla: 'MisCitas', cita_id: creada.insertId } }
     );
 
+    // CU22: queda en la trazabilidad
     await conexion.execute(
       `INSERT INTO Bitacora_Auditoria
           (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
@@ -388,7 +412,7 @@ async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
         mensaje: 'El cupo quedó reservado a tu nombre. Complétalo pagando desde Mis Citas.',
         cita_id: creada.insertId,
         estado: 'AGENDADA',
-        cuando: describirBloque(bloque),
+        cuando: C_Motor_Agendamiento.describirBloque(bloque),
         profesional: bloque.profesional || null,
       },
     };
@@ -405,6 +429,7 @@ async function tomarTurno({ listaEsperaId, usuarioId, token, ip }) {
 }
 
 /**
+ * CU19 — Gestionando lista de espera secuencial
  * POST /api/citas/lista-espera/:lista_espera_id/tomar
  *
  * El primero de la fila acepta el cupo dentro de su plazo: se le agenda una
@@ -420,6 +445,7 @@ exports.tomarCupo = async (req, res) => {
 };
 
 // ── Enlace del correo: tomar el cupo sin abrir la app ─────────────────────
+// CU19 — Gestionando lista de espera secuencial
 function paginaCupo({ titulo, mensaje, detalle, tono, boton }) {
   const color = tono === 'error' ? '#B3261E' : tono === 'aviso' ? '#A85A00' : '#003B4D';
   return `<!doctype html>
@@ -443,10 +469,12 @@ function paginaCupo({ titulo, mensaje, detalle, tono, boton }) {
 </body></html>`;
 }
 
+// Apoyo común: escapa texto antes de ponerlo en la página
 const escaparHTML = (t) =>
   String(t ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 /**
+ * CU19 — Gestionando lista de espera secuencial
  * GET /api/citas/lista-espera/cupo/:token?accion=TOMAR   (público)
  *
  * Sin 'accion' muestra el cupo y el botón (los lectores de correo abren los
@@ -480,7 +508,7 @@ exports.cupoDesdeCorreo = async (req, res) => {
   }
 
   try {
-    const [[turno]] = await pool.query(
+    const [[turno]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT le.estado, le.cita_id,
               GREATEST(0, TIMESTAMPDIFF(MINUTE, NOW(), le.momento_expira)) AS minutos_restantes,
               (le.momento_expira <= NOW()) AS vencido
@@ -501,10 +529,10 @@ exports.cupoDesdeCorreo = async (req, res) => {
         tono: 'aviso',
       }));
     }
-    const bloque = await datosDelBloque(pool, turno.cita_id);
+    const bloque = await C_Motor_Agendamiento.datosDelBloque(C_Capa_de_Acceso_a_Datos, turno.cita_id);
     return res.status(200).send(paginaCupo({
       titulo: 'Se liberó tu cupo',
-      mensaje: `Hora de ${escaparHTML(describirBloque(bloque))}${bloque?.profesional ? ` con ${escaparHTML(bloque.profesional)}` : ''}.`,
+      mensaje: `Hora de ${escaparHTML(C_Motor_Agendamiento.describirBloque(bloque))}${bloque?.profesional ? ` con ${escaparHTML(bloque.profesional)}` : ''}.`,
       detalle: `Te quedan ${Number(turno.minutos_restantes)} minutos para tomarlo.`,
       boton: { href: `?accion=TOMAR`, texto: 'Tomar el cupo' },
     }));

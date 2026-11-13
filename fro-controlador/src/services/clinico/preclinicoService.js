@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Motor_Clinico (puerta de entrada: src/componentes/C_Motor_Clinico.js)
+ * Casos de uso: CU25, CU26.
+ *
  * CU25 — Reporte de hallazgos pre-clínicos.
  * CU26 — Sugerencia de derivación por especialidad.
  *
@@ -11,8 +14,9 @@
  * un profesional querría mirar primero.
  */
 
-const { leerParametroEntero } = require('../agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
 
+// CU25 — Sintetizando reporte de hallazgos pre-clínicos
 // Mismo patrón que usa el registro de la sesión clínica (CU40) para detectar
 // relatos que piden revisión inmediata. Se mantiene igual a propósito: un
 // texto que allá levanta alerta, aquí también.
@@ -32,6 +36,7 @@ const ANTECEDENTES_SENSIBLES = [
   { patron: /\b(osteoporos|fractura)/i, texto: 'Fragilidad ósea declarada' },
 ];
 
+// CU26 — Sugiriendo derivación por especialidad clínica
 // Motivo del triaje → especialidad que corresponde. Los nombres son los de la
 // tabla Especialidad: si se agrega una nueva, basta sumarla aquí.
 const DERIVACION = {
@@ -43,12 +48,14 @@ const DERIVACION = {
 
 const NEGACIONES = /^(no|ninguna|ninguno|nada|n\/a|sin)\b/i;
 
+// CU25 — Sintetizando reporte de hallazgos pre-clínicos
 function tieneContenido(valor) {
   const texto = String(valor ?? '').trim();
   return texto.length > 0 && !NEGACIONES.test(texto);
 }
 
 /**
+ * CU25 — Sintetizando reporte de hallazgos pre-clínicos
  * Lee las respuestas del triaje y devuelve el análisis completo: banderas
  * rojas, etiquetas clínicas, resumen legible y la especialidad sugerida.
  *
@@ -176,7 +183,8 @@ function analizarTriaje(respuestas, minimoRespuestas = 4) {
 }
 
 /**
- * CU26 — Resuelve la especialidad sugerida contra el cuerpo profesional real y
+ * CU26 — Sugiriendo derivación por especialidad clínica
+ * Resuelve la especialidad sugerida contra el cuerpo profesional real y
  * contra la comuna del paciente.
  *
  * @returns {Promise<{especialidad_id, nombre, disponible_en_comuna, comuna, alternativas}>}
@@ -263,13 +271,14 @@ async function resolverDerivacion(conexion, analisis, pacienteId) {
 }
 
 /**
+ * CU25, CU26 — genera y guarda el reporte con la especialidad sugerida
  * Genera y guarda el reporte pre-clínico de un triaje recién completado.
  * Nunca lanza: si falla, el triaje igual queda completado (el reporte se puede
  * regenerar después, al abrirlo).
  */
 async function generarReporte(conexion, { pacienteId, triajeId, respuestas }) {
   try {
-    const minimo = await leerParametroEntero(conexion, 'MINIMO_RESPUESTAS_PRECLINICO', 4);
+    const minimo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'MINIMO_RESPUESTAS_PRECLINICO', 4);
     const analisis = analizarTriaje(respuestas, minimo);
     const derivacion = await resolverDerivacion(conexion, analisis, pacienteId);
 

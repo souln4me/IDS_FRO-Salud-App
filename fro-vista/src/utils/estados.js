@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU20, CU28, CU47, CU49, CU65, CU66, CU67 y CU72.
+ */
 // Ruta: fro-vista/src/utils/estados.js
 //
 // Estados de una cita: color, etiqueta legible y prioridad de orden.
@@ -9,7 +13,8 @@
 import { colores } from '../theme';
 
 export const ESTADOS = {
-  EN_CURSO:     { color: colores.advertencia, etiqueta: 'En curso',     orden: 0 },
+  // CU20: estados de la cita
+  EN_CURSO:    { color: colores.advertencia, etiqueta: 'En curso',     orden: 0 },
   CONFIRMADA:   { color: colores.exito,       etiqueta: 'Confirmada',   orden: 1 },
   AGENDADA:     { color: colores.primario,    etiqueta: 'Agendada',     orden: 2 },
   REALIZADA:    { color: colores.textoSuave,  etiqueta: 'Realizada',    orden: 3 },
@@ -20,15 +25,23 @@ export const ESTADOS = {
   CANCELADA_PROFESIONAL: { color: colores.error, etiqueta: 'Cancelada por profesional', orden: 5 },
   CANCELADA:    { color: colores.error,       etiqueta: 'Cancelada',    orden: 5 },
 
-  // Pagos y bonos
+  // CU66, CU67: pagos y bonos
   PAGADA:       { color: colores.exito,       etiqueta: 'Pagada',       orden: 3 },
   PENDIENTE:    { color: colores.advertencia, etiqueta: 'Pendiente',    orden: 2 },
   EN_TRANSITO:  { color: colores.primario,    etiqueta: 'En tránsito',  orden: 1 },
   DEVOLUCION:   { color: colores.primario,    etiqueta: 'Devolución',   orden: 3 },
   VALIDADO:     { color: colores.exito,       etiqueta: 'Validado',     orden: 3 },
   RECHAZADO:    { color: colores.error,       etiqueta: 'Rechazado',    orden: 5 },
+  NO_VALIDADO:  { color: colores.error,       etiqueta: 'No validado',  orden: 5 },
+  // CU72: bono ingresado a mano durante una contingencia del financiador.
+  PROVISORIO:   { color: colores.advertencia, etiqueta: 'Provisorio',   orden: 2 },
 
-  // Pautas de ejercicio
+  // CU65: derivaciones internas
+  ACEPTADA:     { color: colores.exito,       etiqueta: 'Aceptada',     orden: 1 },
+  RECHAZADA:    { color: colores.error,       etiqueta: 'Rechazada',    orden: 4 },
+  CERRADA:      { color: colores.textoSuave,  etiqueta: 'Cerrada',      orden: 4 },
+
+  // CU47, CU49: pautas de ejercicio
   VIGENTE:      { color: colores.exito,       etiqueta: 'Vigente',      orden: 1 },
   PROGRAMADA:   { color: colores.primario,    etiqueta: 'Programada',   orden: 2 },
   EXPIRADA:     { color: colores.textoSuave,  etiqueta: 'Expirada',     orden: 4 },
@@ -53,7 +66,10 @@ export function datosEstado(estado) {
 /** Solo la etiqueta legible. */
 export const etiquetaEstado = (estado) => datosEstado(estado).etiqueta;
 
-/** Estados en los que la cita ya no admite acciones. */
+/**
+ * CU20 — Transicionando máquina de estados de cita
+ * Estados en los que la cita ya no admite acciones.
+ */
 export const ESTADOS_TERMINALES = ['REALIZADA', 'INASISTENCIA', 'CANCELADA_PACIENTE', 'CANCELADA_PROFESIONAL', 'CANCELADA'];
 export const esEstadoTerminal = (estado) =>
   ESTADOS_TERMINALES.includes(String(estado || '').trim().toUpperCase().replace(/\s+/g, '_'));

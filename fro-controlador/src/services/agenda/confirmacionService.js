@@ -1,4 +1,9 @@
 /**
+ * Componente: C_Motor_Agendamiento (puerta de entrada: src/componentes/C_Motor_Agendamiento.js)
+ * Casos de uso: CU21; además CU18, CU19, CU22, CU52 y CU73 en tramos puntuales.
+ * Excepción: emitirSolicitud y despacharSolicitudesPendientes son de
+ * C_Programador_Agenda (puerta de entrada: src/componentes/C_Programador_Agenda.js).
+ *
  * CU21 — Confirmación de asistencia distribuida.
  *
  * El sistema pide al paciente que confirme (o cancele) su cita cuando se
@@ -15,17 +20,12 @@
 
 const crypto = require('crypto');
 
-const {
-  leerParametroEntero,
-  registrarTrazabilidadAgenda,
-  notificarUsuario,
-  obtenerContactosCita,
-  ofrecerCupoListaEspera,
-  describirBloque,
-  datosDelBloque,
-} = require('./agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Despachador_Notificaciones = require('../../componentes/C_Despachador_Notificaciones');
+const { registrarTrazabilidadAgenda, obtenerContactosCita, ofrecerCupoListaEspera, describirBloque, datosDelBloque } = require('./agendaService');
 
 /**
+ * CU21 — Confirmando asistencia a cita de forma distribuida (C_Motor_Agendamiento)
  * Dirección pública del backend, para armar el enlace del correo. En Render
  * viene dada por la plataforma; en local cae al puerto de desarrollo.
  */
@@ -37,16 +37,18 @@ function urlPublica() {
   return String(base).replace(/\/+$/, '');
 }
 
+// CU21 — Confirmando asistencia a cita de forma distribuida (C_Programador_Agenda, uso interno de emitirSolicitud)
 function nuevoToken() {
   return crypto.randomBytes(24).toString('hex');
 }
 
 /**
+ * CU21 — Confirmando asistencia a cita de forma distribuida (C_Programador_Agenda)
  * Crea (o renueva) la solicitud de confirmación de una cita y la despacha por
  * los canales del CU52. Devuelve el token generado.
  */
 async function emitirSolicitud(conexion, cita) {
-  const horasVigencia = await leerParametroEntero(
+  const horasVigencia = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(
     conexion, 'VIGENCIA_ENLACE_CONFIRMACION_HORAS', 48
   );
   const token = nuevoToken();
@@ -69,7 +71,8 @@ async function emitirSolicitud(conexion, cita) {
   const cuando = describirBloque(cita);
   const base = `${urlPublica()}/api/citas/confirmacion/${token}`;
 
-  await notificarUsuario(
+  // CU52: aviso por app y correo con los enlaces de respuesta
+  await C_Despachador_Notificaciones.notificarUsuario(
     conexion,
     cita.usuario_paciente,
     'SOLICITUD_CONFIRMACION',
@@ -97,6 +100,7 @@ async function emitirSolicitud(conexion, cita) {
 }
 
 /**
+ * CU21 — Confirmando asistencia a cita de forma distribuida (C_Programador_Agenda)
  * Despacha las solicitudes de las citas que entran en la ventana de
  * anticipación y todavía no tienen una. Se llama desde el programador y, de
  * forma oportunista, cuando el paciente abre sus citas: en el plan gratuito de
@@ -107,7 +111,7 @@ async function emitirSolicitud(conexion, cita) {
 async function despacharSolicitudesPendientes(pool) {
   let enviadas = 0;
   try {
-    const horas = await leerParametroEntero(
+    const horas = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(
       pool, 'ANTICIPACION_SOLICITUD_CONFIRMACION_HORAS', 24
     );
 
@@ -147,6 +151,7 @@ async function despacharSolicitudesPendientes(pool) {
       }
     }
 
+    // CU73: recordatorio de pago (aviso por CU52)
     // Las citas agendadas SIN pago dentro de la misma ventana reciben, una
     // sola vez, el recordatorio "Paga tu hora" (app + correo).
     const [sinPago] = await pool.execute(
@@ -175,7 +180,7 @@ async function despacharSolicitudesPendientes(pool) {
     );
     for (const cita of sinPago) {
       const cuando = describirBloque(await datosDelBloque(pool, cita.cita_id));
-      await notificarUsuario(
+      await C_Despachador_Notificaciones.notificarUsuario(
         pool,
         cita.usuario_paciente,
         'RECORDATORIO_PAGO',
@@ -198,6 +203,7 @@ async function despacharSolicitudesPendientes(pool) {
   return enviadas;
 }
 
+// CU21 — Confirmando asistencia a cita de forma distribuida (C_Motor_Agendamiento)
 /** Lee la solicitud por token y dice si sigue sirviendo. */
 async function leerSolicitud(pool, token) {
   const [[fila]] = await pool.execute(
@@ -222,6 +228,7 @@ async function leerSolicitud(pool, token) {
 }
 
 /**
+ * CU21 — Confirmando asistencia a cita de forma distribuida (C_Motor_Agendamiento)
  * Aplica la respuesta del paciente llegada por el enlace del correo. No hay
  * sesión: la autorización la da el token, que es secreto y vence.
  *
@@ -299,7 +306,7 @@ async function responderPorEnlace(pool, token, accion, req) {
 
     // Cancelar por correo respeta el mismo plazo mínimo que la app (CU18).
     if (!confirma) {
-      const horasMinimas = await leerParametroEntero(
+      const horasMinimas = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(
         conexion, 'ANTICIPACION_MINIMA_CANCELACION_HORAS', 2
       );
       const horasRestantes =
@@ -339,6 +346,7 @@ async function responderPorEnlace(pool, token, accion, req) {
       [confirma ? 'CONFIRMADA' : 'CANCELADA', solicitud.solicitud_confirmacion_id]
     );
 
+    // CU22: queda en la trazabilidad
     // El correo no trae sesión: la trazabilidad guarda el canal en lugar del
     // usuario que la ejecutó desde la app.
     await registrarTrazabilidadAgenda(conexion, req || {}, {
@@ -352,13 +360,14 @@ async function responderPorEnlace(pool, token, accion, req) {
       canal: 'EMAIL',
     });
 
+    // CU52: aviso al profesional y al paciente
     const contactos = await obtenerContactosCita(conexion, solicitud.cita_id);
     if (contactos) {
       const texto = confirma
         ? 'El paciente confirmó su asistencia desde el correo.'
         : 'El paciente canceló su cita desde el correo de confirmación.';
-      await notificarUsuario(conexion, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto);
-      await notificarUsuario(
+      await C_Despachador_Notificaciones.notificarUsuario(conexion, contactos.usuario_profesional, 'CAMBIO_ESTADO_CITA', texto);
+      await C_Despachador_Notificaciones.notificarUsuario(
         conexion,
         contactos.usuario_paciente,
         confirma ? 'CITA_CONFIRMADA' : 'CAMBIO_ESTADO_CITA',
@@ -397,6 +406,7 @@ async function responderPorEnlace(pool, token, accion, req) {
 }
 
 /**
+ * CU21 — Confirmando asistencia a cita de forma distribuida (C_Motor_Agendamiento)
  * Marca como respondida la solicitud de una cita cuando el paciente contesta
  * desde la app, para que el enlace del correo no quede dando vueltas vivo.
  */

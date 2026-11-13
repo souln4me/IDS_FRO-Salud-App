@@ -1,3 +1,10 @@
+/**
+ * Componente: Cliente Móvil — Vista "Crear cuenta"
+ * Casos de uso: CU01, CU02, CU03, CU04.
+ *
+ * Registro de paciente o alta de profesional acreditado; al terminar lleva a
+ * la verificación OTP.
+ */
 import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, TouchableOpacity } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
@@ -31,6 +38,7 @@ const RegisterScreen = ({ navigation }) => {
         num_registro_salud: '', especialidad_id: '', tipo_sede: '', resena_curricular: ''
     });
 
+    // CU01, CU02 — carga comunas y especialidades para el formulario
     useEffect(() => {
         const cargarDatosBD = async () => {
             try {
@@ -50,6 +58,7 @@ const RegisterScreen = ({ navigation }) => {
         if (errores[name]) setErrores({ ...errores, [name]: false });
     };
 
+    // CU02 — Registrando y acreditando profesional de salud
     const validarRUTProfesional = async () => {
         if (!validateRut(formData.rut)) {
             setAviso({ tono: 'error', titulo: "Error", mensaje: "Ingrese un RUT válido primero." });
@@ -71,6 +80,7 @@ const RegisterScreen = ({ navigation }) => {
         }
     };
 
+    // CU02: matriz de jornada laboral del profesional
     const agregarBloqueHorario = () => {
         // El bloque nuevo hereda la modalidad general elegida arriba, pero se
         // puede cambiar por bloque (ej: lunes online, martes a domicilio).
@@ -87,6 +97,7 @@ const RegisterScreen = ({ navigation }) => {
         setDisponibilidad(nuevosHorarios);
     };
 
+    // CU01, CU02 — validación de formato antes de enviar el registro
     const validarFormatosSintacticos = () => {
         let nuevosErrores = {};
         let esValido = true;
@@ -152,6 +163,7 @@ const RegisterScreen = ({ navigation }) => {
         return esValido;
     };
 
+    // CU03 — Controlando unicidad de cuentas de usuario
     const confirmarCreacionCuenta = async () => {
         if (!validarFormatosSintacticos()) return;
 
@@ -200,6 +212,7 @@ const RegisterScreen = ({ navigation }) => {
     // Ahora: el backend devuelve { usuario_id, email } junto al 201,
     //        y navegamos a OTPScreen pasando esos datos como parámetros.
     // ─────────────────────────────────────────────────────────────────────────
+    // CU01, CU02 — guarda la cuenta y sigue a la verificación OTP (CU04)
     const procesarRegistro = async () => {
         try {
             let response;
@@ -300,6 +313,7 @@ const RegisterScreen = ({ navigation }) => {
                 {/* Los requisitos se marcan mientras se escribe, igual que al cambiar o recuperar la contraseña. */}
                 <RequisitosContrasena contrasena={formData.contrasena} confirmacion={formData.confirmar_contrasena} style={styles.requisitos} />
 
+                {/* CU01: datos propios del paciente */}
                 {!esProfesional && (
                     <View>
                         <Text style={styles.sectionHeader}>Sección 2: Parámetros Paciente</Text>
@@ -352,6 +366,7 @@ const RegisterScreen = ({ navigation }) => {
                     </View>
                 )}
 
+                {/* CU02: datos de acreditación y jornada del profesional */}
                 {esProfesional && (
                     <View>
                         <Text style={styles.sectionHeader}>Sección 3: Acreditación Profesional</Text>

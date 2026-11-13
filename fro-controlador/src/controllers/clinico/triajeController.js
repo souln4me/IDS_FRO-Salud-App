@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU27, CU23, CU24, CU25, CU26, CU77.
+ *
  * Triaje clínico automatizado (Incremento 2, bloque 4).
  * CU27: aceptación del disclaimer legal, un ciclo por entrevista.
  * CU23: entrevista con árbol de decisión, reanudable.
@@ -6,18 +9,12 @@
  * CU77: plantilla de evaluación según la especialidad del profesional.
  */
 
-const pool = require('../../config/database');
-const {
-  DISCLAIMER,
-  ARBOL_TRIAJE,
-  estructurarTriaje,
-  plantillaParaEspecialidad,
-} = require('../../services/clinico/triajeService');
-const { generarReporte } = require('../../services/clinico/preclinicoService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Motor_Clinico = require('../../componentes/C_Motor_Clinico');
 
-/** Paciente del usuario autenticado (Excepción 1 del CU24 si no existe). */
+/** Apoyo común: paciente del usuario autenticado (Excepción 1 del CU24 si no existe). */
 async function pacienteDeUsuario(usuarioId) {
-  const [filas] = await pool.query(
+  const [filas] = await C_Capa_de_Acceso_a_Datos.query(
     `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
     [usuarioId]
   );
@@ -29,7 +26,7 @@ async function pacienteDeUsuario(usuarioId) {
  * una aceptación de la versión vigente posterior al último triaje completado.
  */
 async function disclaimerAceptadoParaCiclo(pacienteId) {
-  const [filas] = await pool.query(
+  const [filas] = await C_Capa_de_Acceso_a_Datos.query(
     `SELECT COUNT(*) AS aceptaciones
        FROM Disclaimer d
       WHERE d.paciente_id = ?
@@ -39,11 +36,12 @@ async function disclaimerAceptadoParaCiclo(pacienteId) {
                 WHERE t.paciente_id = ? AND t.estado = 'COMPLETADO'),
               '1970-01-01'
             )`,
-    [pacienteId, DISCLAIMER.version, pacienteId]
+    [pacienteId, C_Motor_Clinico.DISCLAIMER.version, pacienteId]
   );
   return filas[0].aceptaciones > 0;
 }
 
+// Apoyo común: respuestas guardadas como JSON a objeto
 function parsearRespuestas(valor) {
   if (valor === null || valor === undefined) return {};
   if (typeof valor === 'object') return valor;
@@ -54,6 +52,7 @@ function parsearRespuestas(valor) {
 //  GET /clinica/triaje/estado
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU23, CU27 — estado de la entrevista y del disclaimer del ciclo
 exports.estadoTriaje = async (req, res) => {
   try {
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
@@ -61,7 +60,7 @@ exports.estadoTriaje = async (req, res) => {
       return res.status(404).json({ error: 'No se encontró tu registro de paciente.' });
     }
 
-    const [triajes] = await pool.query(
+    const [triajes] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT triaje_id, estado, respuestas, momento_completado
          FROM Triaje
         WHERE paciente_id = ?
@@ -74,7 +73,7 @@ exports.estadoTriaje = async (req, res) => {
 
     return res.status(200).json({
       disclaimer_aceptado: await disclaimerAceptadoParaCiclo(pacienteId),
-      version_disclaimer: DISCLAIMER.version,
+      version_disclaimer: C_Motor_Clinico.DISCLAIMER.version,
       triaje: ultimo
         ? {
             triaje_id: ultimo.triaje_id,
@@ -94,11 +93,13 @@ exports.estadoTriaje = async (req, res) => {
 //  CU27 — Disclaimer
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU27 — Registrando aceptación de disclaimer legal
 exports.obtenerDisclaimer = (_req, res) => {
   // Excepción 1: si el texto no se puede servir, la app bloquea el avance.
-  return res.status(200).json(DISCLAIMER);
+  return res.status(200).json(C_Motor_Clinico.DISCLAIMER);
 };
 
+// CU27 — Registrando aceptación de disclaimer legal
 exports.aceptarDisclaimer = async (req, res) => {
   try {
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
@@ -108,16 +109,16 @@ exports.aceptarDisclaimer = async (req, res) => {
 
     // Excepción 3: si el registro con marca temporal falla, el triaje NO se
     // habilita (por eso este insert no es tolerante a fallo).
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Disclaimer (version_disclaimer, paciente_id) VALUES (?, ?)`,
-      [DISCLAIMER.version, pacienteId]
+      [C_Motor_Clinico.DISCLAIMER.version, pacienteId]
     );
 
     try {
-      await pool.query(
+      await C_Capa_de_Acceso_a_Datos.query(
         `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, datos_adicionales, usuario_id)
          VALUES ('ACEPTACION_DISCLAIMER', 'Disclaimer', ?, ?)`,
-        [JSON.stringify({ version: DISCLAIMER.version }), req.user.usuario_id]
+        [JSON.stringify({ version: C_Motor_Clinico.DISCLAIMER.version }), req.user.usuario_id]
       );
     } catch (errorBitacora) {
       console.error('[aceptarDisclaimer] Sin registro en bitácora:', errorBitacora.message);
@@ -125,7 +126,7 @@ exports.aceptarDisclaimer = async (req, res) => {
 
     return res.status(201).json({
       mensaje: 'Consentimiento registrado. Ya puedes iniciar tu entrevista.',
-      version: DISCLAIMER.version,
+      version: C_Motor_Clinico.DISCLAIMER.version,
     });
   } catch (error) {
     console.error('[aceptarDisclaimer]', error);
@@ -140,6 +141,7 @@ exports.aceptarDisclaimer = async (req, res) => {
 //  CU23 — Árbol y respuestas
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU23 — Ejecutando entrevista clínica automatizada de triaje
 exports.obtenerArbol = async (req, res) => {
   try {
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
@@ -156,7 +158,7 @@ exports.obtenerArbol = async (req, res) => {
     }
 
     // Excepción 2 del CU23: si las reglas no cargan, la app lo informa.
-    return res.status(200).json(ARBOL_TRIAJE);
+    return res.status(200).json(C_Motor_Clinico.ARBOL_TRIAJE);
   } catch (error) {
     console.error('[obtenerArbol]', error);
     return res.status(500).json({
@@ -166,7 +168,17 @@ exports.obtenerArbol = async (req, res) => {
   }
 };
 
-/** PUT /clinica/triaje/respuestas — guarda avance parcial (Exc.3 del CU23). */
+// CU27 — precondición del CU23 y CU24: sin el descargo aceptado para este
+// ciclo no se guardan ni se completan respuestas (antes solo se exigía para
+// ver las preguntas).
+function rechazarSinDisclaimer(res) {
+  return res.status(403).json({
+    error: 'DISCLAIMER_PENDIENTE',
+    mensaje: 'Debes aceptar el descargo de responsabilidad antes de responder la entrevista.',
+  });
+}
+
+/** CU23 — PUT /clinica/triaje/respuestas — guarda avance parcial (Exc.3 del CU23). */
 exports.guardarRespuestasParciales = async (req, res) => {
   const respuestas = req.body?.respuestas;
 
@@ -179,8 +191,9 @@ exports.guardarRespuestasParciales = async (req, res) => {
     if (!pacienteId) {
       return res.status(404).json({ error: 'No se encontró tu registro de paciente.' });
     }
+    if (!(await disclaimerAceptadoParaCiclo(pacienteId))) return rechazarSinDisclaimer(res);
 
-    const [abiertos] = await pool.query(
+    const [abiertos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT triaje_id FROM Triaje
         WHERE paciente_id = ? AND estado = 'EN_PROGRESO'
         ORDER BY triaje_id DESC LIMIT 1`,
@@ -188,14 +201,14 @@ exports.guardarRespuestasParciales = async (req, res) => {
     );
 
     if (abiertos.length > 0) {
-      await pool.query(
+      await C_Capa_de_Acceso_a_Datos.query(
         `UPDATE Triaje SET respuestas = ? WHERE triaje_id = ?`,
         [JSON.stringify(respuestas), abiertos[0].triaje_id]
       );
       return res.status(200).json({ triaje_id: abiertos[0].triaje_id, guardado: true });
     }
 
-    const [resultado] = await pool.query(
+    const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Triaje (paciente_id, respuestas) VALUES (?, ?)`,
       [pacienteId, JSON.stringify(respuestas)]
     );
@@ -215,25 +228,29 @@ exports.guardarRespuestasParciales = async (req, res) => {
 //  POST /clinica/triaje/completar
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU24 — Estructurando datos de sintomatología a Ficha Clínica
 exports.completarTriaje = async (req, res) => {
   const respuestas = req.body?.respuestas;
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
+    // Las salidas tempranas no liberan la conexión: lo hace el finally (antes
+    // se liberaba dos veces).
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
     if (!pacienteId) {
       // Excepción 1 del CU24: registro no localizado.
-      connection.release();
       return res.status(404).json({ error: 'No se encontró tu registro de paciente.' });
+    }
+    if (!(await disclaimerAceptadoParaCiclo(pacienteId))) {
+      return rechazarSinDisclaimer(res);
     }
 
     // Excepción 2 del CU24: formato incompatible aborta el proceso.
     let estructura;
     try {
-      estructura = estructurarTriaje(respuestas);
+      estructura = C_Motor_Clinico.estructurarTriaje(respuestas);
     } catch (errorFormato) {
-      connection.release();
       return res.status(400).json({
         error: 'FALLA_INTEGRIDAD',
         mensaje: errorFormato.message,
@@ -242,6 +259,7 @@ exports.completarTriaje = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // CU23: cierre de la entrevista.
     // Cerrar (o crear) el triaje del ciclo.
     const [abiertos] = await connection.execute(
       `SELECT triaje_id FROM Triaje
@@ -333,7 +351,7 @@ exports.completarTriaje = async (req, res) => {
     // (banderas rojas para el profesional) y la especialidad sugerida para el
     // paciente. Si falla, el triaje igual queda completado: el reporte se
     // genera solo la primera vez que alguien lo abre.
-    const sintesis = await generarReporte(connection, {
+    const sintesis = await C_Motor_Clinico.generarReporte(connection, {
       pacienteId,
       triajeId,
       respuestas,
@@ -371,9 +389,10 @@ exports.completarTriaje = async (req, res) => {
 //  GET /clinica/plantilla-evaluacion
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU77 — Renderizando plantillas dinámicas de evaluación
 exports.plantillaEvaluacion = async (req, res) => {
   try {
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT e.nombre AS especialidad
          FROM Profesional p
          LEFT JOIN Especialidad e ON e.especialidad_id = p.especialidad_id
@@ -394,7 +413,7 @@ exports.plantillaEvaluacion = async (req, res) => {
       });
     }
 
-    return res.status(200).json(plantillaParaEspecialidad(filas[0].especialidad));
+    return res.status(200).json(C_Motor_Clinico.plantillaParaEspecialidad(filas[0].especialidad));
   } catch (error) {
     console.error('[plantillaEvaluacion]', error);
     return res.status(500).json({ error: 'No se pudo cargar la plantilla de evaluación.' });

@@ -51,6 +51,8 @@ CREATE TABLE Preferencia_Notificacion (
     usuario_id INT PRIMARY KEY,
     canal_push BOOLEAN NOT NULL DEFAULT TRUE,
     canal_email BOOLEAN NOT NULL DEFAULT TRUE,
+    -- CU54: mensajes de refuerzo positivo por los ejercicios.
+    refuerzos BOOLEAN NOT NULL DEFAULT TRUE,
     ultima_modificacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
 );
@@ -64,20 +66,6 @@ CREATE TABLE Dispositivo_Push (
     momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     usuario_id INT NOT NULL,
     FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
-);
-
--- CU21: solicitud de confirmación de asistencia. El token viaja en el enlace
--- del correo y vence solo, así que la respuesta asíncrona no necesita sesión.
-CREATE TABLE Solicitud_Confirmacion (
-    solicitud_confirmacion_id INT PRIMARY KEY AUTO_INCREMENT,
-    token VARCHAR(64) NOT NULL UNIQUE,
-    momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    momento_expira TIMESTAMP NOT NULL,
-    momento_respuesta TIMESTAMP NULL,
-    respuesta VARCHAR(20) NULL,
-    canal_respuesta VARCHAR(20) NULL,
-    cita_id INT NOT NULL UNIQUE,
-    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
 );
 
 CREATE TABLE Ticket_Soporte (
@@ -243,12 +231,35 @@ CREATE TABLE Paciente (
     privacidad_contacto JSON,
     -- CU58: si es TRUE, sus calificaciones escritas se muestran como anónimas.
     resena_anonima BOOLEAN NOT NULL DEFAULT FALSE,
+    -- Foto de perfil opcional; sin ella la app muestra las iniciales.
+    foto_url VARCHAR(500) NULL,
     contacto_emergencia_id INT,
     usuario_id INT NOT NULL UNIQUE,
     comuna_id INT NOT NULL,
     FOREIGN KEY (contacto_emergencia_id) REFERENCES Contacto_Emergencia(contacto_emergencia_id),
     FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id),
     FOREIGN KEY (comuna_id) REFERENCES Comuna(comuna_id)
+);
+
+-- CU62: eventos escalados a supervisión por términos críticos del diccionario.
+CREATE TABLE Evento_Critico (
+    evento_critico_id INT PRIMARY KEY AUTO_INCREMENT,
+    origen VARCHAR(20) NOT NULL,           -- SINTOMAS, RESENA, TICKET (el chat cifrado no escala)
+    entidad VARCHAR(50) NOT NULL,
+    entidad_id INT NULL,
+    termino VARCHAR(80) NOT NULL,
+    terminos JSON NULL,
+    extracto VARCHAR(300) NULL,
+    estado VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',   -- PENDIENTE, ACUSADO
+    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    momento_acuse TIMESTAMP NULL DEFAULT NULL,
+    usuario_origen_id INT NULL,
+    paciente_id INT NULL,
+    acusado_por INT NULL,
+    FOREIGN KEY (usuario_origen_id) REFERENCES Usuario(usuario_id),
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (acusado_por) REFERENCES Usuario(usuario_id),
+    INDEX idx_evento_critico_estado (estado, momento_creacion)
 );
 
 -- CU23/CU24: entrevista de triaje. Las respuestas parciales permiten
@@ -296,39 +307,6 @@ CREATE TABLE Indicador_Adherencia (
     paciente_id INT NOT NULL,
     UNIQUE KEY uq_adherencia_dia (paciente_id, fecha),
     FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id)
-);
-
--- CU50: reporte de evolución que el paciente envía entre sesiones. clave_envio
--- es del cliente: si el teléfono reintenta el mismo envío, no se duplica.
-CREATE TABLE Reporte_Sintoma (
-    reporte_sintoma_id INT PRIMARY KEY AUTO_INCREMENT,
-    nivel_dolor TINYINT NOT NULL,
-    limitacion_funcional TINYINT NOT NULL,
-    comentario VARCHAR(500),
-    clave_envio VARCHAR(64) NOT NULL UNIQUE,
-    momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    paciente_id INT NOT NULL,
-    episodio_clinico_id INT NULL,
-    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
-    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
-);
-
--- CU50: alerta que llega al panel del profesional (Banderas Rojas del RF50).
-CREATE TABLE Alerta_Clinica (
-    alerta_clinica_id INT PRIMARY KEY AUTO_INCREMENT,
-    tipo VARCHAR(40) NOT NULL,
-    severidad VARCHAR(20) NOT NULL,
-    motivo VARCHAR(255) NOT NULL,
-    datos JSON,
-    estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA',
-    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    momento_revision TIMESTAMP NULL,
-    paciente_id INT NOT NULL,
-    profesional_id INT NULL,
-    reporte_sintoma_id INT NULL,
-    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
-    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
-    FOREIGN KEY (reporte_sintoma_id) REFERENCES Reporte_Sintoma(reporte_sintoma_id)
 );
 
 CREATE TABLE Disclaimer (
@@ -389,10 +367,49 @@ CREATE TABLE Episodio_Clinico (
     fecha_terminado TIMESTAMP NULL DEFAULT NULL,
     -- CU78: ABIERTO admite nuevos registros; CERRADO los rechaza (D12).
     estado VARCHAR(255) DEFAULT 'ABIERTO',
+    -- CU51: momento en que el paciente alcanzó el umbral de egreso.
+    preparacion_alta_en TIMESTAMP NULL DEFAULT NULL,
+    -- CU37: informe de alta (PDF en Documento_Clinico) y pautas de continuidad.
+    pautas_continuidad TEXT NULL,
+    informe_alta_documento_id INT NULL,
+    informe_alta_emitido_en TIMESTAMP NULL DEFAULT NULL,
     paciente_id INT,
     profesional_id INT,
     FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
     FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id)
+);
+
+-- CU50: reporte de evolución que el paciente envía entre sesiones. clave_envio
+-- es del cliente: si el teléfono reintenta el mismo envío, no se duplica.
+CREATE TABLE Reporte_Sintoma (
+    reporte_sintoma_id INT PRIMARY KEY AUTO_INCREMENT,
+    nivel_dolor TINYINT NOT NULL,
+    limitacion_funcional TINYINT NOT NULL,
+    comentario VARCHAR(500),
+    clave_envio VARCHAR(64) NOT NULL UNIQUE,
+    momento_registro TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paciente_id INT NOT NULL,
+    episodio_clinico_id INT NULL,
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+);
+
+-- CU50: alerta que llega al panel del profesional (Banderas Rojas del RF50).
+CREATE TABLE Alerta_Clinica (
+    alerta_clinica_id INT PRIMARY KEY AUTO_INCREMENT,
+    tipo VARCHAR(40) NOT NULL,
+    severidad VARCHAR(20) NOT NULL,
+    motivo VARCHAR(255) NOT NULL,
+    datos JSON,
+    estado VARCHAR(20) NOT NULL DEFAULT 'ABIERTA',
+    momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    momento_revision TIMESTAMP NULL,
+    paciente_id INT NOT NULL,
+    profesional_id INT NULL,
+    reporte_sintoma_id INT NULL,
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+    FOREIGN KEY (reporte_sintoma_id) REFERENCES Reporte_Sintoma(reporte_sintoma_id)
 );
 
 CREATE TABLE Evolucion_Clinica (
@@ -452,6 +469,10 @@ CREATE TABLE Derivacion_Interna (
     episodio_clinico_id INT NOT NULL,
     profesional_origen_id INT NOT NULL,
     profesional_destino_id INT NOT NULL,
+    -- CU65: respuesta del profesional derivado y cierre del puente de acceso.
+    momento_respuesta TIMESTAMP NULL DEFAULT NULL,
+    comentario_respuesta VARCHAR(255) NULL,
+    momento_cierre TIMESTAMP NULL DEFAULT NULL,
     FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id),
     FOREIGN KEY (profesional_origen_id) REFERENCES Profesional(profesional_id),
     FOREIGN KEY (profesional_destino_id) REFERENCES Profesional(profesional_id)
@@ -477,10 +498,27 @@ CREATE TABLE Mensaje_Chat (
     -- Quién escribió y si la otra parte ya lo leyó.
     remitente_usuario_id INT NOT NULL,
     leido BOOLEAN NOT NULL DEFAULT FALSE,
-    episodio_clinico_id INT NOT NULL,
+    -- CU53: el chat es uno por pareja paciente–profesional. El episodio queda
+    -- solo como referencia del tratamiento abierto al momento del mensaje.
+    episodio_clinico_id INT NULL,
+    paciente_id INT NULL,
+    profesional_id INT NULL,
+    -- Adjunto subido desde el teléfono (Cloudinary) o documento de la ficha.
+    adjunto_url VARCHAR(500) NULL,
+    adjunto_public_id VARCHAR(255) NULL,
+    adjunto_nombre VARCHAR(255) NULL,
+    adjunto_formato VARCHAR(10) NULL,
+    adjunto_tipo_recurso VARCHAR(10) NULL,
+    adjunto_bytes INT NULL,
+    adjunto_paginas INT NULL,
+    documento_id INT NULL,
     KEY idx_chat_episodio (episodio_clinico_id, mensaje_id),
+    KEY idx_chat_pareja (paciente_id, profesional_id, mensaje_id),
     FOREIGN KEY (remitente_usuario_id) REFERENCES Usuario(usuario_id),
-    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id),
+    FOREIGN KEY (paciente_id) REFERENCES Paciente(paciente_id),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
+    FOREIGN KEY (documento_id) REFERENCES Documento_Clinico(documento_id)
 );
 
 -- CU57: diccionario central de términos no permitidos, administrado por el
@@ -502,7 +540,10 @@ CREATE TABLE Material_Terapeutico(
     url_archivo VARCHAR(255),
     categoria VARCHAR(50) NOT NULL,
     formato VARCHAR(20) NOT NULL,
-    disponibilidad BOOLEAN NOT NULL DEFAULT TRUE
+    disponibilidad BOOLEAN NOT NULL DEFAULT TRUE,
+    -- CU51: TRATAMIENTO (se prescribe en pautas) o PREVENCION (post-alta).
+    proposito VARCHAR(20) NOT NULL DEFAULT 'TRATAMIENTO',
+    imagen_url VARCHAR(255) NULL
 );
 
 CREATE TABLE Pauta_Tratamiento(
@@ -525,9 +566,29 @@ CREATE TABLE Pauta_Ejercicio(
     frecuencia VARCHAR(20) NOT NULL DEFAULT 'DIARIA',
     -- CU46: recurso de la biblioteca asociado al ejercicio (opcional)
     material_terapeutico_id INT,
+    -- Días en que se realiza (1 = lunes … 7 = domingo, separados por coma).
+    -- NULL: según la frecuencia (diaria o semanal).
+    dias_semana VARCHAR(20) NULL,
     UNIQUE KEY uq_pauta_nombre (pauta_tratamiento_id, nombre_ejercicio),
     FOREIGN KEY (pauta_tratamiento_id) REFERENCES Pauta_Tratamiento(pauta_tratamiento_id),
     FOREIGN KEY (material_terapeutico_id) REFERENCES Material_Terapeutico(material_terapeutico_id)
+);
+
+-- Material de apoyo subido por el profesional a un ejercicio de la pauta.
+CREATE TABLE Pauta_Ejercicio_Material (
+    pauta_ejercicio_material_id INT PRIMARY KEY AUTO_INCREMENT,
+    pauta_ejercicio_id INT NOT NULL,
+    nombre_original VARCHAR(255) NOT NULL,
+    formato VARCHAR(10) NOT NULL,
+    tipo_recurso VARCHAR(10) NOT NULL,
+    url_publica VARCHAR(500) NOT NULL,
+    public_id_cloud VARCHAR(255) NOT NULL,
+    tamano_bytes INT NOT NULL,
+    paginas INT NULL,
+    momento_carga TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    usuario_id INT NOT NULL,
+    FOREIGN KEY (pauta_ejercicio_id) REFERENCES Pauta_Ejercicio(pauta_ejercicio_id),
+    FOREIGN KEY (usuario_id) REFERENCES Usuario(usuario_id)
 );
 
 -- CU48: una marca por ejercicio y día. La clave única es el control
@@ -573,6 +634,8 @@ CREATE TABLE Cita(
     -- profesional tenía que teclear identificadores a mano.
     episodio_clinico_id INT NULL,
     metadatos_teleconsulta JSON,
+    -- Sesión finalizada cuyo registro clínico se completa más tarde.
+    documentacion_pendiente BOOLEAN NOT NULL DEFAULT FALSE,
     paciente_id INT NOT NULL,
     profesional_id INT NOT NULL,
     sede_id INT NOT NULL,
@@ -580,6 +643,20 @@ CREATE TABLE Cita(
     FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id),
     FOREIGN KEY (sede_id) REFERENCES Sede(sede_id),
     FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id)
+);
+
+-- CU21: solicitud de confirmación de asistencia. El token viaja en el enlace
+-- del correo y vence solo, así que la respuesta asíncrona no necesita sesión.
+CREATE TABLE Solicitud_Confirmacion (
+    solicitud_confirmacion_id INT PRIMARY KEY AUTO_INCREMENT,
+    token VARCHAR(64) NOT NULL UNIQUE,
+    momento_envio TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    momento_expira TIMESTAMP NOT NULL,
+    momento_respuesta TIMESTAMP NULL,
+    respuesta VARCHAR(20) NULL,
+    canal_respuesta VARCHAR(20) NULL,
+    cita_id INT NOT NULL UNIQUE,
+    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
 );
 
 CREATE TABLE Lista_Espera (
@@ -623,7 +700,12 @@ CREATE TABLE Liquidacion (
 
 CREATE TABLE Evaluacion_Satisfaccion(
     evaluacion_satisfaccion_id INT PRIMARY KEY AUTO_INCREMENT,
-    puntuacion TINYINT NOT NULL,
+    -- CU55 (correcciones Inc 4): SESION = después de cada cita, solo si la
+    -- paciente quedó satisfecho (sí/no) y comentario; TRATAMIENTO = al cerrar el
+    -- episodio, la nota en estrellas que entra al promedio del profesional.
+    tipo VARCHAR(20) NOT NULL DEFAULT 'SESION',
+    satisfecho BOOLEAN NULL,
+    puntuacion TINYINT NULL,
     resena VARCHAR(300),
     -- CU56: la nota cuenta siempre para el promedio; lo que se modera es el
     -- TEXTO. PENDIENTE no se publica, APROBADA sí, RECHAZADA queda oculta con
@@ -633,8 +715,13 @@ CREATE TABLE Evaluacion_Satisfaccion(
     moderador_id INT NULL,
     momento_moderacion TIMESTAMP NULL,
     momento_creacion TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    cita_id INT NOT NULL UNIQUE,
-    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id)
+    cita_id INT NULL UNIQUE,
+    episodio_clinico_id INT NULL,
+    profesional_id INT NULL,
+    UNIQUE KEY uq_eval_episodio (episodio_clinico_id),
+    FOREIGN KEY (cita_id) REFERENCES Cita(cita_id),
+    FOREIGN KEY (episodio_clinico_id) REFERENCES Episodio_Clinico(episodio_clinico_id),
+    FOREIGN KEY (profesional_id) REFERENCES Profesional(profesional_id)
 );
 
 CREATE TABLE Transaccion(
@@ -655,7 +742,6 @@ CREATE TABLE Financiador(
     convenio_activo BOOLEAN NOT NULL DEFAULT TRUE
 );
 
-
 CREATE TABLE Bono(
     bono_id INT PRIMARY KEY AUTO_INCREMENT,
     folio VARCHAR(50) UNIQUE,
@@ -664,9 +750,16 @@ CREATE TABLE Bono(
     estado_validacion VARCHAR(20) NOT NULL DEFAULT 'PENDIENTE',
     payload_respuesta JSON,
     cita_id INT NOT NULL UNIQUE,
-    financiador_id INT NOT NULL,
+    -- CU72: NULL cuando el bono de contingencia se registró con el
+    -- financiador escrito a mano (catálogo no disponible).
+    financiador_id INT NULL,
+    financiador_manual VARCHAR(100) NULL,
+    registrado_por_usuario_id INT NULL,
+    momento_registro_manual TIMESTAMP NULL DEFAULT NULL,
+    regularizado_en TIMESTAMP NULL DEFAULT NULL,
     FOREIGN KEY (cita_id) REFERENCES Cita(cita_id),
-    FOREIGN KEY (financiador_id) REFERENCES Financiador(financiador_id)
+    FOREIGN KEY (financiador_id) REFERENCES Financiador(financiador_id),
+    FOREIGN KEY (registrado_por_usuario_id) REFERENCES Usuario(usuario_id)
 );
 
 CREATE TABLE Parametro_Global(
@@ -742,7 +835,9 @@ INSERT INTO Parametro_Global (clave, valor, descripcion, administrador_id) VALUE
 ('TIEMPO_BLOQUE_MINUTOS', '30', 'Duración estándar en minutos para los bloques de agendamiento clínico.', 1),
 ('ANTICIPACION_MINIMA_REPROGRAMACION_HORAS', '24', 'Horas mínimas de anticipación con que un paciente puede reprogramar su cita.', 1),
 ('ANTICIPACION_MINIMA_CANCELACION_HORAS', '2', 'Horas mínimas de anticipación con que un paciente puede cancelar su cita.', 1),
-('RADIO_PRESENCIALIDAD_METROS', '200', 'Distancia máxima en metros entre los check-in GPS del paciente y del profesional.', 1),
+('RADIO_PRESENCIALIDAD_METROS', '100', 'Distancia máxima en metros entre el profesional y el paciente en visitas a domicilio.', 1),
+('VENTANA_UBICACION_PACIENTE_MINUTOS', '30', 'Minutos durante los que vale la última ubicación que envió la app del paciente para validar la presencialidad.', 1),
+('CHAT_FUERA_DE_ESCALAMIENTO', '1', 'El chat cifrado no escala eventos críticos: solo lo leen el paciente y su profesional.', 1),
 ('TOLERANCIA_MULTIFACTOR_MINUTOS', '15', 'Diferencia máxima en minutos entre marcas de presencia para certificar una sesión.', 1),
 ('MAX_TAMANO_ARCHIVO_MB', '10', 'Tamaño máximo en megabytes aceptado al cargar archivos al repositorio multimedia.', 1),
 ('MAX_VERSIONES_CORRECCION', '5', 'Cantidad máxima de correcciones versionadas permitidas sobre una evolución clínica cerrada.', 1);

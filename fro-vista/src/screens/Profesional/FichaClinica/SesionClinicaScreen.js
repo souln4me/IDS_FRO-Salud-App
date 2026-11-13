@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Sesión Clínica" (Ficha Clínica)
+ * Casos de uso: CU40, CU32, CU30, CU36, CU28, CU38, CU78.
+ */
 // Ruta: fro-vista/src/screens/Profesional/FichaClinica/SesionClinicaScreen.js
 //
 // Registro clínico de la sesión. Reúne lo que antes estaban en dos pestañas
@@ -28,14 +32,15 @@ import DialogoAviso from '../../../components/DialogoAviso';
 import DialogoConfirmacion from '../../../components/DialogoConfirmacion';
 import { colores, espacio, piezas, radio, tipografia, interaccion } from '../../../theme';
 
-// Expresiones que obligan a una revisión clínica prioritaria antes de guardar.
+// CU40 Exc.3: expresiones que obligan a una revisión clínica prioritaria antes de guardar.
 const PATRON_ALERTA_PRIORITARIA =
   /\b(dolor\s+(intenso|severo|insoportable)|dificultad\s+respiratoria|p[eé]rdida\s+de\s+conciencia|desmayo|convulsi[oó]n|deterioro\s+(grave|severo)|signos?\s+vitales?\s+inestables?)\b/i;
 
-// Metas escritas en términos subjetivos: se sugiere cuantificarlas.
+// CU32: metas escritas en términos subjetivos: se sugiere cuantificarlas.
 const PALABRAS_SUBJETIVAS =
   /\b(mejorar|mejor[íi]a|sentirse?\s+bien|bienestar|aliviar|alivio|fortalecer|avanzar|progresar|recuperar|estar\s+mejor)/i;
 
+// CU40 Exc.4: clave del borrador local cuando se pierde la conexión.
 const claveBorrador = (episodioId) => `cu40_borrador_${episodioId}`;
 
 export default function SesionClinicaScreen({ route, navigation }) {
@@ -95,6 +100,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   const pasoTresListo = yaFirmada;
 
   // ── Carga ────────────────────────────────────────────────────────────────
+  // CU40 — cargar el contexto de la sesión y la evolución del episodio
   const cargar = async () => {
     if (!episodioId) return;
     setCargando(true);
@@ -104,7 +110,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
       setContexto(datos.contexto);
       setEvolucion(datos.evolucion || null);
 
-      // Un borrador local pendiente tiene prioridad sobre lo guardado.
+      // CU40 Exc.4: un borrador local pendiente tiene prioridad sobre lo guardado.
       const guardado = await SecureStore.getItemAsync(claveBorrador(episodioId));
       const borrador = guardado ? JSON.parse(guardado) : null;
       setTecnicas(borrador?.tecnicas_aplicadas ?? datos.evolucion?.tecnicas_aplicadas ?? '');
@@ -130,6 +136,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
     }
   };
 
+  // CU32 — cargar las metas del episodio
   const cargarMetas = async () => {
     if (!episodioId) return;
     setCargandoMetas(true);
@@ -151,6 +158,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   }, [episodioId]);
 
   // ── 1. Guardar lo que se hizo ────────────────────────────────────────────
+  // CU40 — Documentando intervención y respuesta fisiológica
   const guardarRegistro = async () => {
     if (!tecnicas.trim() || !respuesta.trim()) {
       setAviso({
@@ -160,6 +168,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
       });
       return;
     }
+    // CU40 Exc.3: posible deterioro clínico grave.
     if (posibleDeterioro) {
       setConfirmacion({
         titulo: 'Posible deterioro clínico',
@@ -172,6 +181,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
     await ejecutarGuardado();
   };
 
+  // CU40 — guardar la intervención en la evolución clínica
   const ejecutarGuardado = async () => {
     setGuardando(true);
     try {
@@ -190,7 +200,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
       await cargar();
     } catch (error) {
       if (!error.response) {
-        // Sin conexión el trabajo no se pierde: queda en el dispositivo.
+        // CU40 Exc.4: sin conexión el trabajo no se pierde: queda en el dispositivo.
         await SecureStore.setItemAsync(
           claveBorrador(episodioId),
           JSON.stringify({ tecnicas_aplicadas: tecnicas, respuesta_fisiologica: respuesta })
@@ -213,6 +223,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   };
 
   // ── 2. Objetivos ─────────────────────────────────────────────────────────
+  // CU32 — Definiendo metas y objetivos terapéuticos
   const crearObjetivo = async () => {
     const { descripcion, meta_valor, unidad } = nuevoObjetivo;
     if (!descripcion.trim() || !String(meta_valor).trim() || !unidad.trim()) {
@@ -237,6 +248,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
     await enviarObjetivo(valor);
   };
 
+  // CU32 — guardar la meta nueva del episodio
   const enviarObjetivo = async (valor) => {
     setCreandoMeta(true);
     try {
@@ -259,6 +271,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
     }
   };
 
+  // CU32 — registrar el avance medido sobre una meta
   const registrarAvance = async () => {
     if (!avance.objetivo_terapeutico_id) {
       setAviso({ tono: 'info', titulo: 'Elige una meta', mensaje: 'Selecciona a qué objetivo corresponde el avance.' });
@@ -302,6 +315,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   };
 
   // ── Traer la atención en curso a este episodio ───────────────────────────
+  // CU40, CU78 — trasladar la atención en curso a este episodio
   const moverAtencionAqui = async () => {
     setTrasladando(true);
     try {
@@ -327,6 +341,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
   };
 
   // ── 3. Cerrar y firmar ───────────────────────────────────────────────────
+  // CU30, CU36 — firmar el registro y dejarlo inalterable
   // Antes esto vivía en Trazabilidad y había que teclear el número del
   // registro que uno acababa de escribir.
   const pedirFirma = () => {
@@ -338,6 +353,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
     });
   };
 
+  // CU36 — Firmando digitalmente documentos clínicos
   const firmarRegistro = async () => {
     setFirmando(true);
     try {
@@ -410,7 +426,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
             </Text>
           </View>
         ) : (
-          // Sin atención iniciada no se puede escribir. Antes esto era un
+          // CU40 Exc.1: sin atención iniciada no se puede escribir. Antes esto era un
           // callejón sin salida: los campos quedaban bloqueados, el cierre
           // pedía "guarda primero" y nada decía que faltaba iniciar la
           // atención. Ahora se explica y se ofrece el camino.
@@ -463,7 +479,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
         )
       )}
 
-      {/* ── Paso 1 ── */}
+      {/* ── Paso 1 · CU40 ── */}
       <Text style={estilos.paso}>{pasoUnoListo ? "✓" : "1"} · Qué se hizo</Text>
       <View style={estilos.tarjeta}>
         <Text style={estilos.etiqueta}>Técnicas y ejercicios de {especialidad}</Text>
@@ -524,7 +540,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
         )}
       </View>
 
-      {/* ── Paso 2 ── */}
+      {/* ── Paso 2 · CU32 ── */}
       <Text style={estilos.paso}>{pasoDosListo ? "✓" : "2"} · Cómo va el objetivo</Text>
       <View style={estilos.tarjeta}>
         {cargandoMetas ? (
@@ -649,7 +665,7 @@ export default function SesionClinicaScreen({ route, navigation }) {
       </View>
       )}
 
-      {/* ── Paso 3 ── */}
+      {/* ── Paso 3 · CU30, CU36 ── */}
       <Text style={estilos.paso}>{pasoTresListo ? "✓" : "3"} · Cerrar la sesión</Text>
       <View style={estilos.tarjeta}>
         {yaFirmada ? (
@@ -679,10 +695,12 @@ export default function SesionClinicaScreen({ route, navigation }) {
           </>
         )}
 
-        {/* Firmar sella el registro clínico; la ATENCIÓN se cierra sobre la
+        {/* CU38: firmar sella el registro clínico; la ATENCIÓN se cierra sobre la
             cita, en el historial. Había que buscarla a mano entre las citas:
             este atajo lleva directo a ella y la deja señalada. */}
-        {editable && contexto?.cita_id && (
+        {/* Si la atención ya se finalizó y solo falta documentarla (punto 7),
+            no hay nada que finalizar: basta con cerrar y firmar. */}
+        {editable && contexto?.cita_id && String(contexto?.estado_cita || '').toUpperCase() === 'EN_CURSO' && (
           <TouchableOpacity
             style={estilos.botonFinalizar}
             onPress={() =>

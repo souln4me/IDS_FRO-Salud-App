@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU01, CU02, CU05, CU06 y CU07.
+ */
 // Ruta: fro-vista/src/components/CampoContrasena.js
 //
 // Campo de contraseña con un "ojito" para ver lo que se está escribiendo.

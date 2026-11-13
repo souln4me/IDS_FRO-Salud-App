@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Seguridad de la Cuenta"
+ * Casos de uso: CU07, CU08, CU09, CU58, CU60.
+ */
 // Ruta: fro-vista/src/screens/Comun/SeguridadScreen.js
 //
 // Panel de seguridad de la cuenta, común a los tres roles:
@@ -18,13 +22,14 @@ import {
 
 import apiClient from '../../api/client';
 import { AuthContext } from '../../context/AuthContext';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Icono from '../../components/Icono';
 import VistaConTeclado from '../../components/VistaConTeclado';
 import CambioContrasenaOTP from '../../components/CambioContrasenaOTP';
 import DialogoConfirmacion from '../../components/DialogoConfirmacion';
 import { formatearFechaHora } from '../../utils/fechas';
 import { colores, espacio, radio, tipografia, piezas, interaccion } from '../../theme';
 import DialogoAviso from '../../components/DialogoAviso';
+import EncabezadoPerfilPaciente from '../../components/EncabezadoPerfilPaciente';
 
 // Sesiones, contraseña y privacidad, sin contenedor propio: la usa esta
 // pantalla y el pie de los perfiles (paciente y profesional).
@@ -49,6 +54,7 @@ function SeccionesSeguridad({ contrasenaPrimero = false }) {
   const [privacidad, setPrivacidad] = useState(null);
   const [guardandoPrivacidad, setGuardandoPrivacidad] = useState(false);
 
+  // CU08 — Gestionando sesiones y tokens de acceso: listar las sesiones activas
   const cargarSesiones = async () => {
     setCargandoSesiones(true);
     setErrorSesiones(false);
@@ -63,6 +69,7 @@ function SeccionesSeguridad({ contrasenaPrimero = false }) {
     }
   };
 
+  // CU09 — Configurando privacidad de datos de contacto: leer las preferencias
   const cargarPrivacidad = async () => {
     if (!esPaciente) return;
     try {
@@ -150,6 +157,7 @@ function SeccionesSeguridad({ contrasenaPrimero = false }) {
       await apiClient.put('/auth/privacidad', {
         mostrar_direccion: nueva.mostrar_direccion,
         mostrar_telefono: nueva.mostrar_telefono,
+        // CU58: nombre o "Anónimo" bajo las reseñas publicadas
         nombre_en_resenas: nueva.nombre_en_resenas !== false,
       });
     } catch (err) {
@@ -378,7 +386,7 @@ function SeccionesSeguridad({ contrasenaPrimero = false }) {
 function FranjaSeccion({ icono, titulo, alInicio = false }) {
   return (
     <View style={[estilos.franja, alInicio && estilos.franjaAlInicio]} accessibilityRole="header">
-      <Ionicons name={icono} size={16} color={colores.primario} />
+      <Icono name={icono} size={16} color={colores.primario} />
       <Text style={estilos.franjaTexto}>{titulo}</Text>
     </View>
   );
@@ -416,6 +424,7 @@ export function PieDePerfil({ navigation, tituloSeguridad, alInicio = false }) {
         <Text style={estilos.menuChevron}>›</Text>
       </TouchableOpacity>
 
+      {/* CU08: cerrar la sesión de este dispositivo */}
       <TouchableOpacity
         style={estilos.botonSalir}
         onPress={confirmarCierreSesion}
@@ -428,13 +437,17 @@ export function PieDePerfil({ navigation, tituloSeguridad, alInicio = false }) {
   );
 }
 
-// comoPerfil: la pestaña "Mi perfil" del paciente (seguridad y privacidad
-// primero; la información personal irá arriba cuando exista).
+// comoPerfil: la pestaña "Mi perfil" del paciente: arriba su foto y nombre,
+// después seguridad y privacidad.
 export default function SeguridadScreen({ navigation, comoPerfil = false }) {
   return (
     <VistaConTeclado style={estilos.fondo} contentContainerStyle={estilos.contenido}>
       {comoPerfil ? (
-        <PieDePerfil navigation={navigation} tituloSeguridad="Seguridad y privacidad" alInicio />
+        <>
+          {/* Foto de perfil opcional del paciente (sin foto, sus iniciales). */}
+          <EncabezadoPerfilPaciente navigation={navigation} />
+          <PieDePerfil navigation={navigation} tituloSeguridad="Seguridad y privacidad" alInicio />
+        </>
       ) : (
         <SeccionesSeguridad />
       )}

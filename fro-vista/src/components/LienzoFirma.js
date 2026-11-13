@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU42.
+ */
 // Ruta: fro-vista/src/components/LienzoFirma.js
 //
 // Lienzo táctil para capturar la firma manuscrita (CU42). Registra los trazos

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/components/ErrorRetry.js
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';

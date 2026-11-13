@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU04; también lo usan CU06 y CU07.
+ */
 // Ruta: fro-vista/src/components/CodigoOTP.js
 //
 // Campo de código de verificación: una casilla por dígito, con avance y

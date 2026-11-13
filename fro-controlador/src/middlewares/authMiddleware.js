@@ -1,8 +1,15 @@
+/**
+ * Componente: C_Seguridad_JWT_BCrypt
+ * Casos de uso: CU05, CU08.
+ *
+ * Revisa el token de cada petición y rechaza los vencidos o cerrados desde otro dispositivo.
+ */
 const jwt = require('jsonwebtoken');
-const pool = require('../config/database');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
 const { sesionVigente } = require('../services/auth/seguridadService');
 
 
+// CU05, CU08 — validar el token de acceso y que la sesión siga vigente
 const verifyToken = async (req, res, next) => {
     try {
         const authHeader = req.headers.authorization;
@@ -19,7 +26,7 @@ const verifyToken = async (req, res, next) => {
         const payload = jwt.verify(token, process.env.JWT_SECRET);
 
         // CU08: un token revocado desde otra sesión deja de servir al instante.
-        if (payload.jti && !(await sesionVigente(pool, payload.jti))) {
+        if (payload.jti && !(await sesionVigente(C_Capa_de_Acceso_a_Datos, payload.jti))) {
             return res.status(401).json({
                 error: 'La sesión fue cerrada desde otro dispositivo. Inicia sesión nuevamente.',
                 code: 'SESION_REVOCADA',

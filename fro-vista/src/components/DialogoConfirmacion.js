@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/components/DialogoConfirmacion.js
 //
 // Diálogo de confirmación con la identidad de la app. Reemplaza a Alert.alert

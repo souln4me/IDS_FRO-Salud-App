@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU52 y CU79.
+ */
 // Ruta: fro-vista/src/navigation/rutasBarra.js
 //
 // Con las barras de navegación inferior (paciente y profesional), varias
@@ -32,6 +36,7 @@ export const PESTANA_DE_TRATAMIENTO = {
   MisPautas: 'ejercicios',
   MiSeguimiento: 'seguimiento',
   Triaje: 'entrevista',
+  PreparacionAlta: 'alta',
 };
 
 // La barra ya está abierta debajo de cualquier otra pantalla: hay que volver
@@ -39,6 +44,7 @@ export const PESTANA_DE_TRATAMIENTO = {
 const VOLVER = { pop: true };
 
 /**
+ * CU52, CU79 — llevar un aviso a la pantalla que corresponde al rol
  * Traduce un destino a [ruta, params, opciones] para navigation.navigate. Si
  * la ruta existe tal cual en el navegador raíz, se usa directo; si es una
  * pantalla que ahora vive dentro de una barra inferior, se arma la ruta

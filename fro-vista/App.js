@@ -1,3 +1,9 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU08 y CU79.
+ *
+ * Punto de entrada de la app: monta la sesión y el navegador por rol.
+ */
 // Ruta: fro-vista/App.js
 import React from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

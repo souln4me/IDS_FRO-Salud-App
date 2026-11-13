@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Testimonios"
+ * Casos de uso: CU56.
+ */
 // Ruta: fro-vista/src/screens/Admin/ModeracionResenasScreen.js
 //
 // CU56 — Moderación de testimonios públicos.
@@ -16,6 +20,8 @@ import { getBandejaModeracion, moderarResena } from '../../api/client';
 import DialogoAviso from '../../components/DialogoAviso';
 import DialogoMotivo from '../../components/DialogoMotivo';
 import ErrorRetry from '../../components/ErrorRetry';
+import EtiquetaEvaluacion from '../../components/EtiquetaEvaluacion';
+import { textoLimpio } from '../../utils/texto';
 import { formatearFechaHora } from '../../utils/fechas';
 import { colores, espacio, piezas, radio, tipografia, interaccion } from '../../theme';
 
@@ -35,6 +41,7 @@ export default function ModeracionResenasScreen() {
   const [procesando, setProcesando] = useState(null);
   const [porRechazar, setPorRechazar] = useState(null);
 
+  // CU56 — Moderando testimonios públicos: cargar la bandeja por estado
   const cargar = useCallback(
     async (cual = estado, esRefresco = false) => {
       if (esRefresco) setRefrescando(true);
@@ -57,6 +64,7 @@ export default function ModeracionResenasScreen() {
     cargar(estado);
   }, [cargar, estado]);
 
+  // CU56 — publicar o rechazar el testimonio
   const decidir = async (evaluacion, decision, motivo) => {
     setPorRechazar(null);
     setProcesando(evaluacion.evaluacion_satisfaccion_id);
@@ -134,11 +142,12 @@ export default function ModeracionResenasScreen() {
             evaluaciones.map((e) => (
               <View key={e.evaluacion_satisfaccion_id} style={estilos.tarjeta}>
                 <View style={estilos.cabecera}>
-                  <Text style={estilos.estrellas}>{'★'.repeat(e.puntuacion)}{'☆'.repeat(5 - e.puntuacion)}</Text>
+                  {/* Correcciones Inc 4: los comentarios de sesión no llevan estrellas. */}
+                  <EtiquetaEvaluacion puntuacion={e.puntuacion} satisfecho={e.satisfecho} />
                   <Text style={estilos.momento}>{formatearFechaHora(e.momento_creacion)}</Text>
                 </View>
 
-                <Text style={estilos.resena}>“{e.resena}”</Text>
+                <Text style={estilos.resena}>“{textoLimpio(e.resena)}”</Text>
 
                 <Text style={estilos.contexto}>
                   {e.paciente} · atención con {e.profesional}

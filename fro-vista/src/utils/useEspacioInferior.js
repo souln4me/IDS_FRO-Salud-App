@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU53.
+ */
 // Ruta: fro-vista/src/utils/useEspacioInferior.js
 //
 // Cuánto espacio dejar al pie de una pantalla con una barra fija abajo (por

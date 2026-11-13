@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU20, CU28 y CU67.
+ */
 // Ruta: fro-vista/src/components/SeccionHistorial.js
 //
 // Desplegable "Historial" para lo que ya terminó (citas realizadas o

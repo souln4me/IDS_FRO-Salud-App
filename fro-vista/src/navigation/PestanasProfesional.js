@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU79, CU52; abre las vistas de CU11, CU38, CU53 y CU10.
+ */
 // Ruta: fro-vista/src/navigation/PestanasProfesional.js
 //
 // Barra de navegación inferior del profesional, con el mismo estilo que la
@@ -25,14 +29,17 @@ const ICONOS = {
   Perfil: 'person-circle',
 };
 
+// CU10 — Administrando catálogo de perfil profesional
 // "Perfil" parte del perfil público y suma seguridad, soporte y cierre.
 function PerfilProfesional(props) {
   return <MiPerfilScreen {...props} comoPestana />;
 }
 
+// CU79 — Segregando interfaces según rol de acceso
 export default function PestanasProfesional({ navigation }) {
   return (
     <Tab.Navigator backBehavior="firstRoute" screenOptions={opcionesDeBarra(ICONOS)}>
+      {/* CU11: panel del profesional */}
       <Tab.Screen
         name="Inicio"
         component={DashboardProfesional}
@@ -43,16 +50,19 @@ export default function PestanasProfesional({ navigation }) {
           headerRight: () => <CampanaNotificaciones navigation={navigation} />,
         }}
       />
+      {/* CU38, CU40: Mi jornada */}
       <Tab.Screen
         name="Jornada"
         component={MiJornadaScreen}
         options={{ title: 'Mi jornada', tabBarLabel: 'Mi jornada' }}
       />
+      {/* CU53: conversaciones con los pacientes */}
       <Tab.Screen
         name="Mensajes"
         component={ConversacionesScreen}
         options={{ title: 'Mensajes', tabBarLabel: 'Mensajes' }}
       />
+      {/* CU10: perfil del profesional */}
       <Tab.Screen
         name="Perfil"
         component={PerfilProfesional}

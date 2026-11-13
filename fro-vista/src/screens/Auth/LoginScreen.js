@@ -1,3 +1,10 @@
+/**
+ * Componente: Cliente Móvil — Vista "Inicio de sesión"
+ * Casos de uso: CU05, CU08.
+ *
+ * Pantalla de ingreso con RUT y contraseña; desde aquí se va al registro (CU01)
+ * y a la recuperación de contraseña (CU06).
+ */
 import React, { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../../context/AuthContext';
 import { 
@@ -19,6 +26,7 @@ import LogoMarca from '../../components/LogoMarca';
 import { obtenerDispositivoId, nombreDispositivo } from '../../utils/dispositivo';
 import CampoContrasena from '../../components/CampoContrasena';
 import { colores, espacio, radio, sombra, tipografia, piezas } from '../../theme';
+import { registrar } from '../../utils/registroApp';
 
 export default function LoginScreen({ navigation }) {
   // --- ESTADOS LOCALES ---
@@ -29,6 +37,7 @@ export default function LoginScreen({ navigation }) {
   const [isLoading, setIsLoading] = useState(false);
   const { loginSession } = useContext(AuthContext);
 
+  // CU05 — Autenticando usuario y resguardando credenciales
   // --- VALIDACIÓN SINTÁCTICA EN TIEMPO REAL (Excepción 1) ---
   useEffect(() => {
     const rutLimpio = rut.replace(/[^0-9kK]/g, '');
@@ -46,6 +55,7 @@ export default function LoginScreen({ navigation }) {
 
   const isFormValid = password.length > 0 && validateRut(rut);
 
+  // CU05 — Autenticando usuario y resguardando credenciales
   // --- DESPACHO DE PETICIÓN HTTP ---
   const handleLogin = async () => {
     setLoginError('');
@@ -65,8 +75,9 @@ export default function LoginScreen({ navigation }) {
       setIsLoading(false);
       const { token, usuario, mensaje } = response.data;
 
+      // CU08: guarda el token y abre la sesión en el dispositivo
       await loginSession(token, usuario);
-      console.log("✅ Sesión guardada globalmente para el rol:", usuario.rol);
+      registrar(`✅ sesión iniciada y guardada en el teléfono (rol ${usuario.rol})`);
       
     } catch (error) {
       // 3. BLOQUE DE CAPTURA DE ERRORES
@@ -145,6 +156,7 @@ export default function LoginScreen({ navigation }) {
         </View>
       </View>
 
+      {/* CU06: enlace a la recuperación de contraseña */}
       <TouchableOpacity
         style={styles.registerLink}
         onPress={() => navigation.navigate('RecuperarContrasena')}
@@ -155,8 +167,9 @@ export default function LoginScreen({ navigation }) {
         </Text>
       </TouchableOpacity>
 
-      <TouchableOpacity 
-        style={styles.registerLink} 
+      {/* CU01: enlace al registro de paciente */}
+      <TouchableOpacity
+        style={styles.registerLink}
         onPress={() => navigation.navigate('Register')}
         disabled={isLoading}
       >

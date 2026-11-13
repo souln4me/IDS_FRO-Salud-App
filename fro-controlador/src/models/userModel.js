@@ -1,9 +1,16 @@
+/**
+ * Componente: C_Capa_de_Acceso_a_Datos (puerta de entrada: src/componentes/C_Capa_de_Acceso_a_Datos.js)
+ * Casos de uso: CU05.
+ *
+ * Búsqueda de la cuenta activa por RUT para el inicio de sesión.
+ */
 // Importamos el pool de conexiones que configuramos en la Fase 0
 
 const db = require('../config/database');
 
 const UserModel = {
   /**
+   * CU05 — Autenticando usuario y resguardando credenciales
    * Busca un usuario por su RUT, trayendo también el nombre de su Rol,
    * siempre y cuando la cuenta esté activa (Precondición del CU05).
    * @param {string} rut - El RUT limpio enviado desde el frontend (ej: "12345678K")

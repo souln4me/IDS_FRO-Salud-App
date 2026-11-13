@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/components/LogoMarca.js
 //
 // Logo oficial de Punto Paz Salud. Un solo componente para todos los lugares
