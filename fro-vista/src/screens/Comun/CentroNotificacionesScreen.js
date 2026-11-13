@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Notificaciones"
+ * Casos de uso: CU52, CU54.
+ */
 // Ruta: fro-vista/src/screens/Comun/CentroNotificacionesScreen.js
 //
 // CU52 — Centro de notificaciones, común a los tres roles.
@@ -9,7 +13,7 @@
 // Al tocar un aviso se marca como leído y se salta a la pantalla que
 // corresponde (Excepción 3 y 4 del CU: la redirección profunda al módulo).
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, RefreshControl, Switch,
   ActivityIndicator, StyleSheet,
@@ -22,6 +26,7 @@ import {
   getPreferenciasNotificacion,
   guardarPreferenciasNotificacion,
 } from '../../api/client';
+import { AuthContext } from '../../context/AuthContext';
 import ErrorRetry from '../../components/ErrorRetry';
 import DialogoAviso from '../../components/DialogoAviso';
 import { registrarPush } from '../../utils/push';
@@ -49,9 +54,11 @@ export default function CentroNotificacionesScreen({ navigation }) {
   const [aviso, setAviso] = useState(null);
 
   const [verAjustes, setVerAjustes] = useState(false);
-  const [preferencias, setPreferencias] = useState({ canal_push: true, canal_email: true });
+  const [preferencias, setPreferencias] = useState({ canal_push: true, canal_email: true, refuerzos: true });
+  const { userData } = useContext(AuthContext);
   const [guardando, setGuardando] = useState(false);
 
+  // CU52 — Emitiendo notificaciones multicanal: cargar la bandeja de avisos
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -74,6 +81,7 @@ export default function CentroNotificacionesScreen({ navigation }) {
       .catch(() => {});
   }, [cargar]);
 
+  // CU52 — marcar el aviso como leído y saltar a su pantalla
   const abrir = async (item) => {
     if (!item.leida) {
       setAvisos((previos) =>
@@ -91,6 +99,7 @@ export default function CentroNotificacionesScreen({ navigation }) {
     if (ruta) navigation.navigate(...ruta);
   };
 
+  // CU52 — marcar todos los avisos como leídos
   const marcarTodas = async () => {
     try {
       await marcarTodasLeidas();
@@ -100,6 +109,7 @@ export default function CentroNotificacionesScreen({ navigation }) {
     }
   };
 
+  // CU52, CU54 — guardar los canales elegidos y el permiso de mensajes de ánimo
   const cambiarPreferencia = async (clave, valor) => {
     const nuevas = { ...preferencias, [clave]: valor };
     setPreferencias(nuevas);
@@ -206,6 +216,25 @@ export default function CentroNotificacionesScreen({ navigation }) {
               thumbColor={preferencias.canal_email ? colores.primario : colores.superficie}
             />
           </View>
+
+          {/* CU54: solo el paciente recibe mensajes de ánimo por sus ejercicios. */}
+          {userData?.rol === 'Paciente' && (
+            <View style={estilos.filaAjuste}>
+              <View style={estilos.textoAjuste}>
+                <Text style={estilos.ajusteNombre}>Mensajes de ánimo</Text>
+                <Text style={estilos.ajusteAyuda}>
+                  Un refuerzo cuando tu cumplimiento de ejercicios sube (máximo uno al día).
+                </Text>
+              </View>
+              <Switch
+                value={preferencias.refuerzos !== false}
+                onValueChange={(v) => cambiarPreferencia('refuerzos', v)}
+                disabled={guardando}
+                trackColor={{ false: colores.borde, true: colores.azul[300] }}
+                thumbColor={preferencias.refuerzos !== false ? colores.primario : colores.superficie}
+              />
+            </View>
+          )}
 
           <Text style={estilos.ajusteNota}>
             Esta bandeja siempre recibe todos los avisos: es tu registro dentro de la app.

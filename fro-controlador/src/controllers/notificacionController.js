@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU52, CU54, CU13.
+ *
  * CU52 — Centro de notificaciones, preferencias de canal y dispositivos push.
  *
  * La tabla Notificacion existía desde el Incremento 2, pero nadie la leía: los
@@ -7,17 +10,20 @@
  * corresponde al tocar cada aviso.
  */
 
-const pool = require('../config/database');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
 
 const LIMITE_POR_PAGINA = 30;
 
-/** GET /api/notificaciones?solo_no_leidas=1&pagina=0 */
+/**
+ * CU52 — Emitiendo notificaciones multicanal
+ * GET /api/notificaciones?solo_no_leidas=1&pagina=0
+ */
 exports.listar = async (req, res) => {
   const pagina = Math.max(0, parseInt(req.query?.pagina, 10) || 0);
   const soloNoLeidas = String(req.query?.solo_no_leidas || '') === '1';
 
   try {
-    const [avisos] = await pool.query(
+    const [avisos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT notificacion_id, tipo, titulo, contenido, datos, momento_envio, leida
          FROM Notificacion
         WHERE usuario_id = ?
@@ -28,7 +34,7 @@ exports.listar = async (req, res) => {
       [req.user.usuario_id, LIMITE_POR_PAGINA, pagina * LIMITE_POR_PAGINA]
     );
 
-    const [[conteo]] = await pool.query(
+    const [[conteo]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COUNT(*) AS no_leidas FROM Notificacion
         WHERE usuario_id = ? AND leida = FALSE`,
       [req.user.usuario_id]
@@ -53,6 +59,7 @@ exports.listar = async (req, res) => {
   }
 };
 
+// Apoyo común: lee JSON guardado como texto sin romper
 function seguroJSON(texto) {
   try {
     return JSON.parse(texto);
@@ -61,10 +68,13 @@ function seguroJSON(texto) {
   }
 }
 
-/** GET /api/notificaciones/resumen — solo el contador, para el globo. */
+/**
+ * CU52 — Emitiendo notificaciones multicanal
+ * GET /api/notificaciones/resumen — solo el contador, para el globo.
+ */
 exports.resumen = async (req, res) => {
   try {
-    const [[conteo]] = await pool.query(
+    const [[conteo]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COUNT(*) AS no_leidas FROM Notificacion
         WHERE usuario_id = ? AND leida = FALSE`,
       [req.user.usuario_id]
@@ -76,16 +86,30 @@ exports.resumen = async (req, res) => {
   }
 };
 
-/** POST /api/notificaciones/:id/leer */
+/**
+ * CU52 — Emitiendo notificaciones multicanal
+ * POST /api/notificaciones/:id/leer
+ */
 exports.marcarLeida = async (req, res) => {
   try {
-    const [resultado] = await pool.query(
+    const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Notificacion SET leida = TRUE
         WHERE notificacion_id = ? AND usuario_id = ?`,
       [req.params.id, req.user.usuario_id]
     );
     if (resultado.affectedRows === 0) {
       return res.status(404).json({ error: 'NOTIFICACION_NO_ENCONTRADA' });
+    }
+    // CU54 (paso 4): la lectura del refuerzo queda en el registro de telemetría.
+    const [[aviso]] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT tipo FROM Notificacion WHERE notificacion_id = ? LIMIT 1`, [req.params.id]
+    );
+    if (aviso?.tipo === 'REFUERZO_POSITIVO') {
+      await C_Capa_de_Acceso_a_Datos.query(
+        `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+         VALUES ('REFUERZO_POSITIVO_LEIDO', 'Notificacion', ?, ?, ?)`,
+        [req.ip || null, JSON.stringify({ notificacion_id: Number(req.params.id) }), req.user.usuario_id]
+      ).catch(() => {});
     }
     return res.status(200).json({ mensaje: 'Aviso marcado como leído.' });
   } catch (error) {
@@ -94,10 +118,13 @@ exports.marcarLeida = async (req, res) => {
   }
 };
 
-/** POST /api/notificaciones/leer-todas */
+/**
+ * CU52 — Emitiendo notificaciones multicanal
+ * POST /api/notificaciones/leer-todas
+ */
 exports.marcarTodasLeidas = async (req, res) => {
   try {
-    const [resultado] = await pool.query(
+    const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Notificacion SET leida = TRUE WHERE usuario_id = ? AND leida = FALSE`,
       [req.user.usuario_id]
     );
@@ -108,17 +135,22 @@ exports.marcarTodasLeidas = async (req, res) => {
   }
 };
 
-/** GET /api/notificaciones/preferencias */
+/**
+ * CU52, CU54 — leer los canales y si acepta refuerzos
+ * GET /api/notificaciones/preferencias
+ */
 exports.obtenerPreferencias = async (req, res) => {
   try {
-    const [[fila]] = await pool.query(
-      `SELECT canal_push, canal_email FROM Preferencia_Notificacion WHERE usuario_id = ? LIMIT 1`,
+    const [[fila]] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT canal_push, canal_email, refuerzos FROM Preferencia_Notificacion WHERE usuario_id = ? LIMIT 1`,
       [req.user.usuario_id]
     );
     return res.status(200).json({
       // Sin fila guardada, todo activo: es el comportamiento por defecto.
       canal_push: fila ? Boolean(fila.canal_push) : true,
       canal_email: fila ? Boolean(fila.canal_email) : true,
+      // CU54: mensajes de ánimo por los ejercicios.
+      refuerzos: fila ? Boolean(fila.refuerzos) : true,
     });
   } catch (error) {
     console.error('[obtenerPreferencias]', error);
@@ -126,25 +158,31 @@ exports.obtenerPreferencias = async (req, res) => {
   }
 };
 
-/** PUT /api/notificaciones/preferencias  { canal_push, canal_email } */
+/**
+ * CU52, CU54 — guardar los canales y si acepta refuerzos
+ * PUT /api/notificaciones/preferencias  { canal_push, canal_email, refuerzos }
+ */
 exports.guardarPreferencias = async (req, res) => {
   const push = req.body?.canal_push !== false;
   const email = req.body?.canal_email !== false;
+  const refuerzos = req.body?.refuerzos !== false;
 
   try {
-    await pool.query(
-      `INSERT INTO Preferencia_Notificacion (usuario_id, canal_push, canal_email)
-       VALUES (?, ?, ?)
-       ON DUPLICATE KEY UPDATE canal_push = VALUES(canal_push), canal_email = VALUES(canal_email)`,
-      [req.user.usuario_id, push, email]
+    await C_Capa_de_Acceso_a_Datos.query(
+      `INSERT INTO Preferencia_Notificacion (usuario_id, canal_push, canal_email, refuerzos)
+       VALUES (?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE canal_push = VALUES(canal_push), canal_email = VALUES(canal_email),
+                               refuerzos = VALUES(refuerzos)`,
+      [req.user.usuario_id, push, email, refuerzos]
     );
 
-    await pool
+    // CU13: queda en la bitácora de auditoría
+    await C_Capa_de_Acceso_a_Datos
       .query(
         `INSERT INTO Bitacora_Auditoria
             (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
          VALUES ('CAMBIO_PREFERENCIA_NOTIFICACION', 'Preferencia_Notificacion', ?, ?, ?)`,
-        [req.ip || null, JSON.stringify({ canal_push: push, canal_email: email }), req.user.usuario_id]
+        [req.ip || null, JSON.stringify({ canal_push: push, canal_email: email, refuerzos }), req.user.usuario_id]
       )
       .catch(() => {});
 
@@ -152,6 +190,7 @@ exports.guardarPreferencias = async (req, res) => {
       mensaje: 'Preferencias guardadas.',
       canal_push: push,
       canal_email: email,
+      refuerzos,
     });
   } catch (error) {
     console.error('[guardarPreferencias]', error);
@@ -160,6 +199,7 @@ exports.guardarPreferencias = async (req, res) => {
 };
 
 /**
+ * CU52 — Emitiendo notificaciones multicanal
  * POST /api/notificaciones/dispositivo   { token, plataforma }
  *
  * Registra el token de notificación push del teléfono. Hoy Expo Go en Android
@@ -178,7 +218,7 @@ exports.registrarDispositivo = async (req, res) => {
   try {
     // Un mismo teléfono puede cambiar de dueño (otro usuario inicia sesión):
     // el token pasa a la cuenta que lo registró por última vez.
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Dispositivo_Push (token, plataforma, usuario_id, activo)
        VALUES (?, ?, ?, TRUE)
        ON DUPLICATE KEY UPDATE
@@ -195,13 +235,16 @@ exports.registrarDispositivo = async (req, res) => {
   }
 };
 
-/** DELETE /api/notificaciones/dispositivo  { token } — al cerrar sesión. */
+/**
+ * CU52 — Emitiendo notificaciones multicanal
+ * DELETE /api/notificaciones/dispositivo  { token } — al cerrar sesión.
+ */
 exports.olvidarDispositivo = async (req, res) => {
   const token = String(req.body?.token || req.query?.token || '').trim();
   if (!token) return res.status(200).json({ mensaje: 'Nada que olvidar.' });
 
   try {
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Dispositivo_Push SET activo = FALSE WHERE token = ? AND usuario_id = ?`,
       [token, req.user.usuario_id]
     );
