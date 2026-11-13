@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU28 y CU45.
+ */
 // Ruta: fro-vista/src/components/TabSelector.js
 //
 // Barra de pestañas horizontal reutilizable. Se implementa con componentes

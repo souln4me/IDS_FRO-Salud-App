@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mis Citas"
+ * Casos de uso: CU20, CU17, CU18, CU19, CU21, CU22, CU55, CU73, CU74, CU43.
+ */
 // Ruta: fro-vista/src/screens/Paciente/MisCitasScreen.js
 //
 // Vista única de gestión de citas del paciente: muestra sus horas agendadas y
@@ -20,13 +24,15 @@ import apiClient, {
   actualizarAPaquete,
   getEvaluacionesPendientes,
   registrarEvaluacion,
+  getTratamientosPorEvaluar,
+  registrarEvaluacionTratamiento,
   getConfirmacionesPendientes,
   pedirNuevaSolicitudConfirmacion,
   getMisListasEspera,
   salirListaEspera,
   tomarCupoListaEspera,
 } from '../../api/client';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Icono from '../../components/Icono';
 import { AuthContext } from '../../context/AuthContext';
 import DialogoMotivo from '../../components/DialogoMotivo';
 import ErrorRetry from '../../components/ErrorRetry';
@@ -73,10 +79,14 @@ export default function MisCitasScreen({ navigation, route }) {
   // CU55: atenciones cerradas que todavía no se evalúan.
   const [porEvaluar, setPorEvaluar] = useState([]);
   const [evaluando, setEvaluando] = useState(null);
+  // CU55 (correcciones Inc 4): calificación general de tratamientos terminados.
+  const [tratamientosPorEvaluar, setTratamientosPorEvaluar] = useState([]);
+  const [evaluandoTratamiento, setEvaluandoTratamiento] = useState(null);
   const [enviandoEvaluacion, setEnviandoEvaluacion] = useState(false);
   // CU74: cambio de sesión unitaria a plan, con su diferencia.
   const [actualizandoId, setActualizandoId] = useState(null);
 
+  // CU20 — Transicionando máquina de estados de cita (listado de citas del paciente)
   const cargarCitas = useCallback(async (esRefresco = false) => {
     if (esRefresco) {
       setRefrescando(true);
@@ -91,14 +101,16 @@ export default function MisCitasScreen({ navigation, route }) {
 
       // CU21 y CU19 viajan junto con las citas: son parte de la misma vista.
       // Si alguno falla, las citas se muestran igual.
-      const [confirmaciones, listas, evaluaciones] = await Promise.all([
+      const [confirmaciones, listas, evaluaciones, tratamientos] = await Promise.all([
         getConfirmacionesPendientes().catch(() => ({ pendientes: [] })),
         getMisListasEspera().catch(() => ({ listas: [] })),
         getEvaluacionesPendientes().catch(() => ({ pendientes: [] })),
+        getTratamientosPorEvaluar().catch(() => ({ tratamientos: [] })),
       ]);
       setPorConfirmar(confirmaciones.pendientes || []);
       setListasEspera(listas.listas || []);
       setPorEvaluar(evaluaciones.pendientes || []);
+      setTratamientosPorEvaluar(tratamientos.tratamientos || []);
     } catch (error) {
       console.error('ERROR MIS CITAS:', error?.response?.data || error.message);
       setErrorRed(true);
@@ -130,9 +142,21 @@ export default function MisCitasScreen({ navigation, route }) {
     }
   }, [citaAEvaluar, porEvaluar, navigation]);
 
+  // El aviso "Califica tu tratamiento" llega con el episodio a evaluar.
+  const episodioAEvaluar = route?.params?.evaluar_episodio_id;
+  useEffect(() => {
+    if (!episodioAEvaluar) return;
+    const tratamiento = tratamientosPorEvaluar.find((t) => Number(t.episodio_clinico_id) === Number(episodioAEvaluar));
+    if (tratamiento) {
+      setEvaluandoTratamiento(tratamiento);
+      navigation.setParams({ evaluar_episodio_id: undefined });
+    }
+  }, [episodioAEvaluar, tratamientosPorEvaluar, navigation]);
+
   // CU22: cancelar exige un motivo, así que se pide en un diálogo propio.
   const [citaPorCancelar, setCitaPorCancelar] = useState(null);
 
+  // CU18 — Cancelando cita y liberando recursos
   const cancelarCita = async (cita, motivo) => {
     setCitaPorCancelar(null);
     setCancelandoId(cita.cita_id);
@@ -145,6 +169,7 @@ export default function MisCitasScreen({ navigation, route }) {
       // A quien cancela no se le informa si había otros pacientes esperando
       // esa hora: la lista de espera es información de terceros.
       // RF74: cancelar con la anticipación mínima devuelve el pago de la sesión.
+      // CU74: aviso de la devolución
       if (data?.devolucion?.devuelto) {
         setAviso({
           tono: 'ok',
@@ -253,6 +278,7 @@ export default function MisCitasScreen({ navigation, route }) {
     }
   };
 
+  // CU19 — Gestionando lista de espera secuencial
   const salirDeLista = async (lista) => {
     try {
       await salirListaEspera(lista.cita_id);
@@ -267,11 +293,11 @@ export default function MisCitasScreen({ navigation, route }) {
   };
 
   // ── CU55: calificar una atención ya cerrada ───────────────────────────
-  const enviarEvaluacion = async ({ puntuacion, resena }) => {
+  const enviarEvaluacion = async ({ satisfecho, resena }) => {
     if (!evaluando) return;
     setEnviandoEvaluacion(true);
     try {
-      const datos = await registrarEvaluacion(evaluando.cita_id, { puntuacion, resena });
+      const datos = await registrarEvaluacion(evaluando.cita_id, { satisfecho, resena });
       setEvaluando(null);
       setAviso({
         tono: datos.resena_bloqueada ? 'alerta' : 'ok',
@@ -285,6 +311,22 @@ export default function MisCitasScreen({ navigation, route }) {
         titulo: 'No se pudo evaluar',
         mensaje: error.response?.data?.mensaje || 'Intenta nuevamente.',
       });
+    } finally {
+      setEnviandoEvaluacion(false);
+    }
+  };
+
+  // ── CU55: calificación general al terminar el tratamiento ─────────────
+  const enviarEvaluacionTratamiento = async ({ puntuacion, resena }) => {
+    if (!evaluandoTratamiento) return;
+    setEnviandoEvaluacion(true);
+    try {
+      const datos = await registrarEvaluacionTratamiento(evaluandoTratamiento.episodio_clinico_id, { puntuacion, resena });
+      setEvaluandoTratamiento(null);
+      setAviso({ tono: datos.resena_bloqueada ? 'alerta' : 'ok', titulo: datos.resena_bloqueada ? 'Aviso' : '¡Gracias!', mensaje: datos.mensaje });
+      await cargarCitas(true);
+    } catch (error) {
+      setAviso({ tono: 'error', titulo: 'No se pudo calificar', mensaje: error.response?.data?.mensaje || 'Intenta nuevamente.' });
     } finally {
       setEnviandoEvaluacion(false);
     }
@@ -316,6 +358,7 @@ export default function MisCitasScreen({ navigation, route }) {
     }
   };
 
+  // CU20: tarjeta de cada cita con las acciones que permite su estado
   const renderCita = ({ item }) => {
     const puedeCancelar = ESTADOS_CANCELABLES.includes(item.estado);
     const cancelando = cancelandoId === item.cita_id;
@@ -404,8 +447,9 @@ export default function MisCitasScreen({ navigation, route }) {
           </View>
         )}
 
-        {/* CU39/CU43: evidencia de la sesión (check-in GPS o teleconsulta) */}
-        {['CONFIRMADA', 'EN_CURSO'].includes(item.estado) && (
+        {/* CU39: en domicilio ya no hay check-in: la ubicación se envía sola. */}
+        {/* CU43: evidencia de la teleconsulta (opcional) */}
+        {['CONFIRMADA', 'EN_CURSO'].includes(item.estado) && String(item.modalidad || '').toUpperCase() !== 'DOMICILIO' && (
           <TouchableOpacity
             style={styles.botonEvidencia}
             onPress={() =>
@@ -419,6 +463,7 @@ export default function MisCitasScreen({ navigation, route }) {
           </TouchableOpacity>
         )}
 
+        {/* CU17, CU18 — reprogramar o cancelar la cita */}
         {puedeCancelar && (
           <View style={styles.filaAcciones}>
             <TouchableOpacity
@@ -459,7 +504,7 @@ export default function MisCitasScreen({ navigation, route }) {
         activeOpacity={interaccion.opacidadActiva}
         accessibilityRole="button"
       >
-        <Ionicons name="card-outline" size={18} color={colores.primario} />
+        <Icono name="card-outline" size={18} color={colores.primario} />
         <Text style={styles.botonPagosTexto}>Pagos y bonos</Text>
       </TouchableOpacity>
     </View>
@@ -512,28 +557,53 @@ export default function MisCitasScreen({ navigation, route }) {
           <>
             {/* CU55 — Excepción 2: si el formulario no alcanzó a mostrarse al
                 cerrar la sesión, queda este acceso directo. */}
+            {/* CU55: la calificación general se pide al terminar el tratamiento. */}
+            {tratamientosPorEvaluar.length > 0 && (
+              <View style={styles.bloqueEvaluar}>
+                <Text style={styles.esperaTitulo}>Califica tu tratamiento</Text>
+                {tratamientosPorEvaluar.map((t) => (
+                  <View key={t.episodio_clinico_id} style={styles.tarjetaEvaluar}>
+                    <Text style={styles.esperaFecha}>
+                      {t.profesional}{t.especialidad ? ` · ${t.especialidad}` : ''}
+                    </Text>
+                    <Text style={styles.esperaDato}>
+                      {t.motivo_consulta} · terminó el {formatearFecha(t.fecha_terminado)}. Tu opinión ayuda a otros pacientes a elegir.
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.botonEvaluar}
+                      onPress={() => setEvaluandoTratamiento(t)}
+                      activeOpacity={interaccion.opacidadActiva}
+                    >
+                      <Text style={styles.botonEvaluarTexto}>★ Calificar tratamiento</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+            {/* CU55: evaluación de cada sesión ya cerrada */}
             {porEvaluar.length > 0 && (
               <View style={styles.bloqueEvaluar}>
-                <Text style={styles.esperaTitulo}>Califica tu atención</Text>
+                <Text style={styles.esperaTitulo}>¿Cómo fue tu sesión?</Text>
                 {porEvaluar.map((cita) => (
                   <View key={cita.cita_id} style={styles.tarjetaEvaluar}>
                     <Text style={styles.esperaFecha}>
                       {formatearFecha(cita.fecha_hora_inicio)} · {cita.profesional}
                     </Text>
                     <Text style={styles.esperaDato}>
-                      Tu opinión ayuda a otros pacientes a elegir.
+                      Cuéntanos si quedaste satisfecho con la atención.
                     </Text>
                     <TouchableOpacity
                       style={styles.botonEvaluar}
                       onPress={() => setEvaluando(cita)}
                       activeOpacity={interaccion.opacidadActiva}
                     >
-                      <Text style={styles.botonEvaluarTexto}>★ Calificar</Text>
+                      <Text style={styles.botonEvaluarTexto}>Responder</Text>
                     </TouchableOpacity>
                   </View>
                 ))}
               </View>
             )}
+            {/* CU19: listas de espera del paciente */}
             {listasEspera.length > 0 ? (
             <View style={styles.bloqueEspera}>
               <Text style={styles.esperaTitulo}>En lista de espera</Text>
@@ -622,10 +692,20 @@ export default function MisCitasScreen({ navigation, route }) {
       />
     <DialogoEvaluacion
       visible={evaluando !== null}
+      modo="SESION"
       profesional={evaluando?.profesional}
       enviando={enviandoEvaluacion}
       onEnviar={enviarEvaluacion}
       onCancelar={() => setEvaluando(null)}
+    />
+    <DialogoEvaluacion
+      visible={evaluandoTratamiento !== null}
+      modo="TRATAMIENTO"
+      profesional={evaluandoTratamiento?.profesional}
+      detalle={evaluandoTratamiento?.motivo_consulta}
+      enviando={enviandoEvaluacion}
+      onEnviar={enviarEvaluacionTratamiento}
+      onCancelar={() => setEvaluandoTratamiento(null)}
     />
     <DialogoAviso
       visible={aviso !== null}

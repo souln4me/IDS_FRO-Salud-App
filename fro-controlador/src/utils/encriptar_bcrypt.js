@@ -1,9 +1,16 @@
+/**
+ * Componente: C_Seguridad_JWT_BCrypt (puerta de entrada: src/componentes/C_Seguridad_JWT_BCrypt.js)
+ * Casos de uso: CU05, CU01, CU02, CU07.
+ *
+ * Cifrado y comparación de contraseñas con bcrypt.
+ */
 const bcrypt = require('bcrypt');
 
 // Determina el nivel de seguridad (rondas de procesamiento). 10 es el estándar de la industria.
 const SALT_ROUNDS = 10;
 
 /**
+ * CU01, CU02, CU07 — guardar la contraseña cifrada (registro y cambio de clave)
  * Toma una contraseña en texto plano y la encripta.
  * @param {string} password - Contraseña ingresada por el usuario (ej: "clave123")
  * @returns {Promise<string>} - Contraseña encriptada (hash irreversible)
@@ -18,6 +25,7 @@ const hashPassword = async (password) => {
 };
 
 /**
+ * CU05 — Autenticando usuario y resguardando credenciales
  * Compara una contraseña en texto plano con un hash de la base de datos.
  * @param {string} password - Contraseña ingresada al intentar loguearse.
  * @param {string} hashedPassword - El hash guardado en la base de datos.

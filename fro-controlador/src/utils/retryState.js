@@ -1,3 +1,9 @@
+/**
+ * Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+ * Casos de uso: CU70.
+ *
+ * Contador de reintentos por petición hacia el proveedor externo.
+ */
 const crypto = require('crypto');
 
 // ─────────────────────────────────────────────────────────────────────────────

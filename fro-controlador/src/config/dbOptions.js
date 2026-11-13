@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Capa_de_Acceso_a_Datos (puerta de entrada: src/componentes/C_Capa_de_Acceso_a_Datos.js)
+ * Casos de uso: apoyo común.
+ *
  * Lógica compartida para armar la conexión a MySQL, tanto para el servidor
  * como para los scripts. Concentra aquí las diferencias entre trabajar con
  * MySQL local y con una base de datos en la nube.

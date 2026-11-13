@@ -1,9 +1,18 @@
-const pool = require('../../config/database');
-const { rechazarSiCerrado, estaCerrado, porcentajeObjetivosEpisodio } = require('../../services/clinico/episodioService');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU40, CU28, CU32, CU38, CU78.
+ *
+ * Sesión clínica: documentar la intervención y la respuesta fisiológica del
+ * paciente, y trasladar la atención en curso a otro episodio.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Motor_Clinico = require('../../componentes/C_Motor_Clinico');
 
+// CU40 Exc. 3: señales de deterioro grave que marcan el registro con alerta prioritaria
 const PATRON_ALERTA_PRIORITARIA =
   /\b(dolor\s+(intenso|severo|insoportable)|dificultad\s+respiratoria|p[eé]rdida\s+de\s+conciencia|desmayo|convulsi[oó]n|deterioro\s+(grave|severo)|signos?\s+vitales?\s+inestables?)\b/i;
 
+// Apoyo común: IP de origen para la bitácora
 function obtenerIP(req) {
   return (
     req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -12,10 +21,28 @@ function obtenerIP(req) {
   );
 }
 
+// Apoyo común: ¿la cita está EN_CURSO? (tolera espacios y mayúsculas)
 function estadoEnCurso(estado) {
   return String(estado || '').trim().toUpperCase().replace(/\s+/g, '_') === 'EN_CURSO';
 }
 
+/**
+ * CU40 — Documentando intervención y respuesta fisiológica
+ * Corrección Inc 4 (punto 7): la sesión se documenta con la cita EN CURSO o,
+ * si el profesional la dejó para el final de la jornada, con la cita ya
+ * REALIZADA y pendiente de documentar (se libera al firmar el registro).
+ */
+function sesionDocumentable(contexto) {
+  if (!contexto?.cita_id) return false;
+  if (estadoEnCurso(contexto.estado_cita)) return true;
+  return String(contexto.estado_cita || '').toUpperCase() === 'REALIZADA' && Boolean(Number(contexto.documentacion_pendiente));
+}
+
+// Cita que habilita la sesión clínica: en curso o realizada pendiente de documentar.
+const SQL_CITA_DOCUMENTABLE = `(UPPER(REPLACE(TRIM(c.estado), ' ', '_')) = 'EN_CURSO'
+       OR (c.estado = 'REALIZADA' AND c.documentacion_pendiente = TRUE))`;
+
+// CU40: contexto de la sesión (paciente, especialidad y cita documentable del episodio)
 async function obtenerContexto(connection, episodioId, usuarioId, bloquear = false, soloDelProfesional = true) {
   const [filas] = await connection.execute(
     `SELECT
@@ -36,6 +63,7 @@ async function obtenerContexto(connection, episodioId, usuarioId, bloquear = fal
         ) AS paciente,
         c.cita_id,
         c.estado AS estado_cita,
+        c.documentacion_pendiente,
         c.fecha_hora_inicio,
         c.fecha_hora_fin
      FROM Episodio_Clinico ec
@@ -47,13 +75,14 @@ async function obtenerContexto(connection, episodioId, usuarioId, bloquear = fal
      LEFT JOIN Cita c
        ON c.paciente_id = ec.paciente_id
       AND c.profesional_id = ec.profesional_id
-      AND UPPER(REPLACE(TRIM(c.estado), ' ', '_')) = 'EN_CURSO'
+      AND ${SQL_CITA_DOCUMENTABLE}
       -- El vinculo real manda; la coincidencia por paciente y profesional
       -- queda solo para las citas anteriores a que existiera la columna.
       AND (c.episodio_clinico_id = ec.episodio_clinico_id OR c.episodio_clinico_id IS NULL)
      WHERE ec.episodio_clinico_id = ?
        ${soloDelProfesional ? 'AND p.usuario_id = ?' : ''}
-     ORDER BY c.fecha_hora_inicio DESC
+     -- La atención en curso manda sobre una realizada pendiente de documentar.
+     ORDER BY (c.estado = 'EN_CURSO') DESC, c.fecha_hora_inicio DESC
      LIMIT 1${bloquear ? ' FOR UPDATE' : ''}`,
     soloDelProfesional ? [episodioId, usuarioId] : [episodioId]
   );
@@ -83,6 +112,7 @@ async function profesionalVinculadoAlPaciente(connection, pacienteId, usuarioId)
 }
 
 /**
+ * CU38, CU78 — atención en curso del paciente y su episodio
  * La atención EN CURSO de este profesional con el paciente, sin importar a qué
  * episodio esté atada. Al iniciar la atención (CU38) la cita se amarra al
  * episodio abierto más reciente; si el paciente llega por un motivo nuevo hay
@@ -107,9 +137,10 @@ async function atencionEnCursoDelPaciente(connection, pacienteId, profesionalId)
   return filas[0] || null;
 }
 
+// CU40 — Documentando intervención y respuesta fisiológica (lista de sesiones del profesional)
 exports.listarSesiones = async (req, res) => {
   try {
-    const [sesiones] = await pool.execute(
+    const [sesiones] = await C_Capa_de_Acceso_a_Datos.execute(
       `SELECT
           ec.episodio_clinico_id,
           ec.motivo_consulta,
@@ -131,7 +162,7 @@ exports.listarSesiones = async (req, res) => {
        LEFT JOIN Cita c
          ON c.paciente_id = ec.paciente_id
         AND c.profesional_id = ec.profesional_id
-        AND UPPER(REPLACE(TRIM(c.estado), ' ', '_')) = 'EN_CURSO'
+        AND ${SQL_CITA_DOCUMENTABLE}
        WHERE p.usuario_id = ?
        ORDER BY (c.cita_id IS NOT NULL) DESC, c.fecha_hora_inicio DESC, ec.fecha_inicio DESC`,
       [req.user.usuario_id]
@@ -147,12 +178,13 @@ exports.listarSesiones = async (req, res) => {
   }
 };
 
+// CU40, CU28 — cargar la sesión clínica del episodio (editable o de solo lectura)
 exports.obtenerIntervencion = async (req, res) => {
   const { episodio_id } = req.params;
 
   try {
     let contexto = await obtenerContexto(
-      pool,
+      C_Capa_de_Acceso_a_Datos,
       episodio_id,
       req.user.usuario_id
     );
@@ -162,14 +194,14 @@ exports.obtenerIntervencion = async (req, res) => {
     // otros profesionales en modo bloqueado. Antes esto respondía 403 y la app
     // lo mostraba como una falla del servicio.
     if (!contexto) {
-      const ajeno = await obtenerContexto(pool, episodio_id, req.user.usuario_id, false, false);
+      const ajeno = await obtenerContexto(C_Capa_de_Acceso_a_Datos, episodio_id, req.user.usuario_id, false, false);
       if (!ajeno) {
         return res.status(404).json({
           error: 'EPISODIO_NO_ENCONTRADO',
           mensaje: 'El episodio clínico no existe.'
         });
       }
-      if (!(await profesionalVinculadoAlPaciente(pool, ajeno.paciente_id, req.user.usuario_id))) {
+      if (!(await profesionalVinculadoAlPaciente(C_Capa_de_Acceso_a_Datos, ajeno.paciente_id, req.user.usuario_id))) {
         return res.status(403).json({
           error: 'EPISODIO_NO_ASIGNADO',
           mensaje: 'No estás vinculado a este paciente.'
@@ -179,7 +211,7 @@ exports.obtenerIntervencion = async (req, res) => {
       deOtroProfesional = true;
     }
 
-    const [evoluciones] = await pool.execute(
+    const [evoluciones] = await C_Capa_de_Acceso_a_Datos.execute(
       `SELECT
           evolucion_clinica_id,
           respuesta_fisiologica,
@@ -193,8 +225,7 @@ exports.obtenerIntervencion = async (req, res) => {
       [episodio_id, contexto.profesional_id]
     );
 
-    const editable =
-      !deOtroProfesional && Boolean(contexto.cita_id) && estadoEnCurso(contexto.estado_cita);
+    const editable = !deOtroProfesional && sesionDocumentable(contexto);
     const ultimaEvolucion = evoluciones[0] || null;
 
     // Si la atención en curso está registrada en OTRO episodio del mismo
@@ -203,7 +234,7 @@ exports.obtenerIntervencion = async (req, res) => {
     let atencionOtroEpisodio = null;
     if (!editable && !deOtroProfesional) {
       const atencion = await atencionEnCursoDelPaciente(
-        pool,
+        C_Capa_de_Acceso_a_Datos,
         contexto.paciente_id,
         contexto.profesional_id
       );
@@ -221,8 +252,10 @@ exports.obtenerIntervencion = async (req, res) => {
         mensaje_estado: deOtroProfesional
           ? `Este episodio lo lleva ${contexto.profesional_responsable}. Puedes consultarlo, pero solo su profesional registra en él.`
           : editable
-            ? 'Sesión clínica en curso.'
-            : 'La sesión no está EN CURSO. Los campos se muestran en modo de solo lectura.'
+            ? (estadoEnCurso(contexto.estado_cita)
+              ? 'Sesión clínica en curso.'
+              : 'Atención ya finalizada: estás completando su registro clínico pendiente.')
+            : 'No hay una atención en curso ni pendiente de documentar. Los campos se muestran en modo de solo lectura.'
       },
       evolucion:
         editable && ultimaEvolucion?.inalterable === 1
@@ -238,6 +271,7 @@ exports.obtenerIntervencion = async (req, res) => {
   }
 };
 
+// CU40 — Documentando intervención y respuesta fisiológica
 exports.guardarIntervencion = async (req, res) => {
   const { episodio_id } = req.params;
   const tecnicasAplicadas = String(req.body.tecnicas_aplicadas || '').trim();
@@ -250,7 +284,7 @@ exports.guardarIntervencion = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -270,16 +304,16 @@ exports.guardarIntervencion = async (req, res) => {
       });
     }
 
-    if (!contexto.cita_id || !estadoEnCurso(contexto.estado_cita)) {
+    if (!sesionDocumentable(contexto)) {
       await connection.rollback();
       return res.status(409).json({
         error: 'SESION_NO_EN_CURSO',
-        mensaje: 'La intervención solo puede modificarse mientras la cita está EN CURSO.'
+        mensaje: 'La intervención solo puede registrarse con la atención en curso o pendiente de documentar.'
       });
     }
 
     // CU78 Exc.3 (D12): el episodio cerrado no recibe más intervenciones.
-    if (estaCerrado(contexto.estado_episodio)) {
+    if (C_Motor_Clinico.estaCerrado(contexto.estado_episodio)) {
       await connection.rollback();
       return res.status(409).json({
         error: 'EPISODIO_CERRADO',
@@ -300,10 +334,11 @@ exports.guardarIntervencion = async (req, res) => {
 
     let evolucionId;
 
+    // CU32: avance de metas.
     // El avance de las metas del episodio viaja con la evolución: son la misma
     // sesión. Sin esto el historial mostraba "Porcentaje objetivo: No informado%"
     // aunque las metas estuvieran medidas.
-    const porcentajeObjetivo = await porcentajeObjetivosEpisodio(connection, episodio_id);
+    const porcentajeObjetivo = await C_Motor_Clinico.porcentajeObjetivosEpisodio(connection, episodio_id);
 
     if (existentes.length > 0 && existentes[0].inalterable !== 1) {
       evolucionId = existentes[0].evolucion_clinica_id;
@@ -331,6 +366,7 @@ exports.guardarIntervencion = async (req, res) => {
       evolucionId = resultado.insertId;
     }
 
+    // CU40 Exc. 3: alerta prioritaria en la bitácora
     const alertaPrioritaria = PATRON_ALERTA_PRIORITARIA.test(
       `${tecnicasAplicadas} ${respuestaFisiologica}`
     );
@@ -373,6 +409,7 @@ exports.guardarIntervencion = async (req, res) => {
 };
 
 /**
+ * CU78, CU38 — trasladar la atención en curso al episodio del motivo nuevo
  * PUT /api/clinica/intervenciones/:episodio_id/atencion
  *
  * Pasa la atención EN CURSO a este episodio. Es el caso del paciente que llega
@@ -382,7 +419,7 @@ exports.guardarIntervencion = async (req, res) => {
  */
 exports.trasladarAtencion = async (req, res) => {
   const { episodio_id } = req.params;
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -402,7 +439,7 @@ exports.trasladarAtencion = async (req, res) => {
       });
     }
 
-    if (estaCerrado(contexto.estado_episodio)) {
+    if (C_Motor_Clinico.estaCerrado(contexto.estado_episodio)) {
       await connection.rollback();
       return res.status(409).json({
         error: 'EPISODIO_CERRADO',

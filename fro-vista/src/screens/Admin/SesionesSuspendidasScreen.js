@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Sesiones suspendidas"
+ * Casos de uso: CU41.
+ */
 // Ruta: fro-vista/src/screens/Admin/SesionesSuspendidasScreen.js
 //
 // CU41 Excepción 2 (decisión D11): cuando la validación multi-factor de una
@@ -30,6 +34,7 @@ export default function SesionesSuspendidasScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState('');
 
+  // CU41 — Validando sesión mediante protocolo multi-factor: cargar las sesiones suspendidas
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true); else setCargando(true);
     setError('');
@@ -70,6 +75,7 @@ export default function SesionesSuspendidasScreen() {
     </View>
   );
 
+  // CU41 — cada caso con sus discrepancias y el contacto de ambas partes
   const renderSesion = ({ item }) => {
     const factores = item.motivo_suspension?.factores || [];
     return (

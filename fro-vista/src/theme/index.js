@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/theme/index.js
 //
 // SISTEMA DE DISEÑO DE PUNTO PAZ SALUD — fuente única de verdad.

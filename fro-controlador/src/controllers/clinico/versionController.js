@@ -1,3 +1,6 @@
+// Componente: C_API_REST
+// Casos de uso: CU31, CU30.
+//
 // Ruta: fro-controlador/src/controllers/clinico/versionController.js
 //
 // CU31 — Gestionando versionado de correcciones auditadas.
@@ -5,9 +8,9 @@
 // post-firma se anexan como versiones indexadas aparte, preservando el
 // original íntegro para auditoría.
 
-const pool = require('../../config/database');
-const { leerParametroEntero } = require('../../services/agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
 
+// Apoyo común: IP de origen para la bitácora
 function obtenerIP(req) {
   return (
     req.headers['x-forwarded-for']?.split(',')[0] ||
@@ -16,9 +19,10 @@ function obtenerIP(req) {
   );
 }
 
+// CU31: deja cada corrección o intento denegado en la bitácora de auditoría
 async function auditar(req, accion, datos = {}) {
   try {
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
        VALUES (?, 'Evolucion_Version', ?, ?, ?)`,
       [accion, obtenerIP(req), JSON.stringify(datos), req.user?.usuario_id || null]
@@ -31,11 +35,12 @@ async function auditar(req, accion, datos = {}) {
 // ─────────────────────────────────────────────────────────────────────────────
 // GET /clinica/evolucion/:evolucionId/versiones
 // ─────────────────────────────────────────────────────────────────────────────
+// CU31 — Gestionando versionado de correcciones auditadas
 exports.listarVersiones = async (req, res) => {
   try {
     const { evolucionId } = req.params;
 
-    const [versiones] = await pool.query(
+    const [versiones] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT v.version_id, v.numero_version, v.texto_correccion, v.fecha_creacion,
               CONCAT(COALESCE(u.nombres, ''), ' ', COALESCE(u.apellido_paterno, '')) AS autor
          FROM Evolucion_Version v
@@ -46,7 +51,7 @@ exports.listarVersiones = async (req, res) => {
       [evolucionId]
     );
 
-    const maximo = await leerParametroEntero(pool, 'MAX_VERSIONES_CORRECCION', 5);
+    const maximo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'MAX_VERSIONES_CORRECCION', 5);
 
     res.json({ ok: true, versiones, maximo_versiones: maximo });
   } catch (error) {
@@ -58,6 +63,7 @@ exports.listarVersiones = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // POST /clinica/evolucion/:evolucionId/versiones  { texto }
 // ─────────────────────────────────────────────────────────────────────────────
+// CU31 — Gestionando versionado de correcciones auditadas
 exports.crearVersion = async (req, res) => {
   const { evolucionId } = req.params;
   const texto = (req.body?.texto || '').trim();
@@ -71,7 +77,7 @@ exports.crearVersion = async (req, res) => {
     });
   }
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
   try {
     await connection.beginTransaction();
 
@@ -93,6 +99,7 @@ exports.crearVersion = async (req, res) => {
       });
     }
 
+    // CU30: el original sellado no se toca; solo se le anexan versiones.
     // Precondición: solo registros Finalizados (inalterables) se versionan.
     // Un registro abierto todavía se edita directo, sin correcciones.
     if (!evolucion.inalterable) {
@@ -114,7 +121,7 @@ exports.crearVersion = async (req, res) => {
     }
 
     // Excepción 2: número máximo de versiones alcanzado.
-    const maximo = await leerParametroEntero(connection, 'MAX_VERSIONES_CORRECCION', 5);
+    const maximo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(connection, 'MAX_VERSIONES_CORRECCION', 5);
     const [[conteo]] = await connection.query(
       `SELECT COUNT(*) AS total FROM Evolucion_Version WHERE evolucion_clinica_id = ?`,
       [evolucionId]

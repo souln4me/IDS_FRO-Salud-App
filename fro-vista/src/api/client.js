@@ -1,5 +1,15 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU05, CU08, CU10, CU11, CU14, CU19, CU21, CU25, CU26, CU28,
+ * CU29, CU37, CU38, CU40, CU44, CU45, CU50, CU51, CU52, CU53, CU55, CU56, CU57,
+ * CU58, CU60, CU61, CU62, CU63, CU64, CU65, CU70, CU72, CU73, CU74, CU75, CU78.
+ *
+ * Cliente HTTP de la app: agrega el token a cada llamada y reúne las funciones
+ * que hablan con el servidor. Cada función indica su caso de uso.
+ */
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { registrarLlamada, registrarSalida } from '../utils/registroApp';
 
 // ── Dirección del backend ────────────────────────────────────────────────────
 // En la nube se define EXPO_PUBLIC_API_URL en el archivo .env de fro-vista
@@ -20,15 +30,20 @@ const apiClient = axios.create({
   },
 });
 
+// CU08 — Gestionando sesiones y tokens de acceso
 // Canal para que AuthContext inyecte su logoutSession.
 let _onUnauthorized = null;
 export const setUnauthorizedHandler = (handler) => {
   _onUnauthorized = handler;
 };
 
+// CU08 — Gestionando sesiones y tokens de acceso
 // Interceptor de peticiones: inyecta el token en cada llamada.
 apiClient.interceptors.request.use(
   async (config) => {
+    // Registro de actividad: hora de salida para medir la duración.
+    config.metadata = { inicio: Date.now() };
+    registrarSalida({ metodo: config.method, url: config.url });
     try {
       const token = await SecureStore.getItemAsync('userToken');
       if (token) {
@@ -42,13 +57,33 @@ apiClient.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+// CU08, CU70 — sesión vencida y proveedor externo caído
 // Interceptor de respuestas.
+// Registro de actividad: cada respuesta (o error) queda en la terminal de Expo.
+function anotarLlamada(config, response, sinConexion = false) {
+  const datos = response?.data;
+  registrarLlamada({
+    metodo: config?.method,
+    url: config?.url,
+    estado: response?.status,
+    ms: config?.metadata ? Date.now() - config.metadata.inicio : 0,
+    casoDeUso: response?.headers?.['x-caso-uso'] || null,
+    componentes: response?.headers?.['x-componentes'] || null,
+    codigoError: datos && typeof datos.error === 'string' && /^[A-Z_]+$/.test(datos.error) ? datos.error : null,
+    sinConexion,
+  });
+}
+
 apiClient.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    anotarLlamada(response.config, response);
+    return response;
+  },
   (error) => {
+    anotarLlamada(error.config, error.response, !error.response);
     const status = error.response?.status;
 
-    // 401: token expirado/inválido → logout global (vía AuthContext).
+    // CU08: 401: token expirado/inválido → logout global (vía AuthContext).
     //
     // Solo aplica a peticiones que iban autenticadas: un login con contraseña
     // equivocada también responde 401, y ahí no corresponde avisar que "la
@@ -77,6 +112,7 @@ apiClient.interceptors.response.use(
 // AUTH
 // =========================================================================
 
+// CU05 — Autenticando usuario y resguardando credenciales
 export const login = async (rut, contrasena) => {
   const response = await apiClient.post('/auth/login', {
     rut,
@@ -90,7 +126,8 @@ export const login = async (rut, contrasena) => {
 // CU11 - PACIENTES ASIGNADOS
 // =========================================================================
 
-export const getPacientesProfesional = async (profesionalId, buscar = '') => {
+// CU11 — Visualizando panel interno de gestión profesional
+export const getPacientesProfesional =async (profesionalId, buscar = '') => {
   const response = await apiClient.get(
     `/profesionales/${profesionalId}/pacientes`,
     {
@@ -102,9 +139,10 @@ export const getPacientesProfesional = async (profesionalId, buscar = '') => {
 };
 
 // =========================================================================
-// HISTORIAL PACIENTE
+// CU28 - HISTORIAL PACIENTE
 // =========================================================================
 
+// CU28 — Consolidando historial en ficha clínica electrónica
 export const getHistorialPaciente = async (pacienteId, usuarioId) => {
   const response = await apiClient.get(
     `/profesionales/pacientes/${pacienteId}/historial`,
@@ -116,7 +154,8 @@ export const getHistorialPaciente = async (pacienteId, usuarioId) => {
   return response.data;
 };
 
-export const getPacientesUsuarioProfesional = async (usuarioId, buscar = '') => {
+// CU11 — Visualizando panel interno de gestión profesional
+export const getPacientesUsuarioProfesional =async (usuarioId, buscar = '') => {
   const response = await apiClient.get(
     `/profesionales/usuario/${usuarioId}/pacientes`,
     {
@@ -131,12 +170,14 @@ export const getPacientesUsuarioProfesional = async (usuarioId, buscar = '') => 
 // CU29 - FICHA CLÍNICA / ANAMNESIS
 // =========================================================================
 
-export const getFichaClinica = async (pacienteId) => {
+// CU28, CU29 — leer la ficha clínica del paciente
+export const getFichaClinica =async (pacienteId) => {
   const response = await apiClient.get(`/clinica/ficha/${pacienteId}`);
   return response.data;
 };
 
-export const guardarAnamnesis = async (payload) => {
+// CU29 — Registrando antecedentes en evaluación inicial
+export const guardarAnamnesis =async (payload) => {
   const response = await apiClient.post('/clinica/ficha', payload);
   return response.data;
 };
@@ -145,17 +186,20 @@ export const guardarAnamnesis = async (payload) => {
 // CU40 - INTERVENCION Y RESPUESTA FISIOLOGICA
 // =========================================================================
 
-export const getSesionesIntervencion = async () => {
+// CU40 — Documentando intervención y respuesta fisiológica
+export const getSesionesIntervencion =async () => {
   const response = await apiClient.get('/clinica/intervenciones/sesiones');
   return response.data;
 };
 
-export const getIntervencion = async (episodioId) => {
+// CU40 — Documentando intervención y respuesta fisiológica
+export const getIntervencion =async (episodioId) => {
   const response = await apiClient.get(`/clinica/intervenciones/${episodioId}`);
   return response.data;
 };
 
-export const guardarIntervencion = async (episodioId, payload) => {
+// CU40 — Documentando intervención y respuesta fisiológica
+export const guardarIntervencion =async (episodioId, payload) => {
   const response = await apiClient.put(
     `/clinica/intervenciones/${episodioId}`,
     payload
@@ -163,6 +207,7 @@ export const guardarIntervencion = async (episodioId, payload) => {
   return response.data;
 };
 
+// CU40, CU78 — trasladar la atención en curso a otro episodio
 // Pasa la atención en curso a otro episodio del mismo profesional: el paciente
 // llegó por un motivo nuevo y la sesión se registra en el episodio nuevo.
 export const trasladarAtencion = async (episodioId) => {
@@ -174,12 +219,14 @@ export const trasladarAtencion = async (episodioId) => {
 // CU38 - MARCAS TEMPORALES DE LA PRESTACION
 // =========================================================================
 
+// CU38 — Registrando marcas temporales de la prestación
 // Opción C: la atención que el profesional tiene abierta ahora mismo, o null.
 export const getAtencionEnCurso = async () => {
   const response = await apiClient.get('/citas/atencion-en-curso');
   return response.data;
 };
 
+// CU38 — Registrando marcas temporales de la prestación
 // Sin rango devuelve toda la agenda; con desde/hasta (AAAA-MM-DD) solo esa
 // franja, que es lo que necesita la jornada por día.
 export const getCitasMarcasTemporales = async (rango = {}) => {
@@ -192,12 +239,14 @@ export const getCitasMarcasTemporales = async (rango = {}) => {
   return response.data;
 };
 
-export const getComunas = async () => {
+// CU10, CU14 — catálogo de comunas (comunas donde atiende el profesional)
+export const getComunas =async () => {
   const response = await apiClient.get('/auth/comunas');
   return response.data;
 };
 
-export const iniciarAtencion = async (citaId, payload = {}) => {
+// CU38 — Registrando marcas temporales de la prestación
+export const iniciarAtencion =async (citaId, payload = {}) => {
   const response = await apiClient.post(
     `/citas/marcas-temporales/${citaId}/iniciar`,
     payload
@@ -205,7 +254,8 @@ export const iniciarAtencion = async (citaId, payload = {}) => {
   return response.data;
 };
 
-export const finalizarAtencion = async (citaId, payload = {}) => {
+// CU38 — Registrando marcas temporales de la prestación
+export const finalizarAtencion =async (citaId, payload = {}) => {
   const response = await apiClient.post(
     `/citas/marcas-temporales/${citaId}/finalizar`,
     payload
@@ -217,42 +267,50 @@ export const finalizarAtencion = async (citaId, payload = {}) => {
 //  CU52 — Centro de notificaciones, preferencias y dispositivos push
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getNotificaciones = async (pagina = 0) => {
+// CU52 — Emitiendo notificaciones multicanal
+export const getNotificaciones =async (pagina = 0) => {
   const response = await apiClient.get('/notificaciones', { params: { pagina } });
   return response.data;
 };
 
-export const getResumenNotificaciones = async () => {
+// CU52 — Emitiendo notificaciones multicanal
+export const getResumenNotificaciones =async () => {
   const response = await apiClient.get('/notificaciones/resumen');
   return response.data;
 };
 
-export const marcarNotificacionLeida = async (id) => {
+// CU52 — Emitiendo notificaciones multicanal
+export const marcarNotificacionLeida =async (id) => {
   const response = await apiClient.post(`/notificaciones/${id}/leer`);
   return response.data;
 };
 
-export const marcarTodasLeidas = async () => {
+// CU52 — Emitiendo notificaciones multicanal
+export const marcarTodasLeidas =async () => {
   const response = await apiClient.post('/notificaciones/leer-todas');
   return response.data;
 };
 
-export const getPreferenciasNotificacion = async () => {
+// CU52 — Emitiendo notificaciones multicanal
+export const getPreferenciasNotificacion =async () => {
   const response = await apiClient.get('/notificaciones/preferencias');
   return response.data;
 };
 
-export const guardarPreferenciasNotificacion = async (preferencias) => {
+// CU52 — Emitiendo notificaciones multicanal
+export const guardarPreferenciasNotificacion =async (preferencias) => {
   const response = await apiClient.put('/notificaciones/preferencias', preferencias);
   return response.data;
 };
 
-export const registrarDispositivoPush = async (token, plataforma) => {
+// CU52 — Emitiendo notificaciones multicanal
+export const registrarDispositivoPush =async (token, plataforma) => {
   const response = await apiClient.post('/notificaciones/dispositivo', { token, plataforma });
   return response.data;
 };
 
-export const olvidarDispositivoPush = async (token) => {
+// CU52 — Emitiendo notificaciones multicanal
+export const olvidarDispositivoPush =async (token) => {
   const response = await apiClient.delete('/notificaciones/dispositivo', { data: { token } });
   return response.data;
 };
@@ -261,12 +319,14 @@ export const olvidarDispositivoPush = async (token) => {
 //  CU21 — Confirmación de asistencia
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getConfirmacionesPendientes = async () => {
+// CU21 — Confirmando asistencia a cita de forma distribuida
+export const getConfirmacionesPendientes =async () => {
   const response = await apiClient.get('/citas/confirmaciones/pendientes');
   return response.data;
 };
 
-export const pedirNuevaSolicitudConfirmacion = async (citaId) => {
+// CU21 — Confirmando asistencia a cita de forma distribuida
+export const pedirNuevaSolicitudConfirmacion =async (citaId) => {
   const response = await apiClient.post(`/citas/${citaId}/solicitar-confirmacion`);
   return response.data;
 };
@@ -275,22 +335,26 @@ export const pedirNuevaSolicitudConfirmacion = async (citaId) => {
 //  CU19 — Lista de espera
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getMisListasEspera = async () => {
+// CU19 — Gestionando lista de espera secuencial
+export const getMisListasEspera =async () => {
   const response = await apiClient.get('/citas/mis-listas-espera');
   return response.data;
 };
 
-export const inscribirseListaEspera = async (citaId) => {
+// CU19 — Gestionando lista de espera secuencial
+export const inscribirseListaEspera =async (citaId) => {
   const response = await apiClient.post(`/citas/${citaId}/lista-espera`);
   return response.data;
 };
 
-export const salirListaEspera = async (citaId) => {
+// CU19 — Gestionando lista de espera secuencial
+export const salirListaEspera =async (citaId) => {
   const response = await apiClient.delete(`/citas/${citaId}/lista-espera`);
   return response.data;
 };
 
-export const tomarCupoListaEspera = async (listaEsperaId) => {
+// CU19 — Gestionando lista de espera secuencial
+export const tomarCupoListaEspera =async (listaEsperaId) => {
   const response = await apiClient.post(`/citas/lista-espera/${listaEsperaId}/tomar`);
   return response.data;
 };
@@ -299,37 +363,63 @@ export const tomarCupoListaEspera = async (listaEsperaId) => {
 //  CU25 / CU26 / CU50 — Triaje inteligente, derivación y seguimiento
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getReportePreclinico = async (pacienteId) => {
+// CU25 — Sintetizando reporte de hallazgos pre-clínicos
+export const getReportePreclinico =async (pacienteId) => {
   const response = await apiClient.get(`/clinica/pacientes/${pacienteId}/reporte-preclinico`);
   return response.data;
 };
 
-export const getMiDerivacion = async () => {
+// CU26 — Sugiriendo derivación por especialidad clínica
+export const getMiDerivacion =async () => {
   const response = await apiClient.get('/clinica/mi-derivacion');
   return response.data;
 };
 
-export const enviarReporteSintomas = async (payload) => {
+// CU51: avance hacia el umbral de egreso, contenidos de prevención e informe de alta.
+export const getMiAlta = async () => {
+  const response = await apiClient.get('/clinica/mi-alta');
+  return response.data;
+};
+
+// CU37: resumen del episodio antes de emitir el alta, y la emisión.
+export const getInformeAlta = async (episodioId) => {
+  const response = await apiClient.get(`/clinica/episodio/${episodioId}/informe-alta`);
+  return response.data;
+};
+// CU37 — Emitiendo informe de alta y cierre de episodio
+export const emitirInformeAlta =async (episodioId, pautasContinuidad) => {
+  const response = await apiClient.post(`/clinica/episodio/${episodioId}/informe-alta`, {
+    pautas_continuidad: pautasContinuidad,
+  });
+  return response.data;
+};
+
+// CU50 — Generando y notificando alerta por deterioro clínico
+export const enviarReporteSintomas =async (payload) => {
   const response = await apiClient.post('/clinica/sintomas', payload);
   return response.data;
 };
 
-export const getMisSintomas = async () => {
+// CU50 — Generando y notificando alerta por deterioro clínico
+export const getMisSintomas =async () => {
   const response = await apiClient.get('/clinica/mis-sintomas');
   return response.data;
 };
 
-export const getSintomasDePaciente = async (pacienteId) => {
+// CU50 — Generando y notificando alerta por deterioro clínico
+export const getSintomasDePaciente =async (pacienteId) => {
   const response = await apiClient.get(`/clinica/pacientes/${pacienteId}/sintomas`);
   return response.data;
 };
 
-export const getAlertasClinicas = async () => {
+// CU50 — Generando y notificando alerta por deterioro clínico
+export const getAlertasClinicas =async () => {
   const response = await apiClient.get('/clinica/alertas');
   return response.data;
 };
 
-export const revisarAlertaClinica = async (alertaId) => {
+// CU50 — Generando y notificando alerta por deterioro clínico
+export const revisarAlertaClinica =async (alertaId) => {
   const response = await apiClient.post(`/clinica/alertas/${alertaId}/revisar`);
   return response.data;
 };
@@ -338,7 +428,8 @@ export const revisarAlertaClinica = async (alertaId) => {
 //  CU44 / CU45 — Adherencia y panel de progreso
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getMiProgreso = async ({ desde, hasta } = {}) => {
+// CU44, CU45 — progreso y adherencia del propio paciente
+export const getMiProgreso =async ({ desde, hasta } = {}) => {
   const params = {};
   if (desde) params.desde = desde;
   if (hasta) params.hasta = hasta;
@@ -346,7 +437,8 @@ export const getMiProgreso = async ({ desde, hasta } = {}) => {
   return response.data;
 };
 
-export const getAdherenciaDePaciente = async (pacienteId) => {
+// CU44 — Actualizando indicadores de adherencia y síntomas
+export const getAdherenciaDePaciente =async (pacienteId) => {
   const response = await apiClient.get(`/clinica/pacientes/${pacienteId}/adherencia`);
   return response.data;
 };
@@ -355,39 +447,46 @@ export const getAdherenciaDePaciente = async (pacienteId) => {
 //  CU53 / CU57 — Mensajería clínica y diccionario de términos restringidos
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getMisConversaciones = async () => {
+// CU53 — Comunicando mediante mensajería clínica cifrada
+export const getMisConversaciones =async () => {
   const response = await apiClient.get('/clinica/mis-conversaciones');
   return response.data;
 };
 
-export const getMensajes = async (episodioId, desdeId = 0) => {
+// CU53 — Comunicando mediante mensajería clínica cifrada
+export const getMensajes =async (episodioId, desdeId = 0) => {
   const response = await apiClient.get(`/clinica/episodio/${episodioId}/mensajes`, {
     params: { desde_id: desdeId },
   });
   return response.data;
 };
 
-export const enviarMensajeClinico = async (episodioId, contenido) => {
+// CU53, CU57 — enviar mensaje; el servidor filtra términos restringidos
+export const enviarMensajeClinico =async (episodioId, contenido) => {
   const response = await apiClient.post(`/clinica/episodio/${episodioId}/mensajes`, { contenido });
   return response.data;
 };
 
-export const getPalabrasRestringidas = async () => {
+// CU57 — Filtrando automáticamente contenido restringido
+export const getPalabrasRestringidas =async () => {
   const response = await apiClient.get('/parametros/palabras-restringidas');
   return response.data;
 };
 
-export const agregarPalabraRestringida = async (termino, categoria) => {
+// CU57 — Filtrando automáticamente contenido restringido
+export const agregarPalabraRestringida =async (termino, categoria) => {
   const response = await apiClient.post('/parametros/palabras-restringidas', { termino, categoria });
   return response.data;
 };
 
-export const alternarPalabraRestringida = async (id, activa) => {
+// CU57 — Filtrando automáticamente contenido restringido
+export const alternarPalabraRestringida =async (id, activa) => {
   const response = await apiClient.put(`/parametros/palabras-restringidas/${id}`, { activa });
   return response.data;
 };
 
-export const eliminarPalabraRestringida = async (id) => {
+// CU57 — Filtrando automáticamente contenido restringido
+export const eliminarPalabraRestringida =async (id) => {
   const response = await apiClient.delete(`/parametros/palabras-restringidas/${id}`);
   return response.data;
 };
@@ -396,12 +495,25 @@ export const eliminarPalabraRestringida = async (id) => {
 //  CU55 / CU56 / CU58 — Evaluación, moderación y calificación
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const registrarEvaluacion = async (citaId, { puntuacion, resena }) => {
-  const response = await apiClient.post(`/citas/${citaId}/evaluacion`, { puntuacion, resena });
+// CU55 — Evaluando satisfacción post-sesión
+// Por sesión: { satisfecho, resena }. La nota en estrellas va por tratamiento.
+export const registrarEvaluacion = async (citaId, datos) => {
+  const response = await apiClient.post(`/citas/${citaId}/evaluacion`, datos);
   return response.data;
 };
 
-export const getEvaluacionesPendientes = async () => {
+// CU55 (correcciones Inc 4): calificación general al cerrar el tratamiento.
+export const getTratamientosPorEvaluar = async () => {
+  const response = await apiClient.get('/clinica/tratamientos/por-evaluar');
+  return response.data;
+};
+export const registrarEvaluacionTratamiento = async (episodioId, { puntuacion, resena }) => {
+  const response = await apiClient.post(`/clinica/episodio/${episodioId}/evaluacion`, { puntuacion, resena });
+  return response.data;
+};
+
+// CU55 — Evaluando satisfacción post-sesión
+export const getEvaluacionesPendientes =async () => {
   const response = await apiClient.get('/citas/evaluaciones/pendientes');
   return response.data;
 };
@@ -412,17 +524,20 @@ export const getPerfilPublicoProfesional = async (profesionalId) => {
   return response.data;
 };
 
-export const getResenasProfesional = async (profesionalId) => {
+// CU58 — Calculando y visualizando calificación profesional
+export const getResenasProfesional =async (profesionalId) => {
   const response = await apiClient.get(`/profesionales/${profesionalId}/resenas`);
   return response.data;
 };
 
-export const getBandejaModeracion = async (estado = 'PENDIENTE') => {
+// CU56 — Moderando testimonios públicos
+export const getBandejaModeracion =async (estado = 'PENDIENTE') => {
   const response = await apiClient.get('/evaluaciones/moderacion', { params: { estado } });
   return response.data;
 };
 
-export const moderarResena = async (evaluacionId, decision, motivo) => {
+// CU56 — Moderando testimonios públicos
+export const moderarResena =async (evaluacionId, decision, motivo) => {
   const response = await apiClient.post(`/evaluaciones/${evaluacionId}/moderar`, {
     decision,
     motivo,
@@ -434,17 +549,22 @@ export const moderarResena = async (evaluacionId, decision, motivo) => {
 //  CU60 / CU61 — Soporte técnico
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getCategoriasSoporte = async () => {
+// CU60 — Registrando y siguiendo solicitudes de soporte
+export const getCategoriasSoporte =async () => {
   const response = await apiClient.get('/soporte/categorias');
   return response.data;
 };
 
-export const getMisTickets = async () => {
+// CU60 — Registrando y siguiendo solicitudes de soporte
+export const getMisTickets =async () => {
   const response = await apiClient.get('/soporte/mis-tickets');
   return response.data;
 };
 
-/** El adjunto es opcional; cuando viene, se manda como formulario multiparte. */
+/**
+ * CU60 — Registrando y siguiendo solicitudes de soporte
+ * El adjunto es opcional; cuando viene, se manda como formulario multiparte.
+ */
 export const crearTicketSoporte = async ({ categoria, descripcion, adjunto }) => {
   if (!adjunto) {
     const response = await apiClient.post('/soporte/tickets', { categoria, descripcion });
@@ -464,24 +584,82 @@ export const crearTicketSoporte = async ({ categoria, descripcion, adjunto }) =>
   return response.data;
 };
 
-export const getBandejaSoporte = async ({ estado = '', soloMios = false } = {}) => {
+// CU65: derivaciones internas entre especialidades.
+export const getOpcionesDerivacion = async (episodioId) => {
+  const response = await apiClient.get(`/clinica/episodio/${episodioId}/derivaciones/opciones`);
+  return response.data;
+};
+export const getDerivacionesEpisodio = async (episodioId) => {
+  const response = await apiClient.get(`/clinica/episodio/${episodioId}/derivaciones`);
+  return response.data;
+};
+export const crearDerivacion = async (episodioId, datos) => {
+  const response = await apiClient.post(`/clinica/episodio/${episodioId}/derivaciones`, datos);
+  return response.data;
+};
+export const getDerivacionesRecibidas = async () => {
+  const response = await apiClient.get('/clinica/derivaciones/recibidas');
+  return response.data;
+};
+export const responderDerivacion = async (derivacionId, accion, comentario) => {
+  const response = await apiClient.post(`/clinica/derivaciones/${derivacionId}/respuesta`, { accion, comentario });
+  return response.data;
+};
+export const cerrarDerivacion = async (derivacionId) => {
+  const response = await apiClient.post(`/clinica/derivaciones/${derivacionId}/cierre`);
+  return response.data;
+};
+
+// CU72: interfaz de contingencia de bonos (profesional y administrador).
+export const getContingenciaBonos = async () => {
+  const response = await apiClient.get('/pagos/contingencia');
+  return response.data;
+};
+export const registrarBonoContingencia = async (citaId, datos) => {
+  const response = await apiClient.post(`/pagos/citas/${citaId}/bono-contingencia`, datos);
+  return response.data;
+};
+export const cambiarModoContingencia = async (activo) => {
+  const response = await apiClient.put('/pagos/contingencia/modo', { activo });
+  return response.data;
+};
+export const regularizarBono = async (bonoId, financiadorId) => {
+  const response = await apiClient.post(`/pagos/bonos/${bonoId}/regularizar`, financiadorId ? { financiador_id: financiadorId } : {});
+  return response.data;
+};
+
+// CU62: bandeja de eventos críticos (administrador) y acuse de recibo.
+export const getEventosCriticos = async (estado = 'PENDIENTE') => {
+  const response = await apiClient.get('/gestion/eventos-criticos', { params: { estado } });
+  return response.data;
+};
+export const acusarEventoCritico = async (eventoId) => {
+  const response = await apiClient.post(`/gestion/eventos-criticos/${eventoId}/acuse`);
+  return response.data;
+};
+
+// CU61 — Enrutando automáticamente solicitudes por categoría
+export const getBandejaSoporte =async ({ estado = '', soloMios = false } = {}) => {
   const response = await apiClient.get('/soporte/bandeja', {
     params: { estado, solo_mios: soloMios ? 1 : 0 },
   });
   return response.data;
 };
 
-export const actualizarTicketSoporte = async (id, payload) => {
+// CU61 — Enrutando automáticamente solicitudes por categoría
+export const actualizarTicketSoporte =async (id, payload) => {
   const response = await apiClient.put(`/soporte/tickets/${id}`, payload);
   return response.data;
 };
 
-export const getMisAreasSoporte = async () => {
+// CU61 — Enrutando automáticamente solicitudes por categoría
+export const getMisAreasSoporte =async () => {
   const response = await apiClient.get('/soporte/areas');
   return response.data;
 };
 
-export const guardarMisAreasSoporte = async (areas) => {
+// CU61 — Enrutando automáticamente solicitudes por categoría
+export const guardarMisAreasSoporte =async (areas) => {
   const response = await apiClient.put('/soporte/areas', { areas });
   return response.data;
 };
@@ -490,7 +668,8 @@ export const guardarMisAreasSoporte = async (areas) => {
 //  CU63 / CU64 — Panel de gestión e informes
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getKPIs = async ({ desde, hasta } = {}) => {
+// CU64 — Visualizando dashboard de monitoreo de KPIs
+export const getKPIs =async ({ desde, hasta } = {}) => {
   const params = {};
   if (desde) params.desde = desde;
   if (hasta) params.hasta = hasta;
@@ -498,12 +677,16 @@ export const getKPIs = async ({ desde, hasta } = {}) => {
   return response.data;
 };
 
-export const getTiposDeInforme = async () => {
+// CU63 — Generando y exportando reportes operativos
+export const getTiposDeInforme =async () => {
   const response = await apiClient.get('/gestion/informes');
   return response.data;
 };
 
-/** URL absoluta del informe: la descarga la hace expo-file-system con el token. */
+/**
+ * CU63 — Generando y exportando reportes operativos
+ * URL absoluta del informe: la descarga la hace expo-file-system con el token.
+ */
 export const urlInforme = (tipo, { desde, hasta, formato, tomo }) => {
   const parametros = new URLSearchParams();
   if (desde) parametros.append('desde', desde);
@@ -517,17 +700,20 @@ export const urlInforme = (tipo, { desde, hasta, formato, tomo }) => {
 //  CU73 / CU74 / CU75 — Comercializacion, actualizacion y liquidaciones
 // ─────────────────────────────────────────────────────────────────────────────
 
-export const getOpcionesDeCompra = async (citaId) => {
+// CU73 — Comercializando prestaciones con restricción de cobro anticipado
+export const getOpcionesDeCompra =async (citaId) => {
   const response = await apiClient.get(`/finanzas/citas/${citaId}/opciones`);
   return response.data;
 };
 
-export const comprarPrestacion = async (citaId, payload) => {
+// CU73 — Comercializando prestaciones con restricción de cobro anticipado
+export const comprarPrestacion =async (citaId, payload) => {
   const response = await apiClient.post(`/finanzas/citas/${citaId}/comprar`, payload);
   return response.data;
 };
 
-export const actualizarAPaquete = async (citaId, { sesiones, metodo_pago }) => {
+// CU74 — Actualizando y devolviendo transacciones financieras
+export const actualizarAPaquete =async (citaId, { sesiones, metodo_pago }) => {
   const response = await apiClient.post(`/finanzas/citas/${citaId}/actualizar-a-paquete`, {
     sesiones,
     metodo_pago,
@@ -535,17 +721,20 @@ export const actualizarAPaquete = async (citaId, { sesiones, metodo_pago }) => {
   return response.data;
 };
 
-export const getLiquidaciones = async (anio, mes) => {
+// CU75 — Liquidando ganancias en panel financiero
+export const getLiquidaciones =async (anio, mes) => {
   const response = await apiClient.get('/finanzas/liquidaciones', { params: { anio, mes } });
   return response.data;
 };
 
-export const emitirLiquidacion = async (payload) => {
+// CU75 — Liquidando ganancias en panel financiero
+export const emitirLiquidacion =async (payload) => {
   const response = await apiClient.post('/finanzas/liquidaciones', payload);
   return response.data;
 };
 
-export const getMisLiquidaciones = async () => {
+// CU75 — Liquidando ganancias en panel financiero
+export const getMisLiquidaciones =async () => {
   const response = await apiClient.get('/finanzas/mis-liquidaciones');
   return response.data;
 };

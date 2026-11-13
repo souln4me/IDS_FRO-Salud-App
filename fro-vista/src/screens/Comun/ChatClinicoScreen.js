@@ -1,7 +1,19 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mensajes"
+ * Casos de uso: CU53, CU57, CU35.
+ */
 // Ruta: fro-vista/src/screens/Comun/ChatClinicoScreen.js
 //
-// CU53 — Conversación clínica entre el paciente y su profesional, colgada del
-// episodio. CU57 — cada envío pasa antes por el filtro de contenido.
+// CU53 — Conversación clínica entre el paciente y su profesional. Hay UNA
+// conversación por pareja paciente–profesional (antes había una por episodio):
+// sigue abierta para escribir mientras exista un episodio abierto o una cita
+// vigente entre ambos; si no, queda como historial de solo lectura.
+// CU57 — cada envío pasa antes por el filtro de contenido.
+//
+// La pantalla llega con { pacienteId, profesionalId, nombreOtro }. Por
+// compatibilidad también acepta { episodioId } (avisos antiguos) o, para el
+// profesional, solo { pacienteId } (desde la ficha): en esos casos primero
+// averigua la pareja y luego usa las rutas por pareja.
 //
 // No usa WebSockets: la pantalla vuelve a preguntar por los mensajes
 // posteriores al último que ya tiene, cada pocos segundos. Se decidió así
@@ -15,20 +27,37 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  View, Text, TextInput, TouchableOpacity, ScrollView,
+  View, Text, TextInput, TouchableOpacity, ScrollView, Modal, Pressable,
   ActivityIndicator, StyleSheet,
 } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
+import * as DocumentPicker from 'expo-document-picker';
+import * as ImagePicker from 'expo-image-picker';
 
-import { getMensajes, enviarMensajeClinico } from '../../api/client';
+import apiClient from '../../api/client';
+import Avatar from '../../components/Avatar';
+import Icono from '../../components/Icono';
+import AdjuntoChat from '../../components/AdjuntoChat';
 import DialogoAviso from '../../components/DialogoAviso';
 import useEspacioInferior from '../../utils/useEspacioInferior';
 import ErrorRetry from '../../components/ErrorRetry';
-import { formatearFecha, formatearFechaHora, formatearHora } from '../../utils/fechas';
-import { colores, espacio, radio, tipografia, interaccion } from '../../theme';
+import { formatearFecha, formatearHora } from '../../utils/fechas';
+import { colores, espacio, piezas, radio, tipografia, interaccion, sombra } from '../../theme';
 
 const SEGUNDOS_ENTRE_CONSULTAS = 6;
-const clavePendientes = (episodioId) => `cu53_pendientes_${episodioId}`;
+const clavePendientes = (pacienteId, profesionalId) => `cu53_pendientes_${pacienteId}_${profesionalId}`;
+// Clave de la versión anterior (un chat por episodio): lo que haya quedado
+// retenido ahí se traslada a la clave de la pareja.
+const claveAntigua = (episodioId) => `cu53_pendientes_${episodioId}`;
+
+// Mismos formatos que acepta el servidor para los adjuntos del chat.
+const TIPOS_ARCHIVO = [
+  'application/pdf',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'image/*',
+  'video/mp4',
+  'video/quicktime',
+];
 
 /** "Hoy", "Ayer" o la fecha, para separar la conversación por día (hora de Chile). */
 function etiquetaDia(momento) {
@@ -39,10 +68,28 @@ function etiquetaDia(momento) {
   return dia;
 }
 
+/** La galería no siempre informa el nombre del archivo: se arma uno con su extensión. */
+function nombreDeImagen(activo) {
+  if (activo.fileName) return activo.fileName;
+  const subtipo = (activo.mimeType || 'image/jpeg').split('/')[1] || 'jpg';
+  return `imagen_${Date.now()}.${subtipo === 'jpeg' ? 'jpg' : subtipo}`;
+}
+
+/** Sin respuesta del servidor o error interno: vale la pena reintentar solo. */
+const esFalloDeConexion = (err) => !err.response || err.response.status >= 500;
+
 export default function ChatClinicoScreen({ route, navigation }) {
-  const episodioId = route?.params?.episodioId;
-  const nombreOtro = route?.params?.nombreOtro;
+  const params = route?.params || {};
+  const episodioId = params.episodioId;
   const espacioInferior = useEspacioInferior();
+
+  // Pareja de la conversación. Si no llega completa, se resuelve al abrir.
+  const [pareja, setPareja] = useState(
+    params.pacienteId && params.profesionalId
+      ? { pacienteId: params.pacienteId, profesionalId: params.profesionalId }
+      : null
+  );
+  const [nombreOtro, setNombreOtro] = useState(params.nombreOtro || '');
 
   const [mensajes, setMensajes] = useState([]);
   const [pendientes, setPendientes] = useState([]);
@@ -52,6 +99,9 @@ export default function ChatClinicoScreen({ route, navigation }) {
 
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
+  // Archivo que se está subiendo ({ nombre }), para la burbuja de carga.
+  const [subiendo, setSubiendo] = useState(null);
+  const [menuAdjunto, setMenuAdjunto] = useState(false);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState(false);
   const [aviso, setAviso] = useState(null);
@@ -59,22 +109,23 @@ export default function ChatClinicoScreen({ route, navigation }) {
   const refScroll = useRef(null);
   const ultimoId = useRef(0);
 
+  const rutaChat = pareja ? `/clinica/chat/${pareja.pacienteId}/${pareja.profesionalId}` : null;
+
   useEffect(() => {
     navigation.setOptions?.({ title: nombreOtro ? `Chat con ${nombreOtro}` : 'Mensajes' });
   }, [navigation, nombreOtro]);
 
-  // Barra del episodio con un acceso a la derecha: el profesional va a la
-  // ficha clínica del paciente; el paciente, al perfil del profesional.
+  // Cinta superior con un acceso a la derecha: el profesional va a la ficha
+  // clínica del paciente; el paciente, al perfil del profesional.
   const esProfesional = conversacion?.papel === 'PROFESIONAL' && Boolean(conversacion?.paciente_id);
   const esPaciente = conversacion?.papel === 'PACIENTE' && Boolean(conversacion?.profesional_id);
-  const conBarraEpisodio = esProfesional || esPaciente;
 
+  // CU28, CU10 — ir a la ficha clínica del paciente o al perfil del profesional
   const abrirAcceso = () => {
     if (esProfesional) {
       navigation.navigate('FichaClinica', {
         pacienteId: conversacion.paciente_id,
         nombrePaciente: conversacion.con || nombreOtro,
-        episodioId: String(conversacion.episodio_clinico_id),
       });
     } else if (esPaciente) {
       navigation.navigate('PerfilProfesional', {
@@ -84,21 +135,71 @@ export default function ChatClinicoScreen({ route, navigation }) {
     }
   };
 
-  /** Trae lo nuevo desde el último mensaje conocido. */
+  /**
+   * CU53 — Comunicando mediante mensajería clínica cifrada
+   * Averigua la pareja cuando la pantalla no la trae completa:
+   *  · aviso antiguo con episodioId → la ruta del episodio la informa;
+   *  · profesional con solo pacienteId → el servidor dice cuál es su chat.
+   */
+  const resolverPareja = useCallback(async () => {
+    setError(false);
+    setCargando(true);
+    try {
+      if (episodioId) {
+        const { data } = await apiClient.get(`/clinica/episodio/${episodioId}/mensajes`, {
+          params: { desde_id: 0 },
+        });
+        const c = data.conversacion || {};
+        if (!c.paciente_id || !c.profesional_id) throw new Error('Conversación sin pareja');
+        if (c.con) setNombreOtro((previo) => previo || c.con);
+        setPareja({ pacienteId: c.paciente_id, profesionalId: c.profesional_id });
+      } else if (params.pacienteId) {
+        const { data } = await apiClient.get(`/clinica/chat/con/${params.pacienteId}`);
+        if (data.con) setNombreOtro((previo) => previo || data.con);
+        setPareja({ pacienteId: data.paciente_id, profesionalId: data.profesional_id });
+      } else {
+        throw new Error('Faltan datos para abrir la conversación');
+      }
+    } catch {
+      setError(true);
+      setCargando(false);
+    }
+  }, [episodioId, params.pacienteId]);
+
+  useEffect(() => {
+    if (!pareja) resolverPareja();
+    // Solo al abrir: después la pareja ya queda fija.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /**
+   * CU53 — Comunicando mediante mensajería clínica cifrada
+   * Trae lo nuevo desde el último mensaje conocido.
+   */
   const consultar = useCallback(
     async (primeraVez = false) => {
-      if (!episodioId) return;
+      if (!rutaChat) return;
       try {
-        const datos = await getMensajes(episodioId, primeraVez ? 0 : ultimoId.current);
+        const { data: datos } = await apiClient.get(`${rutaChat}/mensajes`, {
+          params: { desde_id: primeraVez ? 0 : ultimoId.current },
+        });
         setConversacion(datos.conversacion || null);
+        if (datos.conversacion?.con) setNombreOtro(datos.conversacion.con);
         setPuedeEscribir(datos.puede_escribir !== false);
         setMotivoBloqueo(datos.motivo_bloqueo || null);
         setError(false);
 
         const llegaron = datos.mensajes || [];
         if (llegaron.length > 0) {
-          ultimoId.current = llegaron[llegaron.length - 1].mensaje_id;
-          setMensajes((previos) => (primeraVez ? llegaron : [...previos, ...llegaron]));
+          ultimoId.current = Math.max(ultimoId.current, llegaron[llegaron.length - 1].mensaje_id);
+          // Dos consultas simultáneas (el reloj y un envío) pueden traer lo
+          // mismo: solo se agrega lo que es más nuevo que lo ya mostrado.
+          setMensajes((previos) => {
+            if (primeraVez) return llegaron;
+            const tope = previos.length ? previos[previos.length - 1].mensaje_id : 0;
+            const nuevos = llegaron.filter((m) => m.mensaje_id > tope);
+            return nuevos.length ? [...previos, ...nuevos] : previos;
+          });
         }
       } catch (err) {
         // Un fallo puntual de la consulta no vacía la conversación: se marca
@@ -108,15 +209,27 @@ export default function ChatClinicoScreen({ route, navigation }) {
         if (primeraVez) setCargando(false);
       }
     },
-    [episodioId]
+    [rutaChat]
   );
 
-  /** Reintenta lo que quedó retenido en el teléfono (Excepción 2). */
+  /**
+   * CU53 — reenviar los mensajes retenidos
+   * Reintenta lo que quedó retenido en el teléfono (Excepción 2).
+   */
   const reintentarPendientes = useCallback(async () => {
+    if (!pareja) return;
+    const clave = clavePendientes(pareja.pacienteId, pareja.profesionalId);
     let cola = [];
     try {
-      const guardado = await SecureStore.getItemAsync(clavePendientes(episodioId));
+      const guardado = await SecureStore.getItemAsync(clave);
       cola = guardado ? JSON.parse(guardado) : [];
+      if (episodioId) {
+        const antiguo = await SecureStore.getItemAsync(claveAntigua(episodioId));
+        if (antiguo) {
+          cola = [...cola, ...JSON.parse(antiguo)];
+          await SecureStore.deleteItemAsync(claveAntigua(episodioId)).catch(() => {});
+        }
+      }
     } catch {
       cola = [];
     }
@@ -125,20 +238,19 @@ export default function ChatClinicoScreen({ route, navigation }) {
     const quedan = [];
     for (const pendiente of cola) {
       try {
-        await enviarMensajeClinico(episodioId, pendiente.contenido);
+        await apiClient.post(`${rutaChat}/mensajes`, { contenido: pendiente.contenido });
       } catch {
         quedan.push(pendiente);
       }
     }
 
     setPendientes(quedan);
-    await SecureStore.setItemAsync(clavePendientes(episodioId), JSON.stringify(quedan)).catch(
-      () => {}
-    );
+    await SecureStore.setItemAsync(clave, JSON.stringify(quedan)).catch(() => {});
     if (quedan.length < cola.length) await consultar();
-  }, [episodioId, consultar]);
+  }, [pareja, rutaChat, episodioId, consultar]);
 
   useEffect(() => {
+    if (!rutaChat) return undefined;
     let vivo = true;
     (async () => {
       await consultar(true);
@@ -149,53 +261,202 @@ export default function ChatClinicoScreen({ route, navigation }) {
       consultar();
     }, SEGUNDOS_ENTRE_CONSULTAS * 1000);
 
+    // Al volver de Documentos (o del visor) se consulta de inmediato, para
+    // que el documento recién enviado aparezca sin esperar el reloj.
+    const quitarFoco = navigation.addListener?.('focus', () => consultar());
+
     return () => {
       vivo = false;
       clearInterval(reloj);
+      quitarFoco?.();
     };
-  }, [consultar, reintentarPendientes]);
+  }, [rutaChat, consultar, reintentarPendientes, navigation]);
 
+  /**
+   * CU53, CU57 — avisar si el filtro rechazó el mensaje o el chat es de solo lectura
+   * Respuestas del servidor comunes al texto y a los adjuntos.
+   */
+  const avisarRechazo = (respuesta, tituloPorDefecto) => {
+    if (respuesta?.error === 'CONTENIDO_RESTRINGIDO' || respuesta?.error === 'VACIO') {
+      setAviso({ tono: 'alerta', titulo: 'Mensaje no permitido', mensaje: respuesta.mensaje });
+    } else if (
+      respuesta?.error === 'CONVERSACION_SOLO_LECTURA' ||
+      respuesta?.error === 'EPISODIO_CERRADO'
+    ) {
+      setPuedeEscribir(false);
+      setMotivoBloqueo(respuesta.mensaje);
+      setAviso({ tono: 'info', titulo: 'Conversación de solo lectura', mensaje: respuesta.mensaje });
+    } else {
+      setAviso({
+        tono: 'alerta',
+        titulo: tituloPorDefecto,
+        mensaje: respuesta?.mensaje || 'Inténtalo de nuevo en unos momentos.',
+      });
+    }
+  };
+
+  // CU53, CU57 — enviar el mensaje; el servidor lo pasa por el filtro de contenido
   const enviar = async () => {
     const contenido = texto.trim();
     // Excepción 1 del CU57: sin texto imprimible no se llama al servidor.
-    if (!contenido) return;
+    if (!contenido || !rutaChat) return;
 
     setEnviando(true);
     setTexto('');
     try {
-      await enviarMensajeClinico(episodioId, contenido);
+      await apiClient.post(`${rutaChat}/mensajes`, { contenido });
       await consultar();
     } catch (err) {
       const respuesta = err.response?.data;
 
-      // CU57: el filtro rechazó el texto. No se reintenta: hay que reescribirlo.
-      if (respuesta?.error === 'CONTENIDO_RESTRINGIDO' || respuesta?.error === 'VACIO') {
-        setTexto(contenido);
-        setAviso({
-          tono: 'alerta',
-          titulo: 'Mensaje no permitido',
-          mensaje: respuesta.mensaje,
-        });
-      } else if (respuesta?.error === 'EPISODIO_CERRADO') {
-        setPuedeEscribir(false);
-        setMotivoBloqueo(respuesta.mensaje);
-        setAviso({ tono: 'info', titulo: 'Conversación cerrada', mensaje: respuesta.mensaje });
-      } else {
-        // Excepción 2 del CU53: el mensaje queda retenido y se reintenta solo.
+      if (esFalloDeConexion(err)) {
+        // Excepción 2 del CU53: el mensaje queda retenido y se reintenta solo
+        // (sin conexión, servidor caído o envío retenido por el servidor).
         const pendiente = { contenido, momento: new Date().toISOString() };
         const cola = [...pendientes, pendiente];
         setPendientes(cola);
-        await SecureStore.setItemAsync(clavePendientes(episodioId), JSON.stringify(cola)).catch(
-          () => {}
-        );
+        await SecureStore.setItemAsync(
+          clavePendientes(pareja.pacienteId, pareja.profesionalId),
+          JSON.stringify(cola)
+        ).catch(() => {});
         setAviso({
           tono: 'alerta',
           titulo: 'Mensaje retenido',
           mensaje: 'No hay conexión con el servidor. Tu mensaje queda guardado y se envía solo.',
         });
+      } else {
+        // CU57: si el filtro rechazó el texto no se reintenta: se devuelve al
+        // campo para reescribirlo.
+        if (respuesta?.error === 'CONTENIDO_RESTRINGIDO' || respuesta?.error === 'VACIO') {
+          setTexto(contenido);
+        }
+        avisarRechazo(respuesta, 'Mensaje no enviado');
       }
     } finally {
       setEnviando(false);
+    }
+  };
+
+  // ── Adjuntos ──────────────────────────────────────────────────────────────
+  /**
+   * CU53 — enviar un archivo adjunto en el chat
+   * Sube el archivo elegido; si hay texto escrito, viaja junto con él.
+   */
+  const subirAdjunto = async (archivo) => {
+    if (!rutaChat) return;
+    const contenido = texto.trim();
+    setSubiendo({ nombre: archivo.name });
+    try {
+      const formulario = new FormData();
+      formulario.append('archivo', {
+        uri: archivo.uri,
+        name: archivo.name,
+        type: archivo.mimeType || 'application/octet-stream',
+      });
+      if (contenido) formulario.append('contenido', contenido);
+
+      await apiClient.post(`${rutaChat}/adjuntos`, formulario, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        transformRequest: (d) => d,
+      });
+      if (contenido) setTexto('');
+      await consultar();
+    } catch (err) {
+      const respuesta = err.response?.data;
+      const titulos = {
+        ARCHIVO_MUY_GRANDE: 'Archivo muy grande',
+        FORMATO_NO_PERMITIDO: 'Formato no permitido',
+        CARGA_INTERRUMPIDA: 'Envío interrumpido',
+      };
+      if (titulos[respuesta?.error]) {
+        setAviso({ tono: 'alerta', titulo: titulos[respuesta.error], mensaje: respuesta.mensaje });
+      } else if (!err.response) {
+        setAviso({
+          tono: 'alerta',
+          titulo: 'Archivo no enviado',
+          mensaje: 'No hay conexión con el servidor. Revisa tu señal y vuelve a adjuntarlo.',
+        });
+      } else {
+        avisarRechazo(respuesta, 'Archivo no enviado');
+      }
+    } finally {
+      setSubiendo(null);
+    }
+  };
+
+  // El selector del teléfono se abre cuando el menú ya terminó de cerrarse:
+  // abrirlo encima del menú falla en iOS.
+  const elegirOpcion = (accion) => {
+    setMenuAdjunto(false);
+    setTimeout(accion, 350);
+  };
+
+  const elegirImagen = async () => {
+    const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (permiso.status !== 'granted') {
+      setAviso({
+        tono: 'alerta',
+        titulo: 'Permiso denegado',
+        mensaje: 'Para enviar una foto, permite el acceso a la galería en los ajustes del teléfono.',
+      });
+      return;
+    }
+    const resultado = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+    });
+    if (resultado.canceled || !resultado.assets?.length) return;
+    const activo = resultado.assets[0];
+    subirAdjunto({
+      uri: activo.uri,
+      name: nombreDeImagen(activo),
+      mimeType: activo.mimeType || 'image/jpeg',
+    });
+  };
+
+  const elegirArchivo = async () => {
+    const resultado = await DocumentPicker.getDocumentAsync({
+      type: TIPOS_ARCHIVO,
+      copyToCacheDirectory: true,
+    });
+    if (resultado.canceled || !resultado.assets?.length) return;
+    const activo = resultado.assets[0];
+    subirAdjunto({
+      uri: activo.uri,
+      name: activo.name,
+      mimeType: activo.mimeType || 'application/octet-stream',
+    });
+  };
+
+  /**
+   * CU53 — compartir en el chat un documento ya guardado en la ficha
+   * Documentos en modo selección: el profesional ve los del paciente.
+   */
+  const elegirDesdeDocumentos = () => {
+    setMenuAdjunto(false);
+    const enviarAChat = {
+      pacienteId: pareja.pacienteId,
+      profesionalId: pareja.profesionalId,
+      nombreOtro,
+    };
+    navigation.navigate(
+      'Documentos',
+      esProfesional
+        ? { pacienteId: pareja.pacienteId, nombrePaciente: nombreOtro, enviarAChat }
+        : { enviarAChat }
+    );
+  };
+
+  /**
+   * CU35 — Visualizando archivos con visor embebido
+   * Documento de la ficha → su visor; archivo del chat → visor del adjunto.
+   */
+  const abrirAdjunto = (m) => {
+    const { adjunto } = m;
+    if (adjunto.origen === 'FICHA' && adjunto.documento_id) {
+      navigation.navigate('VisorDocumento', { documentoId: adjunto.documento_id, nombre: adjunto.nombre });
+    } else {
+      navigation.navigate('VisorDocumento', { mensajeId: m.mensaje_id, nombre: adjunto.nombre });
     }
   };
 
@@ -213,6 +474,10 @@ export default function ChatClinicoScreen({ route, navigation }) {
         <ErrorRetry
           mensaje="No pudimos abrir la conversación."
           onRetry={() => {
+            if (!pareja) {
+              resolverPareja();
+              return;
+            }
             setCargando(true);
             consultar(true);
           }}
@@ -221,15 +486,18 @@ export default function ChatClinicoScreen({ route, navigation }) {
     );
   }
 
+  const ocupado = enviando || subiendo !== null;
+
   return (
     // La barra de envío sube hasta el borde del teclado y, con el teclado
     // cerrado, queda por encima de los botones del celular.
     <View style={[estilos.fondo, { paddingBottom: espacioInferior }]}>
-      {conBarraEpisodio ? (
-        <View style={[estilos.cintaContexto, estilos.cintaEpisodio]}>
-          <Text style={[estilos.contextoTexto, estilos.episodioTexto]} numberOfLines={1}>
-            Episodio #{conversacion.episodio_clinico_id} · {conversacion.motivo_consulta || 'tratamiento'}
-          </Text>
+      <View style={estilos.cinta}>
+        <Avatar foto={conversacion?.foto} nombre={nombreOtro} tamano={36} />
+        <Text style={estilos.cintaNombre} numberOfLines={1}>
+          {nombreOtro || 'Conversación'}
+        </Text>
+        {(esProfesional || esPaciente) && (
           <TouchableOpacity
             style={estilos.botonFicha}
             onPress={abrirAcceso}
@@ -238,14 +506,8 @@ export default function ChatClinicoScreen({ route, navigation }) {
           >
             <Text style={estilos.botonFichaTexto}>{esProfesional ? 'Ficha clínica ›' : 'Ver perfil ›'}</Text>
           </TouchableOpacity>
-        </View>
-      ) : (
-        <View style={estilos.cintaContexto}>
-          <Text style={estilos.contextoTexto} numberOfLines={1}>
-            🔒 Conversación cifrada · {conversacion?.motivo_consulta || 'tratamiento'}
-          </Text>
-        </View>
-      )}
+        )}
+      </View>
 
       <View style={estilos.lista}>
         <ScrollView
@@ -257,13 +519,11 @@ export default function ChatClinicoScreen({ route, navigation }) {
           keyboardShouldPersistTaps="handled"
         >
           {/* Aviso de cifrado: encabeza la conversación y se va al desplazarse. */}
-        {conBarraEpisodio && (
           <View style={estilos.avisoCifrado}>
             <Text style={estilos.avisoCifradoTexto}>🔒 Conversación cifrada</Text>
           </View>
-        )}
 
-        {mensajes.length === 0 && pendientes.length === 0 && (
+          {mensajes.length === 0 && pendientes.length === 0 && !subiendo && (
             <Text style={estilos.vacio}>
               Todavía no hay mensajes. Escribe el primero: este canal es solo entre ustedes dos.
             </Text>
@@ -283,9 +543,22 @@ export default function ChatClinicoScreen({ route, navigation }) {
                   </View>
                 ) : null}
                 <View style={[estilos.burbuja, m.mio ? estilos.burbujaMia : estilos.burbujaOtro]}>
-                  <Text style={[estilos.texto, m.mio && estilos.textoMio, m.ilegible && estilos.ilegible]}>
-                    {m.contenido}
-                  </Text>
+                  {m.adjunto ? (
+                    <AdjuntoChat adjunto={m.adjunto} mio={m.mio} onAbrir={() => abrirAdjunto(m)} />
+                  ) : null}
+                  {/* Un mensaje que es solo un adjunto llega sin texto. */}
+                  {m.contenido ? (
+                    <Text
+                      style={[
+                        estilos.texto,
+                        m.mio && estilos.textoMio,
+                        m.ilegible && estilos.ilegible,
+                        m.adjunto && estilos.textoConAdjunto,
+                      ]}
+                    >
+                      {m.contenido}
+                    </Text>
+                  ) : null}
                   <Text style={[estilos.hora, m.mio && estilos.horaMia]}>
                     {formatearHora(m.momento_envio)}
                   </Text>
@@ -301,11 +574,31 @@ export default function ChatClinicoScreen({ route, navigation }) {
               <Text style={estilos.hora}>⏳ pendiente de envío</Text>
             </View>
           ))}
+
+          {/* Archivo en camino: se ve mientras dura la subida. */}
+          {subiendo && (
+            <View style={[estilos.burbuja, estilos.burbujaPendiente, estilos.burbujaSubiendo]}>
+              <ActivityIndicator size="small" color={colores.primario} />
+              <Text style={[estilos.texto, estilos.textoSubiendo]} numberOfLines={1}>
+                Enviando {subiendo.nombre}…
+              </Text>
+            </View>
+          )}
         </ScrollView>
       </View>
 
       {puedeEscribir ? (
         <View style={estilos.barraEnvio}>
+          <TouchableOpacity
+            style={[estilos.botonAdjuntar, ocupado && estilos.deshabilitado]}
+            onPress={() => setMenuAdjunto(true)}
+            disabled={ocupado}
+            activeOpacity={interaccion.opacidadActiva}
+            accessibilityRole="button"
+            accessibilityLabel="Adjuntar un archivo"
+          >
+            <Text style={estilos.botonAdjuntarTexto}>📎</Text>
+          </TouchableOpacity>
           <TextInput
             style={estilos.campo}
             placeholder="Escribe tu mensaje…"
@@ -316,9 +609,9 @@ export default function ChatClinicoScreen({ route, navigation }) {
             maxLength={1000}
           />
           <TouchableOpacity
-            style={[estilos.botonEnviar, (!texto.trim() || enviando) && estilos.deshabilitado]}
+            style={[estilos.botonEnviar, (!texto.trim() || ocupado) && estilos.deshabilitado]}
             onPress={enviar}
-            disabled={!texto.trim() || enviando}
+            disabled={!texto.trim() || ocupado}
             activeOpacity={interaccion.opacidadActiva}
           >
             {enviando ? (
@@ -329,13 +622,85 @@ export default function ChatClinicoScreen({ route, navigation }) {
           </TouchableOpacity>
         </View>
       ) : (
-        // Excepción 3 del CU53: episodio cerrado, lectura pasiva del historial.
+        // Excepción 3 del CU53: sin episodio abierto ni cita vigente, la
+        // conversación queda como historial de solo lectura.
         <View style={estilos.barraCerrada}>
           <Text style={estilos.textoCerrada}>
             {motivoBloqueo || 'Esta conversación quedó como historial de solo lectura.'}
           </Text>
         </View>
       )}
+
+      {/* Menú del 📎: de dónde sale el archivo. */}
+      <Modal
+        visible={menuAdjunto}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setMenuAdjunto(false)}
+      >
+        <Pressable style={estilos.veloMenu} onPress={() => setMenuAdjunto(false)}>
+          <Pressable style={[estilos.hoja, { paddingBottom: espacio.lg + espacioInferior }]}>
+            <Text style={estilos.hojaTitulo}>Enviar un archivo</Text>
+            {texto.trim() ? (
+              <Text style={estilos.hojaNota}>El texto que escribiste se enviará junto con el archivo.</Text>
+            ) : null}
+
+            <TouchableOpacity
+              style={estilos.opcion}
+              onPress={() => elegirOpcion(elegirImagen)}
+              activeOpacity={interaccion.opacidadActiva}
+              accessibilityRole="button"
+            >
+              <View style={estilos.opcionIcono}>
+                <Text style={estilos.opcionEmoji}>🖼️</Text>
+              </View>
+              <View style={estilos.opcionCuerpo}>
+                <Text style={estilos.opcionTitulo}>Foto o imagen</Text>
+                <Text style={estilos.opcionDetalle}>Desde la galería del teléfono</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={estilos.opcion}
+              onPress={() => elegirOpcion(elegirArchivo)}
+              activeOpacity={interaccion.opacidadActiva}
+              accessibilityRole="button"
+            >
+              <View style={estilos.opcionIcono}>
+                <Icono name="document-text-outline" size={22} color={colores.primario} />
+              </View>
+              <View style={estilos.opcionCuerpo}>
+                <Text style={estilos.opcionTitulo}>Archivo</Text>
+                <Text style={estilos.opcionDetalle}>PDF, Word, imagen o video</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={estilos.opcion}
+              onPress={elegirDesdeDocumentos}
+              activeOpacity={interaccion.opacidadActiva}
+              accessibilityRole="button"
+            >
+              <View style={estilos.opcionIcono}>
+                <Icono name="folder-open-outline" size={22} color={colores.primario} />
+              </View>
+              <View style={estilos.opcionCuerpo}>
+                <Text style={estilos.opcionTitulo}>Desde Documentos</Text>
+                <Text style={estilos.opcionDetalle}>Un documento que ya está en la ficha clínica</Text>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={estilos.cancelar}
+              onPress={() => setMenuAdjunto(false)}
+              activeOpacity={interaccion.opacidadActiva}
+              accessibilityRole="button"
+            >
+              <Text style={estilos.cancelarTexto}>Cancelar</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
 
       <DialogoAviso
         visible={aviso !== null}
@@ -352,16 +717,18 @@ const estilos = StyleSheet.create({
   fondo: { flex: 1, backgroundColor: colores.fondo },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: espacio.xl, backgroundColor: colores.fondo },
 
-  cintaContexto: {
+  // Cinta superior: con quién es la conversación y su acceso.
+  cinta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espacio.md,
     backgroundColor: colores.primarioSuave,
     paddingVertical: espacio.sm,
     paddingHorizontal: espacio.lg,
     borderBottomWidth: 1,
     borderBottomColor: colores.primarioBorde,
   },
-  contextoTexto: { ...tipografia.micro, color: colores.primario },
-  cintaEpisodio: { flexDirection: 'row', alignItems: 'center', gap: espacio.md },
-  episodioTexto: { ...tipografia.metaFuerte, flex: 1 },
+  cintaNombre: { ...tipografia.cuerpoFuerte, color: colores.primario, flex: 1 },
   botonFicha: {
     paddingVertical: espacio.xs + 2,
     paddingHorizontal: espacio.md,
@@ -411,8 +778,11 @@ const estilos = StyleSheet.create({
     borderColor: colores.borde,
     borderStyle: 'dashed',
   },
+  burbujaSubiendo: { flexDirection: 'row', alignItems: 'center', gap: espacio.sm },
   texto: { ...tipografia.cuerpo, color: colores.texto },
   textoMio: { color: colores.textoInverso },
+  textoConAdjunto: { marginTop: espacio.sm },
+  textoSubiendo: { ...tipografia.meta, color: colores.textoSuave, flexShrink: 1 },
   ilegible: { fontStyle: 'italic', color: colores.advertencia },
   hora: { ...tipografia.micro, color: colores.textoTenue, marginTop: 4, alignSelf: 'flex-end' },
   horaMia: { color: colores.primarioBorde },
@@ -443,6 +813,15 @@ const estilos = StyleSheet.create({
     borderTopColor: colores.bordeSuave,
     backgroundColor: colores.superficie,
   },
+  botonAdjuntar: {
+    width: 44,
+    height: 46,
+    borderRadius: radio.lg,
+    backgroundColor: colores.superficieSuave,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  botonAdjuntarTexto: { fontSize: 20 },
   campo: {
     flex: 1,
     maxHeight: 110,
@@ -460,7 +839,7 @@ const estilos = StyleSheet.create({
     paddingHorizontal: espacio.lg,
   },
   botonEnviarTexto: { ...tipografia.cuerpoFuerte, color: colores.textoInverso },
-  deshabilitado: { opacity: 0.5 },
+  deshabilitado: { opacity: interaccion.opacidadDeshabilitada },
 
   barraCerrada: {
     padding: espacio.base,
@@ -469,4 +848,40 @@ const estilos = StyleSheet.create({
     borderTopColor: colores.borde,
   },
   textoCerrada: { ...tipografia.meta, color: colores.textoSuave, textAlign: 'center' },
+
+  // Hoja inferior del 📎.
+  veloMenu: { flex: 1, backgroundColor: colores.velo, justifyContent: 'flex-end' },
+  hoja: {
+    backgroundColor: colores.superficie,
+    borderTopLeftRadius: radio.xl,
+    borderTopRightRadius: radio.xl,
+    paddingTop: espacio.lg,
+    paddingHorizontal: espacio.lg,
+    ...sombra.elevada,
+  },
+  hojaTitulo: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.xs },
+  hojaNota: { ...tipografia.meta, color: colores.textoSuave, marginBottom: espacio.xs },
+  opcion: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: espacio.md,
+    paddingVertical: espacio.md,
+    borderBottomWidth: 1,
+    borderBottomColor: colores.bordeSuave,
+  },
+  opcionIcono: {
+    width: 44,
+    height: 44,
+    borderRadius: radio.md,
+    backgroundColor: colores.primarioSuave,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  opcionEmoji: { fontSize: 20 },
+  opcionCuerpo: { flex: 1 },
+  opcionTitulo: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo },
+  opcionDetalle: { ...tipografia.meta, color: colores.textoSuave },
+  cancelar: { ...piezas.botonSecundario, paddingVertical: espacio.md, marginTop: espacio.base },
+  cancelarTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
 });
+

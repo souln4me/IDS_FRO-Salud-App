@@ -1,3 +1,6 @@
+// Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+// Casos de uso: CU68; el financiador lo usa CU66.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // CU68: Transformadores (Data Mappers).
 // Funciones PURAS: traducen entre el estándar interno de Punto Paz Salud y el formato

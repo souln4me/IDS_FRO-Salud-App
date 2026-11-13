@@ -1,4 +1,12 @@
-const pool = require('../../config/database');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU29, CU28.
+ *
+ * Anamnesis de la ficha clínica (leer y guardar) y descarga de la ficha en PDF
+ * por el propio paciente.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Generador_Informes = require('../../componentes/C_Generador_Informes');
 
 // Límites de campos según RF28/RF29 (Excepción 1)
 const LIMITES = {
@@ -7,12 +15,13 @@ const LIMITES = {
   antecedente: 255
 };
 
+// CU29, CU28 — cargar la anamnesis de la ficha clínica del paciente
 // GET /api/clinica/ficha/:paciente_id
 exports.obtenerFicha = async (req, res) => {
   const { paciente_id } = req.params;
 
   try {
-    const [fichas] = await pool.query(
+    const [fichas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT * FROM Ficha_Clinica WHERE paciente_id = ?`,
       [paciente_id]
     );
@@ -34,15 +43,15 @@ exports.obtenerFicha = async (req, res) => {
 
     const ficha = fichas[0];
 
-    const [alergias] = await pool.query(
+    const [alergias] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT alergia FROM Ficha_Alergia WHERE ficha_clinica_id = ?`,
       [ficha.ficha_clinica_id]
     );
-    const [quirurgicos] = await pool.query(
+    const [quirurgicos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT antecedente FROM Ficha_Antecedente_Quirurgico WHERE ficha_clinica_id = ?`,
       [ficha.ficha_clinica_id]
     );
-    const [patologicos] = await pool.query(
+    const [patologicos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT antecedente FROM Ficha_Antecedente_Patologico WHERE ficha_clinica_id = ?`,
       [ficha.ficha_clinica_id]
     );
@@ -65,6 +74,7 @@ exports.obtenerFicha = async (req, res) => {
   }
 };
 
+// CU29 — Registrando antecedentes en evaluación inicial
 // POST /api/clinica/ficha
 // Crea o actualiza la Anamnesis (CU29)
 exports.guardarAnamnesis = async (req, res) => {
@@ -112,7 +122,7 @@ exports.guardarAnamnesis = async (req, res) => {
     .filter(a => a && a.trim())
     .map(a => a.trim().slice(0, LIMITES.antecedente));
 
-  const connection = await pool.getConnection();
+  const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await connection.beginTransaction();
@@ -182,7 +192,7 @@ exports.guardarAnamnesis = async (req, res) => {
     await connection.commit();
 
     // Obtener nueva versión (timestamp actualizado)
-    const [actualizada] = await pool.query(
+    const [actualizada] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT ultima_actualizacion FROM Ficha_Clinica WHERE ficha_clinica_id = ?`,
       [ficha_clinica_id]
     );
@@ -201,5 +211,39 @@ exports.guardarAnamnesis = async (req, res) => {
     return res.status(500).json({ error: 'Error interno al guardar la anamnesis.' });
   } finally {
     connection.release();
+  }
+};
+// ─────────────────────────────────────────────────────────────────────────────
+// GET /api/clinica/mi-ficha/pdf  (Paciente)
+// El paciente descarga su ficha clínica completa en PDF. Se genera al momento
+// y viaja directo en la respuesta: no pasa por Cloudinary, que en cuentas
+// nuevas bloquea la entrega de PDF.
+// ─────────────────────────────────────────────────────────────────────────────
+// CU28 — Consolidando historial en ficha clínica electrónica (copia en PDF del paciente)
+exports.miFichaPdf = async (req, res) => {
+  try {
+    const [[paciente]] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
+      [req.user.usuario_id]
+    );
+    if (!paciente) {
+      return res.status(404).json({ error: 'PACIENTE_NO_ENCONTRADO', mensaje: 'No encontramos tu registro de paciente.' });
+    }
+    const datos = await C_Generador_Informes.datosFicha(paciente.paciente_id);
+    const pdf = await C_Generador_Informes.generarPdfFicha(datos);
+
+    C_Capa_de_Acceso_a_Datos.query(
+      `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+       VALUES ('DESCARGA_FICHA_PACIENTE', 'Ficha_Clinica', ?, ?, ?)`,
+      [req.ip || null, JSON.stringify({ paciente_id: paciente.paciente_id, bytes: pdf.length }), req.user.usuario_id]
+    ).catch(() => {});
+
+    const fecha = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="ficha-clinica-${fecha}.pdf"`);
+    return res.status(200).send(pdf);
+  } catch (error) {
+    console.error('[miFichaPdf]', error);
+    return res.status(500).json({ error: 'FICHA_NO_GENERADA', mensaje: 'No se pudo generar tu ficha clínica. Intenta nuevamente en unos minutos.' });
   }
 };

@@ -1,3 +1,9 @@
+/**
+ * Componente: Cliente Móvil — Vista "Buscar cita"
+ * Casos de uso: CU14, CU15, CU17, CU19, CU10, CU58, CU73.
+ *
+ * Búsqueda de horas, reserva del bloque y reprogramación de una cita existente.
+ */
 import React, { useEffect, useState, useContext } from 'react';
 import {
   Image,
@@ -67,6 +73,7 @@ export default function BuscarCitaScreen({ navigation, route }) {
     cargarEspecialidades();
   }, []);
 
+  // Apoyo común: arma la fecha AAAA-MM-DD que pide el servidor
   const formatearFecha = (fecha) => {
     const year = fecha.getFullYear();
     const month = String(fecha.getMonth() + 1).padStart(2, '0');
@@ -220,6 +227,7 @@ export default function BuscarCitaScreen({ navigation, route }) {
     }
   };
 
+  // CU15 — Controlando concurrencia de bloqueo de agendamiento
   const ejecutarBloqueo = async () => {
     setCargandoBloqueo(true);
 

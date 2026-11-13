@@ -1,11 +1,18 @@
+/**
+ * Componente: Cliente Móvil — Vista "Evidencia de Sesión"
+ * Casos de uso: CU39, CU43.
+ */
 // Ruta: fro-vista/src/screens/Comun/EvidenciaSesionScreen.js
 //
 // Evidencia de la sesión, común a paciente y profesional:
-// - CU39 (domicilio): check-in GPS de inicio y término, con validación cruzada.
+// - CU39 (domicilio): las ubicaciones de inicio y término. Desde las
+//   correcciones del Incremento 4 nadie hace check-in a mano: se registran
+//   solas cuando el profesional aprieta "Comenzar" y "Finalizar atención";
+//   esta pantalla solo las muestra.
 // - CU43 (online): evidencia técnica de teleconsulta (permisos de cámara y
 //   micrófono, latencia medida, dispositivo, reconexiones).
 
-import React, { useEffect, useState } from 'react';
+import React, { useContext, useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -15,11 +22,11 @@ import {
   Platform,
   StyleSheet,
 } from 'react-native';
-import * as Location from 'expo-location';
 import { Camera } from 'expo-camera';
 import * as SecureStore from 'expo-secure-store';
 
 import apiClient from '../../api/client';
+import { AuthContext } from '../../context/AuthContext';
 import ErrorRetry from '../../components/ErrorRetry';
 import VistaConTeclado from '../../components/VistaConTeclado';
 import { formatearHora } from '../../utils/fechas';
@@ -30,6 +37,8 @@ const clavePendiente = (citaId) => `cu43_pendiente_${citaId}`;
 
 export default function EvidenciaSesionScreen({ route }) {
   const { citaId, modalidad } = route?.params || {};
+  const { userData } = useContext(AuthContext);
+  const esPaciente = userData?.rol === 'Paciente';
 
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
 
@@ -39,6 +48,7 @@ export default function EvidenciaSesionScreen({ route }) {
   const [errorCarga, setErrorCarga] = useState(false);
   const [procesando, setProcesando] = useState(false);
 
+  // CU39, CU43 — cargar la evidencia de la sesión (GPS y teleconsulta)
   const cargar = async () => {
     setErrorCarga(false);
     try {
@@ -67,42 +77,6 @@ export default function EvidenciaSesionScreen({ route }) {
 
   const modalidadEfectiva = resumen?.modalidad || modalidad || null;
 
-  // ── CU39: check-in GPS ─────────────────────────────────────────────────────
-  const checkinGPS = async (momento) => {
-    setProcesando(true);
-    try {
-      // Excepción 1: GPS apagado o sin permiso impide iniciar.
-      const servicios = await Location.hasServicesEnabledAsync();
-      if (!servicios) {
-        setAviso({ tono: 'info', titulo: 'Ubicación desactivada', mensaje: 'Activa los servicios de ubicación de tu teléfono para hacer el check-in.' });
-        return;
-      }
-      const permiso = await Location.requestForegroundPermissionsAsync();
-      if (permiso.status !== 'granted') {
-        setAviso({ tono: 'error', titulo: 'Permiso denegado', mensaje: 'Sin acceso a tu ubicación no es posible validar la presencialidad.' });
-        return;
-      }
-
-      const posicion = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-
-      const { data } = await apiClient.post(`/citas/${citaId}/checkin-gps`, {
-        latitud: posicion.coords.latitude,
-        longitud: posicion.coords.longitude,
-        momento,
-      });
-
-      setAviso({ tono: 'ok', titulo: 'Check-in registrado', mensaje: data?.mensaje || 'Marca guardada.' });
-      await cargar();
-    } catch (err) {
-      const respuesta = err.response?.data;
-      setAviso({ tono: 'ok', titulo: 'Check-in no registrado', mensaje: respuesta?.mensaje || respuesta?.error || 'Revisa tu conexión e intenta nuevamente.' });
-    } finally {
-      setProcesando(false);
-    }
-  };
-
   // ── CU43: evidencia de teleconsulta ────────────────────────────────────────
   const medirLatencia = async () => {
     const mediciones = [];
@@ -119,6 +93,7 @@ export default function EvidenciaSesionScreen({ route }) {
     return Math.round(mediciones.reduce((a, b) => a + b, 0) / mediciones.length);
   };
 
+  // CU43 — Registrando evidencia técnica de teleconsulta
   const registrarTeleconsulta = async (evento) => {
     setProcesando(true);
     try {
@@ -172,10 +147,13 @@ export default function EvidenciaSesionScreen({ route }) {
   const tele = resumen.metadatos_teleconsulta || {};
   const segmentos = tele.segmentos || [];
 
-  const marcaTexto = (marca) =>
-    marca
-      ? `✅ ${formatearHora(marca.momento_registro)} (${marca.lat.toFixed(4)}, ${marca.lng.toFixed(4)})`
-      : '— pendiente';
+  const FUENTES = { GPS_PACIENTE: 'GPS de su teléfono', DIRECCION_REGISTRADA: 'dirección registrada' };
+  const marcaTexto = (marca) => {
+    if (!marca) return '— se registra al apretar el botón';
+    if (marca.sin_ubicacion || !Number.isFinite(marca.lat)) return `⚠️ ${formatearHora(marca.momento_registro)} · sin ubicación`;
+    const fuente = FUENTES[marca.fuente] ? ` · ${FUENTES[marca.fuente]}` : '';
+    return `✅ ${formatearHora(marca.momento_registro)} (${marca.lat.toFixed(4)}, ${marca.lng.toFixed(4)})${fuente}`;
+  };
 
   return (
     <VistaConTeclado style={estilos.fondo} contentContainerStyle={estilos.contenido}>
@@ -198,22 +176,17 @@ export default function EvidenciaSesionScreen({ route }) {
           <Text style={estilos.detalle}>Profesional — inicio: {marcaTexto(gps.profesional?.inicio)}</Text>
           <Text style={estilos.detalle}>Profesional — término: {marcaTexto(gps.profesional?.termino)}</Text>
 
-          <View style={estilos.filaBotones}>
-            <TouchableOpacity
-              style={[estilos.boton, procesando && estilos.deshabilitado]}
-              onPress={() => checkinGPS('INICIO')}
-              disabled={procesando}
-            >
-              <Text style={estilos.botonTexto}>Check-in inicio</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[estilos.boton, estilos.botonSecundario, procesando && estilos.deshabilitado]}
-              onPress={() => checkinGPS('TERMINO')}
-              disabled={procesando}
-            >
-              <Text style={estilos.botonSecundarioTexto}>Check-in término</Text>
-            </TouchableOpacity>
-          </View>
+          {gps.distancia_inicio_metros != null && (
+            <Text style={estilos.detalle}>Distancia al inicio: {gps.distancia_inicio_metros} m</Text>
+          )}
+          {gps.distancia_termino_metros != null && (
+            <Text style={estilos.detalle}>Distancia al término: {gps.distancia_termino_metros} m</Text>
+          )}
+          {!esPaciente && (
+            <Text style={estilos.nota}>
+              Se registran solas al apretar "Iniciar" y "Finalizar atención". Si no hay ubicación del paciente, se usa su dirección registrada; si están a más de 100 m, la sesión se cierra con justificación.
+            </Text>
+          )}
         </View>
       )}
 

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Liquidaciones"
+ * Casos de uso: CU75.
+ */
 // Ruta: fro-vista/src/screens/Admin/LiquidacionesScreen.js
 //
 // CU75 — Liquidación de ganancias del profesional.
@@ -43,6 +47,7 @@ export default function LiquidacionesScreen() {
   const [porEmitir, setPorEmitir] = useState(null);
   const [emitiendo, setEmitiendo] = useState(null);
 
+  // CU75 — Liquidando ganancias en panel financiero: calcular el mes elegido
   const cargar = useCallback(
     async (a = anio, m = mes, esRefresco = false) => {
       if (esRefresco) setRefrescando(true);
@@ -88,6 +93,7 @@ export default function LiquidacionesScreen() {
     setBonificaciones((previas) => ({ ...previas, [profesionalId]: soloNumeros }));
   };
 
+  // CU75 — emitir la liquidación del profesional (queda inalterable)
   const emitir = async (fila) => {
     setPorEmitir(null);
     setEmitiendo(fila.profesional_id);

@@ -1,3 +1,10 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mis horarios"
+ * Casos de uso: CU02, CU14.
+ *
+ * La jornada semanal que se define al registrarse (CU02) y de la que el
+ * buscador de citas genera los bloques disponibles (CU14).
+ */
 // Ruta: fro-vista/src/screens/Profesional/MisHorariosScreen.js
 //
 // Jornada semanal del profesional: los bloques horarios en los que los
@@ -29,6 +36,7 @@ export default function MisHorariosScreen() {
   const [cambios, setCambios] = useState(false);
   const [aviso, setAviso] = useState(null);
 
+  // CU02, CU14 — cargar la jornada semanal del profesional
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(false);
@@ -78,6 +86,7 @@ export default function MisHorariosScreen() {
     setCambios(true);
   };
 
+  // CU02, CU14 — guardar la jornada completa (no toca citas agendadas)
   const guardar = async () => {
     setGuardando(true);
     try {

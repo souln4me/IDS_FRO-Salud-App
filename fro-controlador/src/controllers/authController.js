@@ -1,20 +1,22 @@
-const pool = require('../config/database');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU01, CU02, CU03, CU04, CU05, CU06, CU07, CU08, CU09.
+ * También deja rastro en la bitácora (CU13).
+ *
+ * Endpoints de cuenta: registro de paciente y profesional, verificación OTP,
+ * inicio de sesión, recuperación y cambio de contraseña, sesiones y privacidad.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Seguridad_JWT_BCrypt = require('../componentes/C_Seguridad_JWT_BCrypt');
+const C_API_Adapter = require('../componentes/C_API_Adapter');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const UserModel = require('../models/userModel');
-const { comparePassword } = require('../utils/encriptar_bcrypt');
-const { crearOTP, validarOTP, enviarPorEmail, explicarErrorSMTP } = require('../services/notifications/otpService');
-const {
-    DURACION_SESION_HORAS,
-    validarRobustezContrasena,
-    crearSesion,
-    revocarTodasLasSesiones,
-} = require('../services/auth/seguridadService');
-
+const { registrar } = require('../services/registro/registroActividad');
+// CU01, CU02 — rechazar una contraseña débil al registrarse
 // D4: la política de contraseña (8+, letra, número y símbolo) se exige
 // también al registrarse; antes el registro aceptaba "11111111".
 function rechazoPorContrasenaDebil(res, contrasena) {
-    const robustez = validarRobustezContrasena(contrasena);
+    const robustez = C_Seguridad_JWT_BCrypt.validarRobustezContrasena(contrasena);
     if (robustez.valida) return false;
     res.status(400).json({
         error: 'CONTRASENA_DEBIL',
@@ -24,10 +26,10 @@ function rechazoPorContrasenaDebil(res, contrasena) {
     return true;
 }
 
-// D7 / CU05 Exc.4: cada intento de acceso denegado deja rastro (RNF08).
+// D7 / CU05 Exc.4 y CU13: cada intento de acceso denegado deja rastro (RNF08).
 async function registrarLoginFallido(req, rut, motivo, usuarioId = null) {
     try {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
             `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
              VALUES ('LOGIN_FALLIDO', 'Usuario', ?, ?, ?)`,
             [req.ip || null, JSON.stringify({ rut, motivo }), usuarioId]
@@ -44,6 +46,7 @@ async function registrarLoginFallido(req, rut, motivo, usuarioId = null) {
 // a medio crear para que la persona pueda volver a intentarlo.
 // Las cuentas ACTIVAS jamás se tocan.
 // ─────────────────────────────────────────────────────────────────────────────
+// CU03 — Controlando unicidad de cuentas de usuario (usado por CU01 y CU02)
 async function eliminarCuentasInactivas(connection, rut, email) {
     const [existentes] = await connection.execute(
         `SELECT usuario_id, cuenta_activo FROM Usuario WHERE rut = ? OR email = ?`,
@@ -103,6 +106,7 @@ async function eliminarCuentasInactivas(connection, rut, email) {
 // ─────────────────────────────────────────────────────────────────────────────
 // REGISTRO PACIENTE
 // ─────────────────────────────────────────────────────────────────────────────
+// CU01 — Registrando paciente con validación de integridad
 exports.registrarPaciente = async (req, res) => {
     const {
         rut, nombres, apellido_paterno, apellido_materno, email, telefono,
@@ -116,7 +120,7 @@ exports.registrarPaciente = async (req, res) => {
     }
     if (rechazoPorContrasenaDebil(res, contrasena)) return;
 
-    const connection = await pool.getConnection();
+    const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
     try {
         await connection.beginTransaction();
@@ -164,8 +168,8 @@ exports.registrarPaciente = async (req, res) => {
         // CU04: Generar OTP y responder de inmediato. El correo se envía en
         // segundo plano: si el SMTP está lento o caído, el usuario no debe
         // quedar esperando — puede reenviar el código desde OTPScreen.
-        const { codigo } = await crearOTP(usuario_id);
-        enviarPorEmail(email, codigo).catch((errorSMTP) => {
+        const { codigo } = await C_Seguridad_JWT_BCrypt.crearOTP(usuario_id);
+        C_API_Adapter.enviarPorEmail(email, codigo).catch((errorSMTP) => {
             console.error("Error SMTP en registro paciente:", errorSMTP.message);
         });
 
@@ -189,9 +193,10 @@ exports.registrarPaciente = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // OBTENER ESPECIALIDADES
 // ─────────────────────────────────────────────────────────────────────────────
+// CU02 — especialidades para el formulario de registro profesional
 exports.obtenerEspecialidades = async (req, res) => {
     try {
-        const [filas] = await pool.query('SELECT especialidad_id, nombre FROM Especialidad');
+        const [filas] = await C_Capa_de_Acceso_a_Datos.query('SELECT especialidad_id, nombre FROM Especialidad');
         res.status(200).json(filas);
     } catch (error) {
         res.status(500).json({ error: 'Error al obtener especialidades' });
@@ -201,10 +206,11 @@ exports.obtenerEspecialidades = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // VALIDAR PROFESIONAL
 // ─────────────────────────────────────────────────────────────────────────────
+// CU02 — acreditar al profesional contra la nómina autorizada
 exports.validarProfesional = async (req, res) => {
     const { rut } = req.params;
     try {
-        const [rows] = await pool.query(
+        const [rows] = await C_Capa_de_Acceso_a_Datos.query(
             'SELECT habilitado FROM Profesional_Autorizado WHERE rut_autorizado = ?',
             [rut]
         );
@@ -223,6 +229,7 @@ exports.validarProfesional = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // REGISTRAR PROFESIONAL
 // ─────────────────────────────────────────────────────────────────────────────
+// CU02 — Registrando y acreditando profesional de salud
 exports.registrarProfesional = async (req, res) => {
     const {
         rut, nombres, apellido_paterno, apellido_materno, email, telefono, contrasena,
@@ -233,7 +240,7 @@ exports.registrarProfesional = async (req, res) => {
 
     if (rechazoPorContrasenaDebil(res, contrasena)) return;
 
-    const connection = await pool.getConnection();
+    const connection = await C_Capa_de_Acceso_a_Datos.getConnection();
 
     try {
         await connection.beginTransaction();
@@ -308,8 +315,8 @@ exports.registrarProfesional = async (req, res) => {
 
         // CU04: igual que en el registro de paciente, el correo no bloquea la
         // respuesta; se envía en segundo plano.
-        const { codigo } = await crearOTP(usuario_id);
-        enviarPorEmail(email, codigo).catch((errorSMTP) => {
+        const { codigo } = await C_Seguridad_JWT_BCrypt.crearOTP(usuario_id);
+        C_API_Adapter.enviarPorEmail(email, codigo).catch((errorSMTP) => {
             console.error("Error SMTP en registro profesional:", errorSMTP.message);
         });
 
@@ -331,20 +338,21 @@ exports.registrarProfesional = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 // VERIFICAR UNICIDAD
 // ─────────────────────────────────────────────────────────────────────────────
+// CU03 — Controlando unicidad de cuentas de usuario
 exports.verificarUnicidad = async (req, res) => {
     const { rut, email } = req.body;
     try {
         // Solo las cuentas VERIFICADAS bloquean el registro. Una cuenta que
         // nunca completó su OTP es un registro a medias: se informa y el
         // proceso de registro la reemplazará.
-        const [rutExistente] = await pool.query(
+        const [rutExistente] = await C_Capa_de_Acceso_a_Datos.query(
             'SELECT usuario_id, cuenta_activo FROM Usuario WHERE rut = ?', [rut]
         );
         if (rutExistente.length > 0 && rutExistente[0].cuenta_activo) {
             return res.status(409).json({ error: 'El RUT ingresado ya se encuentra registrado en el sistema.', campo: 'rut' });
         }
 
-        const [emailExistente] = await pool.query(
+        const [emailExistente] = await C_Capa_de_Acceso_a_Datos.query(
             'SELECT usuario_id, cuenta_activo FROM Usuario WHERE email = ?', [email]
         );
         if (emailExistente.length > 0 && emailExistente[0].cuenta_activo) {
@@ -376,7 +384,7 @@ exports.solicitarOTP = async (req, res) => {
     }
 
     try {
-        const [usuarios] = await pool.query(
+        const [usuarios] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT usuario_id, email, cuenta_activo FROM Usuario WHERE usuario_id = ?`,
             [usuario_id]
         );
@@ -389,19 +397,20 @@ exports.solicitarOTP = async (req, res) => {
             return res.status(409).json({ error: 'La cuenta ya está activa.' });
         }
 
-        const { codigo } = await crearOTP(usuario_id);
+        const { codigo } = await C_Seguridad_JWT_BCrypt.crearOTP(usuario_id);
 
         try {
-            await enviarPorEmail(usuarios[0].email, codigo);
+            await C_API_Adapter.enviarPorEmail(usuarios[0].email, codigo);
         } catch (errorSMTP) {
-            const explicacion = explicarErrorSMTP(errorSMTP);
+            const explicacion = C_API_Adapter.explicarErrorSMTP(errorSMTP);
             console.error(
                 `[OTP] Envío fallido: ${explicacion} ` +
                 `(code=${errorSMTP.code || '-'} responseCode=${errorSMTP.responseCode || '-'})`
             );
 
+            // CU13: el envío fallido queda en la bitácora.
             try {
-                await pool.query(
+                await C_Capa_de_Acceso_a_Datos.query(
                     `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, usuario_id, datos_adicionales)
                      VALUES ('OTP_ENVIO_FALLIDO', 'Usuario', ?, ?)`,
                     [usuario_id, JSON.stringify({ error: errorSMTP.message })]
@@ -433,22 +442,21 @@ exports.solicitarOTP = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 exports.verificarOTP = async (req, res) => {
     const { usuario_id, codigo } = req.body;
-    console.log("verificarOTP recibido:", { usuario_id, codigo });
 
     if (!usuario_id || !codigo) {
         return res.status(400).json({ error: 'usuario_id y codigo son requeridos.' });
     }
 
     try {
-        const resultado = await validarOTP(usuario_id, codigo);
-        console.log("resultado validarOTP:", resultado);
+        const resultado = await C_Seguridad_JWT_BCrypt.validarOTP(usuario_id, codigo);
+        registrar('C_Seguridad_JWT_BCrypt', resultado.valido ? `código OTP válido (usuario #${usuario_id})` : `código OTP rechazado: ${resultado.error || 'inválido'}`);
 
         if (!resultado.valido) {
             return res.status(400).json({ error: resultado.error, mensaje: resultado.mensaje });
         }
 
         try {
-            await pool.query(
+            await C_Capa_de_Acceso_a_Datos.query(
                 `UPDATE Usuario
                     SET cuenta_activo  = TRUE,
                         otp_codigo     = NULL,
@@ -457,7 +465,7 @@ exports.verificarOTP = async (req, res) => {
                 [usuario_id]
             );
         } catch (errorBD) {
-            await pool.query(
+            await C_Capa_de_Acceso_a_Datos.query(
                 `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, usuario_id, datos_adicionales)
                  VALUES ('OTP_ACTIVACION_FALLIDA', 'Usuario', ?, ?)`,
                 [usuario_id, JSON.stringify({ error: errorBD.message })]
@@ -488,24 +496,26 @@ exports.login = async (req, res) => {
     }
 
     try {
-        const usuario = await UserModel.findByRutActive(rut);
+        const usuario = await C_Capa_de_Acceso_a_Datos.UserModel.findByRutActive(rut);
 
         if (!usuario) {
             await registrarLoginFallido(req, rut, 'USUARIO_INEXISTENTE_O_INACTIVO');
+            registrar('C_Seguridad_JWT_BCrypt', 'inicio de sesión rechazado: no existe una cuenta activa con ese RUT');
             return res.status(401).json({ error: 'Credenciales inválidas. Verifique su RUT y contraseña.' });
         }
 
-        const contrasenaCorrecta = await comparePassword(contrasena, usuario.contrasena_hash);
+        const contrasenaCorrecta = await C_Seguridad_JWT_BCrypt.comparePassword(contrasena, usuario.contrasena_hash);
 
         if (!contrasenaCorrecta) {
             await registrarLoginFallido(req, rut, 'CONTRASENA_INCORRECTA', usuario.usuario_id);
+            registrar('C_Seguridad_JWT_BCrypt', `inicio de sesión rechazado: contraseña incorrecta (usuario #${usuario.usuario_id})`);
             return res.status(401).json({ error: 'Credenciales inválidas. Verifique su RUT y contraseña.' });
         }
 
         // CU08: cada inicio de sesión queda registrado por dispositivo y su
         // identificador viaja dentro del token, para poder revocarlo remoto.
-        const jti = await crearSesion(
-            pool,
+        const jti = await C_Seguridad_JWT_BCrypt.crearSesion(
+            C_Capa_de_Acceso_a_Datos,
             usuario.usuario_id,
             req.body?.dispositivo,
             req.ip,
@@ -518,8 +528,9 @@ exports.login = async (req, res) => {
             jti
         };
 
-        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: `${DURACION_SESION_HORAS}h` });
+        const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: `${C_Seguridad_JWT_BCrypt.DURACION_SESION_HORAS}h` });
 
+        registrar('C_Seguridad_JWT_BCrypt', `inicio de sesión correcto: ${usuario.nombre_rol} #${usuario.usuario_id} (token y sesión del dispositivo creados)`);
         res.status(200).json({
             mensaje: 'Autenticación exitosa.',
             token,
@@ -545,12 +556,13 @@ exports.login = async (req, res) => {
 
 /** Busca al usuario, genera el OTP y lo envía. Compartido por CU06 y CU07. */
 async function despacharOTPRecuperacion(usuario) {
-    const { codigo } = await crearOTP(usuario.usuario_id);
-    enviarPorEmail(usuario.email, codigo, 'RECUPERACION').catch((errorSMTP) => {
-        console.error('[recuperacion] Error SMTP:', explicarErrorSMTP(errorSMTP));
+    const { codigo } = await C_Seguridad_JWT_BCrypt.crearOTP(usuario.usuario_id);
+    C_API_Adapter.enviarPorEmail(usuario.email, codigo, 'RECUPERACION').catch((errorSMTP) => {
+        console.error('[recuperacion] Error SMTP:', C_API_Adapter.explicarErrorSMTP(errorSMTP));
     });
 }
 
+// CU06 — Solicitando restablecimiento de credenciales
 exports.solicitarRecuperacion = async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
 
@@ -563,7 +575,7 @@ exports.solicitarRecuperacion = async (req, res) => {
     }
 
     try {
-        const [usuarios] = await pool.query(
+        const [usuarios] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT usuario_id, email FROM Usuario WHERE email = ? LIMIT 1`,
             [email]
         );
@@ -604,8 +616,9 @@ const FALLO_PERSISTENCIA = {
     }
 };
 
+// CU07 — buscar al usuario con su código vigente
 async function buscarUsuarioConOTP(columna, valor) {
-    const [usuarios] = await pool.query(
+    const [usuarios] = await C_Capa_de_Acceso_a_Datos.query(
         `SELECT usuario_id, email, otp_codigo, otp_expiracion
            FROM Usuario WHERE ${columna} = ? LIMIT 1`,
         [valor]
@@ -632,12 +645,12 @@ function rechazoDeCodigo(usuario, codigo) {
     return usuario.otp_codigo === codigoLimpio ? null : CODIGO_INVALIDO;
 }
 
-/** Deja rastro del fallo; si la base sigue caída, al menos queda en consola. */
+/** CU07, CU13 — deja rastro del fallo; si la base sigue caída, al menos queda en consola. */
 async function registrarFalloPersistencia(contexto, usuarioId, error) {
     const detalle = error.code || error.message;
     console.error(`[CU07] Fallo de persistencia (${contexto}), usuario ${usuarioId ?? 'sin identificar'}:`, detalle);
     try {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
             `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, datos_adicionales, usuario_id)
              VALUES ('CAMBIO_CONTRASENA_FALLIDO', 'Usuario', ?, ?)`,
             [JSON.stringify({ contexto, error: detalle }), usuarioId ?? null]
@@ -648,6 +661,7 @@ async function registrarFalloPersistencia(contexto, usuarioId, error) {
 }
 
 /**
+ * CU07 — Ejecutando cambio de contraseña
  * Valida OTP + robustez y aplica el cambio. Devuelve {status, cuerpo}.
  * El servidor vuelve a revisar el código aunque la app ya lo haya verificado:
  * el paso 1 solo habilita el formulario, no autoriza el cambio por sí mismo.
@@ -657,7 +671,7 @@ async function ejecutarCambioContrasena(usuario, codigo, nuevaContrasena, ip) {
     if (rechazo) return rechazo;
 
     // Excepción 3 (CU07): política de robustez, con requisitos detallados.
-    const robustez = validarRobustezContrasena(nuevaContrasena);
+    const robustez = C_Seguridad_JWT_BCrypt.validarRobustezContrasena(nuevaContrasena);
     if (!robustez.valida) {
         return {
             status: 400,
@@ -671,12 +685,12 @@ async function ejecutarCambioContrasena(usuario, codigo, nuevaContrasena, ip) {
 
     const contrasena_hash = await bcrypt.hash(nuevaContrasena, 10);
 
-    // Clave nueva, cierre de sesiones (CU08) y bitácora van en una transacción:
+    // Clave nueva, cierre de sesiones (CU08) y bitácora (CU13) van en una transacción:
     // si la conexión se corta a mitad, no queda la clave cambiada con las
     // sesiones antiguas abiertas ni un cambio sin auditar.
     let conexion;
     try {
-        conexion = await pool.getConnection();
+        conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
         await conexion.beginTransaction();
 
         await conexion.query(
@@ -685,7 +699,7 @@ async function ejecutarCambioContrasena(usuario, codigo, nuevaContrasena, ip) {
               WHERE usuario_id = ?`,
             [contrasena_hash, usuario.usuario_id]
         );
-        await revocarTodasLasSesiones(conexion, usuario.usuario_id);
+        await C_Seguridad_JWT_BCrypt.revocarTodasLasSesiones(conexion, usuario.usuario_id);
         await conexion.query(
             `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, usuario_id)
              VALUES ('CAMBIO_CONTRASENA', 'Usuario', ?, ?)`,
@@ -709,6 +723,7 @@ async function ejecutarCambioContrasena(usuario, codigo, nuevaContrasena, ip) {
     };
 }
 
+// CU06, CU07 — paso 1 sin sesión: verificar el código recibido
 exports.verificarCodigoRecuperacion = async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     try {
@@ -721,6 +736,7 @@ exports.verificarCodigoRecuperacion = async (req, res) => {
     }
 };
 
+// CU07 — paso 2 sin sesión: guardar la contraseña nueva
 exports.confirmarRecuperacion = async (req, res) => {
     const email = String(req.body?.email || '').trim().toLowerCase();
     const { codigo, nueva_contrasena } = req.body || {};
@@ -736,10 +752,10 @@ exports.confirmarRecuperacion = async (req, res) => {
     }
 };
 
-// Variante autenticada: cambiar la contraseña desde adentro de la app.
+// CU07 — variante autenticada: cambiar la contraseña desde adentro de la app.
 exports.solicitarCambioContrasena = async (req, res) => {
     try {
-        const [usuarios] = await pool.query(
+        const [usuarios] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT usuario_id, email FROM Usuario WHERE usuario_id = ? LIMIT 1`,
             [req.user.usuario_id]
         );
@@ -760,6 +776,7 @@ exports.solicitarCambioContrasena = async (req, res) => {
     }
 };
 
+// CU07 — paso 1 con sesión: verificar el código recibido
 exports.verificarCodigoCambioContrasena = async (req, res) => {
     try {
         const usuario = await buscarUsuarioConOTP('usuario_id', req.user.usuario_id);
@@ -776,6 +793,7 @@ exports.verificarCodigoCambioContrasena = async (req, res) => {
     }
 };
 
+// CU07 — paso 2 con sesión: guardar la contraseña nueva
 exports.confirmarCambioContrasena = async (req, res) => {
     const { codigo, nueva_contrasena } = req.body || {};
     try {
@@ -796,15 +814,16 @@ exports.confirmarCambioContrasena = async (req, res) => {
 // CU08 — GESTIÓN DE SESIONES ACTIVAS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU08 — listar las sesiones activas por dispositivo
 exports.listarSesiones = async (req, res) => {
     try {
-        const [sesiones] = await pool.query(
+        const [sesiones] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT sesion_usuario_id, dispositivo, ip_origen, momento_inicio, jti
                FROM Sesion_Usuario
               WHERE usuario_id = ? AND activa = TRUE
                 AND momento_inicio > NOW() - INTERVAL ? HOUR
               ORDER BY momento_inicio DESC`,
-            [req.user.usuario_id, DURACION_SESION_HORAS]
+            [req.user.usuario_id, C_Seguridad_JWT_BCrypt.DURACION_SESION_HORAS]
         );
 
         return res.status(200).json({
@@ -827,6 +846,7 @@ exports.listarSesiones = async (req, res) => {
     }
 };
 
+// CU08 — revocar a distancia la sesión de otro dispositivo
 exports.cerrarSesion = async (req, res) => {
     const { id } = req.params;
     try {
@@ -835,11 +855,11 @@ exports.cerrarSesion = async (req, res) => {
         // Antes bastaba con que la fila existiera; como mysql2 cuenta las filas
         // encontradas (no las modificadas), revocar una sesión ya cerrada
         // respondía éxito.
-        const [resultado] = await pool.query(
+        const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
             `UPDATE Sesion_Usuario SET activa = FALSE
               WHERE sesion_usuario_id = ? AND usuario_id = ? AND activa = TRUE
                 AND momento_inicio > NOW() - INTERVAL ? HOUR`,
-            [id, req.user.usuario_id, DURACION_SESION_HORAS]
+            [id, req.user.usuario_id, C_Seguridad_JWT_BCrypt.DURACION_SESION_HORAS]
         );
 
         // Excepción 3 (CU08): la sesión ya fue cerrada o su token expiró.
@@ -857,11 +877,11 @@ exports.cerrarSesion = async (req, res) => {
     }
 };
 
-// Cierre de la propia sesión al salir de la app (mejor esfuerzo).
+// CU08 — cierre de la propia sesión al salir de la app (mejor esfuerzo).
 exports.cerrarSesionActual = async (req, res) => {
     try {
         if (req.user.jti) {
-            await pool.query(
+            await C_Capa_de_Acceso_a_Datos.query(
                 `UPDATE Sesion_Usuario SET activa = FALSE WHERE jti = ?`,
                 [req.user.jti]
             );
@@ -879,9 +899,10 @@ exports.cerrarSesionActual = async (req, res) => {
 
 const PRIVACIDAD_POR_DEFECTO = { mostrar_direccion: true, mostrar_telefono: true };
 
+// CU09 — leer la configuración de privacidad del paciente
 exports.obtenerPrivacidad = async (req, res) => {
     try {
-        const [filas] = await pool.query(
+        const [filas] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT privacidad_contacto, resena_anonima FROM Paciente WHERE usuario_id = ? LIMIT 1`,
             [req.user.usuario_id]
         );
@@ -906,6 +927,7 @@ exports.obtenerPrivacidad = async (req, res) => {
     }
 };
 
+// CU09 — Configurando privacidad de datos de contacto
 exports.actualizarPrivacidad = async (req, res) => {
     // Excepción 3 (CU09): solo se aceptan los campos de la matriz, booleanos.
     const preferencias = {};
@@ -930,7 +952,7 @@ exports.actualizarPrivacidad = async (req, res) => {
     }
 
     try {
-        const [resultado] = await pool.query(
+        const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
             nombreEnResenas === undefined
                 ? `UPDATE Paciente SET privacidad_contacto = ? WHERE usuario_id = ?`
                 : `UPDATE Paciente SET privacidad_contacto = ?, resena_anonima = ? WHERE usuario_id = ?`,
@@ -942,8 +964,9 @@ exports.actualizarPrivacidad = async (req, res) => {
             return res.status(404).json({ error: 'No se encontró el perfil de paciente.' });
         }
 
+        // CU13: el cambio queda en la bitácora.
         try {
-            await pool.query(
+            await C_Capa_de_Acceso_a_Datos.query(
                 `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, datos_adicionales, usuario_id)
                  VALUES ('CAMBIO_PRIVACIDAD', 'Paciente', ?, ?)`,
                 [JSON.stringify(preferencias), req.user.usuario_id]

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Perfil del profesional"
+ * Casos de uso: CU10, CU14, CU58.
+ */
 // Ruta: fro-vista/src/screens/Paciente/PerfilProfesionalScreen.js
 //
 // CU10/CU14 — Perfil público del profesional, de solo lectura: foto,
@@ -9,7 +13,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, ScrollView, Image, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Icono from '../../components/Icono';
 import { getPerfilPublicoProfesional } from '../../api/client';
 import ErrorRetry from '../../components/ErrorRetry';
 import { colores, espacio, piezas, radio, tipografia, interaccion } from '../../theme';
@@ -28,7 +32,7 @@ const PILDORAS_MODALIDAD = {
 function Etiqueta({ icono, children }) {
   return (
     <View style={estilos.filaEtiqueta}>
-      <Ionicons name={icono} size={16} color={colores.primario} />
+      <Icono name={icono} size={16} color={colores.primario} />
       <Text style={estilos.etiqueta}>{children}</Text>
     </View>
   );
@@ -43,6 +47,7 @@ export default function PerfilProfesionalScreen({ route, navigation }) {
     if (nombre) navigation.setOptions?.({ title: nombre });
   }, [navigation, nombre]);
 
+  // CU10, CU14 — carga el perfil público del profesional
   const cargar = useCallback(async () => {
     setError(false);
     setPerfil(null);
@@ -79,6 +84,7 @@ export default function PerfilProfesionalScreen({ route, navigation }) {
   const promedio = Number(perfil.calificacion_promedio || 0);
   const pildoras = PILDORAS_MODALIDAD[perfil.tipo_sede] || [];
 
+  // CU58: abre las valoraciones publicadas del profesional
   const verEvaluaciones = () =>
     navigation.navigate('ResenasProfesional', { profesionalId, nombre: nombreCompleto });
 
@@ -122,7 +128,7 @@ export default function PerfilProfesionalScreen({ route, navigation }) {
         <View style={estilos.pildoras}>
           {pildoras.map((p) => (
             <View key={p.texto} style={estilos.pildora}>
-              <Ionicons name={p.icono} size={15} color={colores.primario} />
+              <Icono name={p.icono} size={15} color={colores.primario} />
               <Text style={estilos.pildoraTexto}>{p.texto}</Text>
             </View>
           ))}

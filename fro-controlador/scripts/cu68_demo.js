@@ -1,3 +1,6 @@
+// Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+// Casos de uso: CU68, CU69.
+//
 // ⚠️ CU68 - Script de EVIDENCIA / DEMO (deuda técnica, NO usar en producción).
 // Levanta un stub local que simula a un proveedor externo y ejecuta los 5 casos
 // de prueba (CP68-01..05) contra la capa adaptadora. Cada caso deja su fila en

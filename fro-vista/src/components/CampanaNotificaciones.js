@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU52.
+ */
 // Ruta: fro-vista/src/components/CampanaNotificaciones.js
 //
 // CU52 — La campana con el globo de avisos sin leer. Va en la cabecera de los
@@ -16,6 +20,7 @@ import { colores, espacio, tipografia, interaccion } from '../theme';
 export default function CampanaNotificaciones({ navigation }) {
   const [sinLeer, setSinLeer] = useState(0);
 
+  // CU52: cuántos avisos quedan sin leer
   const cargar = useCallback(async () => {
     try {
       const { no_leidas } = await getResumenNotificaciones();

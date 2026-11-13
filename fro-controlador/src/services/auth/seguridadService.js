@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Seguridad_JWT_BCrypt (puerta de entrada: src/componentes/C_Seguridad_JWT_BCrypt.js)
+ * Casos de uso: CU06, CU07, CU08.
+ *
  * Servicios de seguridad de cuenta (Incremento 2, bloque 2).
  * CU06/CU07: recuperación y cambio de contraseña con OTP.
  * CU08: sesiones por dispositivo revocables.
@@ -11,6 +14,7 @@ const crypto = require('crypto');
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU07 — Ejecutando cambio de contraseña
  * Valida la política de contraseñas y devuelve la lista de requisitos
  * incumplidos, para que la interfaz pueda resaltarlos (Excepción 3 del CU07).
  */
@@ -32,6 +36,7 @@ function validarRobustezContrasena(contrasena) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU08 — Gestionando sesiones y tokens de acceso
  * Vida del Token de Acceso. La fila de Sesion_Usuario no se apaga sola al
  * vencer el token, así que las consultas de sesiones usan este mismo plazo
  * para no tratar como activa una sesión cuyo token ya expiró.
@@ -39,6 +44,7 @@ function validarRobustezContrasena(contrasena) {
 const DURACION_SESION_HORAS = 8;
 
 /**
+ * CU08 — Gestionando sesiones y tokens de acceso
  * Crea el registro de sesión y devuelve su identificador para el JWT.
  *
  * Cada instalación de la app manda un dispositivo_id estable. Volver a entrar
@@ -74,6 +80,7 @@ async function crearSesion(conexion, usuario_id, dispositivo, ip, dispositivo_id
 }
 
 /**
+ * CU08 — Gestionando sesiones y tokens de acceso
  * Indica si la sesión del token sigue vigente. Los tokens antiguos (sin jti)
  * se aceptan mientras expiran solos: evita cerrar la sesión a todo el equipo
  * en el momento del despliegue.
@@ -88,6 +95,7 @@ async function sesionVigente(conexion, jti) {
   return Boolean(filas[0].activa);
 }
 
+// CU07, CU08 — cerrar todas las sesiones tras cambiar la contraseña
 /** Cierra todas las sesiones de un usuario (tras un cambio de contraseña). */
 async function revocarTodasLasSesiones(conexion, usuario_id) {
   await conexion.execute(

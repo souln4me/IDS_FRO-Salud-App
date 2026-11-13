@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU01, CU02, CU06 y CU07.
+ */
 // Ruta: fro-vista/src/utils/contrasena.js
 //
 // Política de contraseñas (Documento 0): 8+ caracteres, letra, número y

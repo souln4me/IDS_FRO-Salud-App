@@ -1,3 +1,8 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común, usado por CU01, CU02 y CU05.
+ */
+// CU01, CU02, CU05 — validar el dígito verificador del RUT
 export const validateRut = (fullRut) => {
   if (!fullRut || typeof fullRut !== 'string') return false;
   const cleanRut = fullRut.replace(/[^0-9kK]/g, '').toUpperCase();

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Recuperar contraseña"
+ * Casos de uso: CU06, CU07.
+ */
 // Ruta: fro-vista/src/screens/Auth/RecuperarContrasenaScreen.js
 //
 // CU06 + CU07: recuperación de contraseña olvidada.
@@ -27,6 +31,7 @@ export default function RecuperarContrasenaScreen({ navigation }) {
   const correo = email.trim().toLowerCase();
 
   // ── Paso 1: solicitar el código ────────────────────────────────────────────
+  // CU06 — Solicitando restablecimiento de credenciales
   const solicitarCodigo = async () => {
     // CU06 — Excepción 3: formato inválido se bloquea antes de enviar.
     if (!FORMATO_CORREO.test(correo)) {
@@ -83,6 +88,7 @@ export default function RecuperarContrasenaScreen({ navigation }) {
             </TouchableOpacity>
           </>
         ) : (
+          // CU07 — Ejecutando cambio de contraseña (verifica el código y fija la nueva)
           <CambioContrasenaOTP
             destino={correo}
             verificarCodigo={(codigo) =>

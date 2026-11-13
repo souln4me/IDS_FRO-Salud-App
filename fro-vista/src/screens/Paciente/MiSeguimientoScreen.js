@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mi Seguimiento"
+ * Casos de uso: CU50.
+ */
 // Ruta: fro-vista/src/screens/Paciente/MiSeguimientoScreen.js
 //
 // CU50 — El paciente reporta cómo va entre sesiones: dolor y limitación
@@ -54,6 +58,7 @@ export default function MiSeguimientoScreen() {
   const [cargando, setCargando] = useState(true);
   const [refrescando, setRefrescando] = useState(false);
 
+  // CU50: historial de reportes enviados por el paciente
   const cargarHistorial = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -68,7 +73,9 @@ export default function MiSeguimientoScreen() {
     }
   }, []);
 
-  /** Excepción 4: lo que quedó guardado en el teléfono se reenvía solo. */
+  /**
+   * CU50 — Generando y notificando alerta por deterioro clínico
+   * Excepción 4: lo que quedó guardado en el teléfono se reenvía solo. */
   const reenviarPendiente = useCallback(async () => {
     try {
       const guardado = await SecureStore.getItemAsync(CLAVE_PENDIENTE);
@@ -92,6 +99,7 @@ export default function MiSeguimientoScreen() {
     reenviarPendiente();
   }, [cargarHistorial, reenviarPendiente]);
 
+  // CU50 — Generando y notificando alerta por deterioro clínico
   const enviar = async () => {
     // Excepción 1: sin las dos métricas no se envía nada, y se dice cuáles
     // faltan en vez de un error genérico.

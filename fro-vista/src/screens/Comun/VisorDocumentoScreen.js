@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Visor de Documento"
+ * Casos de uso: CU35, CU53, CU48.
+ */
 // Ruta: fro-vista/src/screens/Comun/VisorDocumentoScreen.js
 //
 // CU35: visor embebido de documentos clínicos. Renderiza el contenido sin
@@ -5,6 +9,11 @@
 // PDF y video dentro de un visor web incrustado. El backend valida el RBAC
 // antes de entregar la URL y registra cada visualización (o intento
 // denegado) en la bitácora.
+//
+// Sirve tres orígenes con la misma respuesta del servidor:
+//  · documentoId → documento de la ficha clínica;
+//  · mensajeId   → archivo adjunto en el chat clínico (CU53);
+//  · materialId  → material de apoyo de un ejercicio de la pauta.
 
 import React, { useEffect, useState } from 'react';
 import {
@@ -26,7 +35,14 @@ import { formatearFecha } from '../../utils/fechas';
 import { colores, radio } from '../../theme';
 
 export default function VisorDocumentoScreen({ route }) {
-  const { documentoId, nombre } = route?.params || {};
+  const { documentoId, mensajeId, materialId, nombre } = route?.params || {};
+
+  // CU35, CU53, CU48 — ruta según el origen: ficha, adjunto del chat o material del ejercicio
+  const ruta = mensajeId
+    ? `/clinica/chat/adjuntos/${mensajeId}/ver`
+    : materialId
+      ? `/clinica/pautas/material/${materialId}/ver`
+      : `/clinica/documentos/${documentoId}/ver`;
 
   const [documento, setDocumento] = useState(null);
   const [errorCarga, setErrorCarga] = useState('');
@@ -34,10 +50,11 @@ export default function VisorDocumentoScreen({ route }) {
   const [errorVisor, setErrorVisor] = useState(false);
   const [claveVisor, setClaveVisor] = useState(0);
 
+  // CU35 — Visualizando archivos con visor embebido: pedir la URL autorizada
   const cargar = async () => {
     setErrorCarga('');
     try {
-      const { data } = await apiClient.get(`/clinica/documentos/${documentoId}/ver`);
+      const { data } = await apiClient.get(ruta);
       setDocumento(data.documento);
     } catch (error) {
       const respuesta = error.response?.data;
@@ -90,6 +107,7 @@ export default function VisorDocumentoScreen({ route }) {
     );
   }
 
+  // CU35 — abrir o descargar el original fuera del visor.
   // Abrir/descargar el original con el navegador del teléfono. Para un PDF
   // depende de que Cloudinary tenga habilitada la entrega de PDF; si no, el
   // navegador mostrará un error de acceso.
@@ -113,8 +131,8 @@ export default function VisorDocumentoScreen({ route }) {
           {nombre || documento.nombre_original}
         </Text>
         <Text style={estilos.detalle}>
-          {documento.formato?.toUpperCase()} ·{' '}
-          {formatearFecha(documento.fecha_carga)}
+          {documento.formato?.toUpperCase()}
+          {documento.fecha_carga ? ` · ${formatearFecha(documento.fecha_carga)}` : ''}
           {documento.visor === 'pdf' && documento.paginas ? ` · ${documento.paginas} página(s)` : ''}
           {documento.visor === 'documento' ? ' · documento Word' : ''}
           {' '}· solo visualización
@@ -145,7 +163,9 @@ export default function VisorDocumentoScreen({ route }) {
       ) : documento.visor === 'imagen' ? (
         <Image
           key={claveVisor}
-          source={{ uri: documento.url_publica }}
+          // Los adjuntos del chat y el material de los ejercicios no traen
+          // url_publica: su dirección viaja en url_visor (igual que en la ficha).
+          source={{ uri: documento.url_visor || documento.url_publica }}
           style={estilos.imagen}
           resizeMode="contain"
           onError={() => setErrorVisor(true)}

@@ -1,7 +1,13 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mis ejercicios"
+ * Casos de uso: CU48, CU49, CU44, CU54, CU35.
+ */
 // Ruta: fro-vista/src/screens/Paciente/MisPautasScreen.js
 //
 // CU48: el paciente marca a diario los ejercicios que completó.
 // CU49: las pautas expiradas quedan cerradas y su material deja de mostrarse.
+// Un ejercicio puede ir en días fijos de la semana: los otros días no se marca.
+// Cada ejercicio muestra su material de apoyo, que se abre en el visor.
 
 import React, { useCallback, useEffect, useState } from 'react';
 import {
@@ -23,11 +29,35 @@ import VistaConTeclado from '../../components/VistaConTeclado';
 import { colores, radio, espacio, tipografia } from '../../theme';
 import EtiquetaEstado from '../../components/EtiquetaEstado';
 import DialogoAviso from '../../components/DialogoAviso';
+import Icono from '../../components/Icono';
+import MaterialApoyo from '../../components/MaterialApoyo';
+import { diaSemanaHoy } from '../../components/SelectorDiasSemana';
 
 // CU48 — Excepción 2: última pauta que cargó bien, para mostrarla sin señal.
 const CLAVE_CACHE = 'cu48_cache_pautas';
 
-export default function MisPautasScreen() {
+/** "lunes, miércoles y viernes" → "Lunes, miércoles y viernes". */
+function conMayuscula(texto) {
+  return texto ? texto.charAt(0).toUpperCase() + texto.slice(1) : '';
+}
+
+/** Frecuencia legible (los ejercicios en días fijos muestran sus días aparte). */
+function textoFrecuencia(ejercicio) {
+  return ejercicio.frecuencia === 'SEMANAL' ? 'semanal' : 'diaria';
+}
+
+/**
+ * ¿Toca hacer el ejercicio hoy? Con datos en vivo manda el servidor. Con la
+ * copia sin señal se calcula con la fecha del teléfono, porque la copia
+ * puede ser de otro día. Las copias antiguas no traen el dato: corresponde.
+ */
+function correspondeHoy(ejercicio, desdeCache) {
+  const dias = Array.isArray(ejercicio.dias_semana) ? ejercicio.dias_semana : [];
+  if (desdeCache) return dias.length === 0 || dias.includes(diaSemanaHoy());
+  return ejercicio.corresponde_hoy !== false;
+}
+
+export default function MisPautasScreen({ navigation }) {
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
   const [aviso, setAviso] = useState(null);
   // CU44: porcentaje de adherencia, que el servidor devuelve al marcar.
@@ -40,6 +70,7 @@ export default function MisPautasScreen() {
   // Fecha en que se guardó la copia local que se está mostrando (null = datos en vivo).
   const [desdeCache, setDesdeCache] = useState(null);
 
+  // CU48, CU49 — carga las pautas con su vigencia; sin señal usa la copia local
   const cargarPautas = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -88,6 +119,8 @@ export default function MisPautasScreen() {
       setAviso({ tono: 'error', titulo: 'Sin conexión', mensaje: 'Estás viendo tu pauta guardada. Recarga la lista cuando vuelva la señal para marcar ejercicios.' });
       return;
     }
+    // Ejercicio en días fijos y hoy no es uno de ellos: ni se llama al servidor.
+    if (!correspondeHoy(ejercicio, desdeCache)) return;
     // Anti-rebote local: mientras hay una marca en vuelo se ignoran más toques.
     if (marcandoId !== null) return;
     setMarcandoId(ejercicio.pauta_ejercicio_id);
@@ -100,14 +133,36 @@ export default function MisPautasScreen() {
         : await apiClient.post(`/clinica/pautas/ejercicios/${ejercicio.pauta_ejercicio_id}/cumplimiento`);
       if (data?.adherencia !== null && data?.adherencia !== undefined) {
         setAdherencia(data.adherencia);
+        // CU54: el refuerzo también se muestra al instante, además de llegar a la campana.
+        if (data.refuerzo) setAviso({ tono: 'ok', titulo: '¡Sigue así!', mensaje: data.refuerzo });
       }
       await cargarPautas(true);
     } catch (err) {
       const respuesta = err.response?.data;
-      setAviso({ tono: 'error', titulo: 'No se pudo registrar', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
+      if (err.response?.status === 409 && respuesta?.error === 'NO_CORRESPONDE_HOY') {
+        // La lista estaba desactualizada (p. ej. quedó abierta desde ayer):
+        // se explica y se recarga para mostrar los días correctos.
+        setAviso({ tono: 'info', titulo: 'Hoy no corresponde', mensaje: respuesta.mensaje || 'Este ejercicio no toca hoy.' });
+        cargarPautas(true);
+      } else {
+        setAviso({ tono: 'error', titulo: 'No se pudo registrar', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
+      }
     } finally {
       setMarcandoId(null);
     }
+  };
+
+  // El material se abre en el visor, que lo pide al servidor: sin señal no se puede.
+  // CU35 — Visualizando archivos con visor embebido
+  const abrirMaterial = (material) => {
+    if (desdeCache) {
+      setAviso({ tono: 'error', titulo: 'Sin conexión', mensaje: 'Para ver el material de apoyo necesitas conexión. Recarga la lista cuando vuelva la señal.' });
+      return;
+    }
+    navigation?.navigate('VisorDocumento', {
+      materialId: material.pauta_ejercicio_material_id,
+      nombre: material.nombre,
+    });
   };
 
   if (cargando) {
@@ -193,33 +248,69 @@ export default function MisPautasScreen() {
                   Esta pauta comienza el {formatearFecha(pauta.fecha_inicio)}. Aún no puedes marcar ejercicios.
                 </Text>
               ) : (
-                pauta.ejercicios.map((ejercicio) => (
-                  <TouchableOpacity
-                    key={ejercicio.pauta_ejercicio_id}
-                    style={[estilos.filaEjercicio, ejercicio.cumplido_hoy && estilos.filaCumplida]}
-                    onPress={() => alternarCumplimiento(ejercicio)}
-                    disabled={marcandoId !== null || desdeCache !== null}
-                  >
-                    <Text style={estilos.checkbox}>
-                      {marcandoId === ejercicio.pauta_ejercicio_id
-                        ? '⏳'
-                        : ejercicio.cumplido_hoy
-                          ? '✅'
-                          : '⬜'}
-                    </Text>
+                pauta.ejercicios.map((ejercicio) => {
+                  const tocaHoy = correspondeHoy(ejercicio, desdeCache);
+                  const info = (
                     <View style={estilos.ejercicioInfo}>
                       <Text style={estilos.ejercicioNombre}>{ejercicio.nombre_ejercicio}</Text>
                       <Text style={estilos.ejercicioDetalle}>
-                        {ejercicio.series} series × {ejercicio.repeticiones} repeticiones ·{' '}
-                        {ejercicio.frecuencia.toLowerCase()}
+                        {ejercicio.series} series × {ejercicio.repeticiones} repeticiones
+                        {ejercicio.dias_texto ? '' : ` · ${textoFrecuencia(ejercicio)}`}
                         {ejercicio.material_nombre ? `\n📚 ${ejercicio.material_nombre}` : ''}
                       </Text>
+                      {ejercicio.dias_texto ? (
+                        <View style={estilos.filaDias}>
+                          <Icono name="calendar-outline" size={14} color={colores.primario} />
+                          <Text style={estilos.diasTexto}>{conMayuscula(ejercicio.dias_texto)}</Text>
+                        </View>
+                      ) : null}
                       <Text style={estilos.adherencia}>
                         Llevas {ejercicio.dias_cumplidos} día(s) registrado(s)
                       </Text>
+                      {!tocaHoy && <Text style={estilos.noCorresponde}>Hoy no corresponde</Text>}
                     </View>
-                  </TouchableOpacity>
-                ))
+                  );
+
+                  return (
+                    <View
+                      key={ejercicio.pauta_ejercicio_id}
+                      style={[
+                        estilos.filaEjercicio,
+                        ejercicio.cumplido_hoy && estilos.filaCumplida,
+                        !tocaHoy && estilos.filaSinTurno,
+                      ]}
+                    >
+                      {tocaHoy ? (
+                        <TouchableOpacity
+                          style={estilos.filaMarcado}
+                          onPress={() => alternarCumplimiento(ejercicio)}
+                          disabled={marcandoId !== null || desdeCache !== null}
+                          accessibilityRole="checkbox"
+                          accessibilityState={{ checked: Boolean(ejercicio.cumplido_hoy) }}
+                        >
+                          <Text style={estilos.checkbox}>
+                            {marcandoId === ejercicio.pauta_ejercicio_id
+                              ? '⏳'
+                              : ejercicio.cumplido_hoy
+                                ? '✅'
+                                : '⬜'}
+                          </Text>
+                          {info}
+                        </TouchableOpacity>
+                      ) : (
+                        // Hoy no toca: sin casilla, para que no parezca pendiente.
+                        <View style={estilos.filaMarcado}>
+                          <View style={estilos.checkboxVacio}>
+                            <Icono name="calendar-outline" size={20} color={colores.textoDeshabilitado} />
+                          </View>
+                          {info}
+                        </View>
+                      )}
+
+                      <MaterialApoyo materiales={ejercicio.material_apoyo || []} onAbrir={abrirMaterial} />
+                    </View>
+                  );
+                })
               )}
             </View>
           );
@@ -227,7 +318,8 @@ export default function MisPautasScreen() {
       )}
 
       <Text style={estilos.notaPie}>
-        Marca cada ejercicio el día que lo completes. Solo puedes registrar el día de hoy.
+        Marca cada ejercicio el día que lo completes. Solo puedes registrar el día de hoy
+        y, si tu ejercicio tiene días fijos, solo en esos días.
       </Text>
     <DialogoAviso
       visible={aviso !== null}
@@ -290,8 +382,6 @@ const estilos = StyleSheet.create({
   textoProgramada: { color: colores.primario, fontStyle: 'italic' },
 
   filaEjercicio: {
-    flexDirection: 'row',
-    alignItems: 'center',
     borderWidth: 1,
     borderColor: colores.borde,
     borderRadius: radio.md,
@@ -299,7 +389,13 @@ const estilos = StyleSheet.create({
     marginBottom: 8,
   },
   filaCumplida: { backgroundColor: colores.exitoSuave, borderColor: colores.exitoBorde },
+  filaSinTurno: { backgroundColor: colores.superficieSuave },
+  filaMarcado: { flexDirection: 'row', alignItems: 'center' },
   checkbox: { fontSize: 22, marginRight: 12 },
+  checkboxVacio: { width: 26, alignItems: 'center', marginRight: 12 },
+  filaDias: { flexDirection: 'row', alignItems: 'center', gap: espacio.xs, marginTop: espacio.xs },
+  diasTexto: { ...tipografia.metaFuerte, color: colores.primario },
+  noCorresponde: { ...tipografia.meta, color: colores.textoTenue, fontStyle: 'italic', marginTop: espacio.xs },
   ejercicioInfo: { flex: 1 },
   ejercicioNombre: { fontWeight: 'bold', color: colores.texto },
   ejercicioDetalle: { color: colores.textoSuave, fontSize: 13, marginTop: 2 },

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/utils/fechas.js
 //
 // Único formateador de fechas de la app. Cumple el requerimiento del proyecto:

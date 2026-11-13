@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Cifrado_Mensajeria (puerta de entrada: src/componentes/C_Cifrado_Mensajeria.js)
+ * Casos de uso: CU53.
+ *
  * CU53 — Cifrado del canal de mensajería clínica.
  *
  * Los mensajes entre paciente y profesional se guardan cifrados: quien mire la
@@ -22,6 +25,7 @@ const VERSION = 'v1';
 let claveCache = null;
 let derivada = false;
 
+// CU53 — Comunicando mediante mensajería clínica cifrada
 /** Clave de 32 bytes. Se calcula una vez y se reutiliza. */
 function clave() {
   if (claveCache) return claveCache;
@@ -41,6 +45,7 @@ function clave() {
   return claveCache;
 }
 
+// CU53 — Comunicando mediante mensajería clínica cifrada
 /** Para el diagnóstico: dice si la clave es propia o derivada del JWT. */
 function estadoClave() {
   clave();
@@ -51,6 +56,7 @@ function estadoClave() {
 }
 
 /**
+ * CU53 — Comunicando mediante mensajería clínica cifrada
  * Cifra un texto. El resultado es autocontenido: trae versión, vector de
  * inicialización y etiqueta de autenticación, así que se puede descifrar
  * aunque más adelante cambie el formato.
@@ -64,6 +70,7 @@ function cifrar(texto) {
 }
 
 /**
+ * CU53 — Comunicando mediante mensajería clínica cifrada
  * Descifra un paquete.
  *
  * Excepción 4 del CU53: si la clave no corresponde o el formato no se

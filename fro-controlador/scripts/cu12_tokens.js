@@ -1,3 +1,6 @@
+// Componente: C_Seguridad_JWT_BCrypt (puerta de entrada: src/componentes/C_Seguridad_JWT_BCrypt.js)
+// Casos de uso: CU12.
+//
 // scripts/cu12_tokens.js
 // Genera tokens JWT para documentar los casos de prueba del CU12 (RBAC).
 // Uso (desde fro-controlador):  node scripts/cu12_tokens.js

@@ -1,9 +1,14 @@
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU60, CU61.
+ *
+ * Mesa de ayuda: crear y seguir solicitudes, y la bandeja del operador.
+ */
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 
-const { verifyToken } = require('../middlewares/authMiddleware');
-const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const C_Seguridad_JWT_BCrypt = require('../componentes/C_Seguridad_JWT_BCrypt');
 const soporteController = require('../controllers/soporteController');
 
 // El adjunto viaja en memoria y de ahí a Cloudinary. El tope duro de multer es
@@ -15,25 +20,25 @@ const cargaAdjunto = multer({
 });
 
 // ── CU60 — El paciente y el profesional levantan y siguen sus solicitudes
-router.get('/categorias', verifyToken, soporteController.categorias);
-router.get('/mis-tickets', verifyToken, soporteController.misTickets);
+router.get('/categorias', C_Seguridad_JWT_BCrypt.verifyToken, soporteController.categorias);
+router.get('/mis-tickets', C_Seguridad_JWT_BCrypt.verifyToken, soporteController.misTickets);
 router.post('/tickets',
-  verifyToken,
+  C_Seguridad_JWT_BCrypt.verifyToken,
   cargaAdjunto.single('adjunto'),
   soporteController.crearTicket);
 
 // ── CU61 — Bandeja del operador y áreas que cubre
 router.get('/bandeja',
-  verifyToken, authorizeRoles(['Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Administrador']),
   soporteController.bandeja);
 router.put('/tickets/:id',
-  verifyToken, authorizeRoles(['Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Administrador']),
   soporteController.actualizarTicket);
 router.get('/areas',
-  verifyToken, authorizeRoles(['Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Administrador']),
   soporteController.misAreas);
 router.put('/areas',
-  verifyToken, authorizeRoles(['Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Administrador']),
   soporteController.guardarAreas);
 
 module.exports = router;

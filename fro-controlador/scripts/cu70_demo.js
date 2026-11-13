@@ -1,3 +1,6 @@
+// Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+// Casos de uso: CU70, CU69.
+//
 // ⚠️ CU70 - Script de EVIDENCIA / DEMO (deuda técnica, NO usar en producción).
 // Levanta un stub local CON ESTADO que simula al "Proveedor Externo" y ejecuta los
 // 5 casos de prueba (CP70-01..05) contra la capa adaptadora. Cada caso imprime su

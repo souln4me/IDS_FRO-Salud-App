@@ -118,6 +118,27 @@ for (const archivo of archivosJs(path.join(RAIZ, 'src'))) {
   usosTotales += revisarTablas(fs.readFileSync(archivo, 'utf8'), path.relative(RAIZ, archivo));
 }
 
+// ── 3. Orden de creación ─────────────────────────────────────────────────────
+// Una tabla no puede referenciar (FOREIGN KEY) a otra que el archivo crea más
+// abajo: al cargar schema.sql desde cero en un MySQL limpio falla con
+// "Failed to open the referenced table". En la nube no se notaba porque esa
+// base se construyó por migraciones y nunca se cargó el archivo completo.
+{
+  const yaCreadas = new Set();
+  for (const bloque of sql.matchAll(/CREATE TABLE\s+(\w+)\s*\(([\s\S]*?)\n\);/g)) {
+    const tabla = bloque[1];
+    for (const ref of bloque[2].matchAll(/REFERENCES\s+(\w+)\s*\(/g)) {
+      const referida = ref[1].toLowerCase();
+      if (referida !== tabla.toLowerCase() && !yaCreadas.has(referida)) {
+        problemas++;
+        console.log(`schema.sql  la tabla ${tabla} referencia a ${ref[1]}, que se crea más abajo`);
+        console.log(`   → mueve CREATE TABLE ${tabla} después de CREATE TABLE ${ref[1]}\n`);
+      }
+    }
+    yaCreadas.add(tabla.toLowerCase());
+  }
+}
+
 // ── Resultado ────────────────────────────────────────────────────────────────
 console.log(
   `\n${creadas.length} tablas · ${sentencias} sentencias · ${usosTotales} usos de tablas revisados.`

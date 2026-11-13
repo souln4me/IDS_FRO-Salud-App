@@ -1,3 +1,9 @@
+/**
+ * Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+ * Casos de uso: CU68, CU69, CU70.
+ *
+ * Cliente HTTP hacia proveedores externos, con reintentos y bitácora de cada llamada.
+ */
 const audit = require('../services/audit/transactionAuditService');
 const retryState = require('./retryState');
 
@@ -9,6 +15,7 @@ const BACKOFF_MAX_MS  = parseInt(process.env.EXTERNAL_BACKOFF_MAX_MS  || '10000'
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// CU70 — Ejecutando Lógica de Reintento ante Fallos (espera exponencial)
 function calcularRetraso(intento) {
   return Math.min(BACKOFF_BASE_MS * Math.pow(2, intento - 1), BACKOFF_MAX_MS);
 }
@@ -18,6 +25,7 @@ function parsearCuerpo(texto) {
   try { return JSON.parse(texto); } catch { return texto; }
 }
 
+// CU69: la bitácora nunca guarda credenciales del proveedor
 function sanearHeaders(headers = {}) {
   const copia = { ...headers };
   for (const k of Object.keys(copia)) {
@@ -50,6 +58,7 @@ async function enviarPeticion({
   }
 
   const payloadEnviado = { url, method, headers: sanearHeaders(headers), body };
+  // CU69: abre el registro de la transacción en la bitácora
   const ctx = await audit.iniciarTransaccion({ proveedor, operacion, payloadEnviado, usuarioId });
 
   const idPeticion = retryState.crearId();

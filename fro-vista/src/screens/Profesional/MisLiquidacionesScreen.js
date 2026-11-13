@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mis liquidaciones"
+ * Casos de uso: CU75.
+ */
 // Ruta: fro-vista/src/screens/Profesional/MisLiquidacionesScreen.js
 //
 // CU75 — El profesional consulta su historial de liquidaciones. Es solo
@@ -27,6 +31,7 @@ export default function MisLiquidacionesScreen() {
   const [refrescando, setRefrescando] = useState(false);
   const [error, setError] = useState(false);
 
+  // CU75 — Liquidando ganancias en panel financiero
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);

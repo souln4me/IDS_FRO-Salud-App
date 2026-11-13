@@ -1,3 +1,9 @@
+/**
+ * Componente: C_Capa_de_Acceso_a_Datos (puerta de entrada: src/componentes/C_Capa_de_Acceso_a_Datos.js)
+ * Casos de uso: apoyo común.
+ *
+ * Pool de conexiones a MySQL, zona horaria de la sesión y chequeo al arrancar.
+ */
 const mysql = require('mysql2/promise');
 
 const { opcionesSSL, urlConexion, datosSueltos } = require('./dbOptions');

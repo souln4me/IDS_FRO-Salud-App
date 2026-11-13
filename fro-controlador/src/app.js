@@ -1,21 +1,18 @@
+/**
+ * Componente: C_API_REST
+ * Casos de uso: apoyo común, usado por CU53, CU66, CU69.
+ *
+ * Arma la aplicación Express: CORS, JSON, diagnóstico y el montaje de todas
+ * las rutas bajo /api.
+ */
 const express = require('express');
 const cors = require('cors');
 
-const authRoutes = require('./routes/authRoutes');
-const profesionalRoutes = require('./routes/profesionalRoutes');
-const clinicaRoutes = require('./routes/clinicaRoutes');
-const citaRoutes = require('./routes/citaRoutes');
-const inalterabilidadRoutes = require('./routes/inalterabilidadRoutes');
-const parametroRoutes = require('./routes/parametroRoutes');
-
-const integracionDemoRoutes = require('./routes/integracionDemoRoutes');
-const pagoRoutes = require('./routes/pagoRoutes');
-const notificacionRoutes = require('./routes/notificacionRoutes');
-const evaluacionRoutes = require('./routes/evaluacionRoutes');
-const soporteRoutes = require('./routes/soporteRoutes');
-const gestionRoutes = require('./routes/gestionRoutes');
-const finanzasRoutes = require('./routes/finanzasRoutes');
+const C_API_REST = require('./componentes/C_API_REST');
 const pagoController = require('./controllers/pagoController');
+const C_Cifrado_Mensajeria = require('./componentes/C_Cifrado_Mensajeria');
+const C_Motor_Clinico = require('./componentes/C_Motor_Clinico');
+const C_Capa_de_Acceso_a_Datos = require('./componentes/C_Capa_de_Acceso_a_Datos');
 
 const app = express();
 
@@ -34,6 +31,11 @@ app.use(
 );
 app.use(express.json());
 
+// Registro de actividad: una línea por petición con su caso de uso y los
+// componentes que participan (ver services/registro/registroActividad.js).
+app.use(require('./services/registro/registroActividad').registrarPeticiones);
+
+// Apoyo común: chequeo de vida del servidor
 app.get('/api/health', (req, res) => {
     res.status(200).json({
         status: 'OK',
@@ -42,6 +44,7 @@ app.get('/api/health', (req, res) => {
 });
 
 /**
+ * Apoyo común: soporte técnico del despliegue.
  * Diagnóstico de configuración. Dice qué integraciones quedaron bien cargadas
  * en el servidor SIN revelar ningún secreto: solo si cada variable existe y,
  * cuando ayuda a detectar un error de pegado, su largo.
@@ -52,16 +55,12 @@ app.get('/api/health', (req, res) => {
  */
 app.get('/api/diagnostico', (req, res) => {
     const definida = (clave) => Boolean(process.env[clave]);
-    // CU53: si la clave del chat no está configurada, el servidor la deriva del
-    // JWT_SECRET. Funciona, pero conviene saberlo.
-    const { estadoClave } = require('./services/clinico/cifradoService');
 
     const ahora = new Date();
     const p = (n) => String(n).padStart(2, '0');
     // Render expone el commit desplegado en RENDER_GIT_COMMIT: con esto se
     // sabe de inmediato si un cambio ya está vivo o si el despliegue aún no
     // termina (los free tier tardan varios minutos y arrancan en frío).
-    const { ARBOL_TRIAJE } = require('./services/clinico/triajeService');
 
     res.status(200).json({
         version: {
@@ -71,7 +70,7 @@ app.get('/api/diagnostico', (req, res) => {
         zona_horaria: process.env.TZ || '(no definida)',
         hora_servidor: `${p(ahora.getDate())}/${p(ahora.getMonth() + 1)}/${ahora.getFullYear()} ${p(ahora.getHours())}:${p(ahora.getMinutes())}`,
         // Preguntas vivas de la entrevista previa (solo sus identificadores).
-        entrevista_previa: { preguntas: Object.keys(ARBOL_TRIAJE.nodos) },
+        entrevista_previa: { preguntas: Object.keys(C_Motor_Clinico.ARBOL_TRIAJE.nodos) },
         base_de_datos: {
             // Una u otra forma de configuración basta.
             configurada: definida('DATABASE_URL') || definida('DB_HOST'),
@@ -97,11 +96,12 @@ app.get('/api/diagnostico', (req, res) => {
         // CU53: el chat clínico se guarda cifrado. Sin CLAVE_CIFRADO_CHAT la
         // clave se deriva del JWT_SECRET: funciona, pero si ese secreto cambia
         // los mensajes ya guardados dejan de poder leerse.
-        mensajeria_cifrada: estadoClave(),
+        mensajeria_cifrada: C_Cifrado_Mensajeria.estadoClave(),
     });
 });
 
 /**
+ * Apoyo común: soporte técnico del despliegue.
  * Estado real del ESQUEMA de la base desplegada. Las migraciones se aplican
  * solas al arrancar, pero si alguna falla el servidor sigue funcionando y la
  * pantalla afectada devuelve un 500 genérico ("servicio no disponible") sin
@@ -111,10 +111,8 @@ app.get('/api/diagnostico', (req, res) => {
  *   https://<tu-servidor>/api/diagnostico/base-datos
  */
 app.get('/api/diagnostico/base-datos', async (req, res) => {
-    const pool = require('./config/database');
-
     try {
-        const [[{ baseDatos }]] = await pool.query('SELECT DATABASE() AS baseDatos');
+        const [[{ baseDatos }]] = await C_Capa_de_Acceso_a_Datos.query('SELECT DATABASE() AS baseDatos');
 
         // 1. Estado de cada migración automática.
         const { MIGRACIONES } = require('../scripts/migrar-db');
@@ -122,7 +120,7 @@ app.get('/api/diagnostico/base-datos', async (req, res) => {
         for (const migracion of MIGRACIONES) {
             let aplicada;
             try {
-                aplicada = await migracion.yaAplicada(pool, baseDatos);
+                aplicada = await migracion.yaAplicada(C_Capa_de_Acceso_a_Datos, baseDatos);
             } catch (error) {
                 aplicada = `error: ${error.sqlMessage || error.message}`;
             }
@@ -142,7 +140,7 @@ app.get('/api/diagnostico/base-datos', async (req, res) => {
             'Sesion_Usuario': ['jti', 'dispositivo_id'],
         };
 
-        const [columnas] = await pool.query(
+        const [columnas] = await C_Capa_de_Acceso_a_Datos.query(
             `SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS
               WHERE TABLE_SCHEMA = ?`,
             [baseDatos]
@@ -182,20 +180,9 @@ app.get('/api/diagnostico/base-datos', async (req, res) => {
     }
 });
 
-app.use('/api/auth', authRoutes);
-app.use('/api/profesionales', profesionalRoutes);
-app.use('/api/clinica', clinicaRoutes);
-app.use('/api/citas', citaRoutes);
-app.use('/api/inalterabilidad', inalterabilidadRoutes);
-app.use('/api/parametros', parametroRoutes);
-
-app.use('/api/integracion-demo', integracionDemoRoutes);
-app.use('/api/pagos', pagoRoutes);
-app.use('/api/notificaciones', notificacionRoutes);
-app.use('/api/evaluaciones', evaluacionRoutes);
-app.use('/api/soporte', soporteRoutes);
-app.use('/api/gestion', gestionRoutes);
-app.use('/api/finanzas', finanzasRoutes);
+// C_API_REST: todas las rutas de la aplicación cuelgan de /api
+// (ver src/componentes/C_API_REST.js).
+app.use('/api', C_API_REST);
 
 // Simulador del financiador externo (CU66/CU69). Sin autenticación de la app:
 // representa al proveedor foráneo; exige su propia credencial X-Api-Key.

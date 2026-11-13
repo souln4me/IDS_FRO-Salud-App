@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: apoyo común.
+ */
 // Ruta: fro-vista/src/components/DialogoAviso.js
 //
 // Aviso con la identidad de la app: un solo botón para cerrar, y opción de

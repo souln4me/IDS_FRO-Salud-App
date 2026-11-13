@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Programador_Agenda (puerta de entrada: src/componentes/C_Programador_Agenda.js)
+ * Casos de uso: CU19, CU21.
+ *
  * Tareas de agenda que no las dispara ningún usuario.
  *
  *   · CU21 — pedir confirmación de asistencia cuando la cita entra en la
@@ -21,6 +24,7 @@ const RETRASO_PRIMERA_PASADA_MS = 20000;
 
 let enCurso = false;
 
+// CU19, CU21 — pasada de confirmaciones y vencimientos de lista de espera
 /** Una pasada completa. Nunca lanza: un fallo no puede tumbar el servidor. */
 async function repasarAgenda(pool) {
   if (enCurso) return { omitida: true };
@@ -44,6 +48,7 @@ async function repasarAgenda(pool) {
   }
 }
 
+// CU19, CU21 — arranca el temporizador de la agenda
 function iniciarProgramador(pool) {
   setTimeout(() => repasarAgenda(pool), RETRASO_PRIMERA_PASADA_MS).unref?.();
   const reloj = setInterval(() => repasarAgenda(pool), MINUTOS_ENTRE_PASADAS * 60 * 1000);

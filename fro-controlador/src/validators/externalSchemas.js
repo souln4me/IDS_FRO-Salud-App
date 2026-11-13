@@ -1,3 +1,6 @@
+// Componente: C_API_Adapter (puerta de entrada: src/componentes/C_API_Adapter.js)
+// Casos de uso: CU68; el esquema del financiador lo usa CU66.
+//
 // ─────────────────────────────────────────────────────────────────────────────
 // CU68 - Paso 4: Validación manual de esquemas para proveedores externos.
 // Sin dependencias externas. CommonJS, requerible desde mappers y capa adaptadora.

@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mi Progreso"
+ * Casos de uso: CU45, CU44.
+ */
 // Ruta: fro-vista/src/screens/Paciente/MiProgresoScreen.js
 //
 // CU45 — Panel de progreso del paciente: adherencia, curva de síntomas y
@@ -62,6 +66,7 @@ export default function MiProgresoScreen({ navigation }) {
   const [hasta, setHasta] = useState(null);
   const [calendario, setCalendario] = useState(null); // 'desde' | 'hasta'
 
+  // CU45, CU44 — carga el panel; el servidor recalcula la adherencia
   const cargar = useCallback(
     async (rango, esRefresco = false) => {
       if (esRefresco) setRefrescando(true);
@@ -99,6 +104,7 @@ export default function MiProgresoScreen({ navigation }) {
     setHasta(null);
   };
 
+  // CU45: control de rango de fechas del panel
   const fijarFecha = (cual, fecha) => {
     const texto = aTexto(fecha);
     // La comprobación también se hace acá para no gastar una llamada en un
@@ -254,6 +260,7 @@ export default function MiProgresoScreen({ navigation }) {
       )}
 
       {/* ── Adherencia ── */}
+      {/* CU44: índice de adherencia */}
       <View style={estilos.tarjeta}>
         <Text style={estilos.tituloTarjeta}>Índice de adherencia</Text>
 

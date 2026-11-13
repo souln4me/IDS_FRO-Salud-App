@@ -1,12 +1,19 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mis Documentos"
+ * Casos de uso: CU33, CU34, CU35, CU28, CU53.
+ */
 // Ruta: fro-vista/src/screens/Comun/DocumentosScreen.js
 //
 // Repositorio multimedia de la ficha clínica, compartido por ambos roles:
 // - Profesional (recibe pacienteId): ve, carga (CU33) y categoriza (CU34).
-// - Paciente (sin pacienteId): consulta sus propios documentos (CU35).
+// - Paciente (sin pacienteId): consulta sus propios documentos (CU35) y
+//   descarga su ficha clínica completa en PDF.
+// - Modo selección (recibe enviarAChat): se elige un documento para mandarlo
+//   por el chat clínico (CU53); no se carga ni se recategoriza nada.
 // El binario vive en Cloudinary; aquí solo se listan metadatos y se abre el
 // visor embebido sin descargas persistentes.
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -20,13 +27,17 @@ import {
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
+import * as SecureStore from 'expo-secure-store';
 
 import apiClient from '../../api/client';
 import ErrorRetry from '../../components/ErrorRetry';
 import { formatearFecha } from '../../utils/fechas';
-import { colores, espacio, piezas, radio, sombra } from '../../theme';
+import { colores, espacio, piezas, radio, sombra, tipografia, interaccion } from '../../theme';
 import { Picker } from '@react-native-picker/picker';
 import DialogoAviso from '../../components/DialogoAviso';
+import Icono from '../../components/Icono';
 
 const ICONO_POR_VISOR = { imagen: '🖼️', pdf: '📄', video: '🎬' };
 
@@ -43,8 +54,10 @@ function pesoLegible(bytes) {
 }
 
 export default function DocumentosScreen({ route, navigation }) {
-  const { pacienteId, nombrePaciente } = route?.params || {};
+  const { pacienteId, nombrePaciente, enviarAChat } = route?.params || {};
   const esProfesional = Boolean(pacienteId);
+  // Llega desde el 📎 del chat: { pacienteId, profesionalId, nombreOtro }.
+  const modoChat = Boolean(enviarAChat?.pacienteId && enviarAChat?.profesionalId);
 
   // Avisos con el diálogo de la app (el Alert nativo no se estiliza).
 
@@ -58,7 +71,15 @@ export default function DocumentosScreen({ route, navigation }) {
   const [subiendo, setSubiendo] = useState(false);
   // CU34: documento cuya categoría se está eligiendo en el modal.
   const [docPorCategorizar, setDocPorCategorizar] = useState(null);
+  // Documento que se está enviando al chat (para su indicador de carga).
+  const [enviandoId, setEnviandoId] = useState(null);
+  const [descargandoFicha, setDescargandoFicha] = useState(false);
 
+  useLayoutEffect(() => {
+    if (modoChat) navigation.setOptions?.({ title: 'Elegir documento' });
+  }, [navigation, modoChat]);
+
+  // CU35, CU34 — listar los documentos de la ficha, filtrados por categoría
   const cargar = async (categoriaFiltro = filtro) => {
     setErrorCarga(false);
     setCargando(true);
@@ -76,8 +97,14 @@ export default function DocumentosScreen({ route, navigation }) {
     } catch (error) {
       const respuesta = error.response?.data;
       if (error.response?.status === 403) {
-        setAviso({ tono: 'error', titulo: 'Acceso denegado', mensaje: respuesta?.mensaje || 'Sin autorización.' });
-        navigation.goBack();
+        // Se vuelve atrás al cerrar el aviso: si se volviera de inmediato, el
+        // aviso desaparecería junto con la pantalla sin que se alcance a leer.
+        setAviso({
+          tono: 'error',
+          titulo: 'Acceso denegado',
+          mensaje: respuesta?.mensaje || 'Sin autorización.',
+          alCerrar: () => navigation.goBack(),
+        });
         return;
       }
       setErrorCarga(true);
@@ -108,6 +135,7 @@ export default function DocumentosScreen({ route, navigation }) {
     );
   };
 
+  // CU33 — Almacenando archivos en repositorio multimedia
   const subirArchivo = async (archivo) => {
     setSubiendo(true);
     try {
@@ -180,6 +208,90 @@ export default function DocumentosScreen({ route, navigation }) {
     });
   };
 
+  // ── CU53: enviar un documento de la ficha por el chat ──────────────────────
+  const enviarAlChat = async (doc) => {
+    setEnviandoId(doc.documento_id);
+    try {
+      await apiClient.post(
+        `/clinica/chat/${enviarAChat.pacienteId}/${enviarAChat.profesionalId}/documento`,
+        { documento_id: doc.documento_id }
+      );
+      // Al cerrar el aviso se vuelve al chat, que se actualiza al recibir foco.
+      setAviso({
+        tono: 'ok',
+        titulo: 'Documento enviado',
+        mensaje: `"${doc.nombre_original}" se envió a ${enviarAChat.nombreOtro || 'la conversación'}.`,
+        alCerrar: () => navigation.goBack(),
+      });
+    } catch (error) {
+      const respuesta = error.response?.data;
+      setAviso({
+        tono: 'alerta',
+        titulo: respuesta?.error === 'CONVERSACION_SOLO_LECTURA' ? 'Conversación de solo lectura' : 'No se pudo enviar',
+        mensaje:
+          respuesta?.mensaje ||
+          (error.response ? 'Inténtalo de nuevo en unos momentos.' : 'No hay conexión con el servidor. Revisa tu señal.'),
+      });
+    } finally {
+      setEnviandoId(null);
+    }
+  };
+
+  // ── CU28: ficha clínica completa en PDF (solo paciente) ────────────────────
+  // Igual que los informes de Administración: se descarga con el token de la
+  // sesión y se abre el menú del teléfono para guardarla o compartirla.
+  const descargarFicha = async () => {
+    setDescargandoFicha(true);
+    try {
+      const token = await SecureStore.getItemAsync('userToken');
+      const destino = `${FileSystem.cacheDirectory}ficha_clinica_${Date.now()}.pdf`;
+      const respuesta = await FileSystem.downloadAsync(
+        `${apiClient.defaults.baseURL}/clinica/mi-ficha/pdf`,
+        destino,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // El servidor responde JSON cuando algo impide generar el archivo.
+      if (respuesta.status !== 200) {
+        const texto = await FileSystem.readAsStringAsync(respuesta.uri).catch(() => '');
+        let detalle = {};
+        try {
+          detalle = JSON.parse(texto);
+        } catch {
+          detalle = {};
+        }
+        setAviso({
+          tono: 'alerta',
+          titulo: 'No se pudo descargar',
+          mensaje: detalle.mensaje || 'No pudimos preparar tu ficha clínica. Inténtalo más tarde.',
+        });
+        return;
+      }
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(respuesta.uri, {
+          mimeType: 'application/pdf',
+          dialogTitle: 'Mi ficha clínica',
+          UTI: 'com.adobe.pdf',
+        });
+      } else {
+        setAviso({
+          tono: 'info',
+          titulo: 'Ficha descargada',
+          mensaje: 'Este teléfono no permite abrir el menú para guardar o compartir el archivo.',
+        });
+      }
+    } catch {
+      setAviso({
+        tono: 'alerta',
+        titulo: 'No se pudo descargar',
+        mensaje: 'No hay conexión con el servidor. Revisa tu señal e inténtalo otra vez.',
+      });
+    } finally {
+      setDescargandoFicha(false);
+    }
+  };
+
   // ── CU34: reclasificación ──────────────────────────────────────────────────
   const asignarCategoria = async (clave) => {
     const doc = docPorCategorizar;
@@ -199,6 +311,7 @@ export default function DocumentosScreen({ route, navigation }) {
   const nombreCategoria = (clave) =>
     categorias.find((c) => c.clave === clave)?.nombre || clave;
 
+  // CU35 — al tocar un documento se abre el visor embebido
   const renderDocumento = ({ item }) => (
     <TouchableOpacity
       style={estilos.card}
@@ -219,8 +332,24 @@ export default function DocumentosScreen({ route, navigation }) {
           {formatearFecha(item.fecha_carga)}
           {item.cargado_por?.trim() ? ` · ${item.cargado_por}` : ''}
         </Text>
+        {modoChat && (
+          <TouchableOpacity
+            style={[estilos.botonEnviarChat, enviandoId !== null && estilos.deshabilitado]}
+            onPress={() => enviarAlChat(item)}
+            disabled={enviandoId !== null}
+            activeOpacity={interaccion.opacidadActiva}
+            accessibilityRole="button"
+            accessibilityLabel={`Enviar ${item.nombre_original} por el chat`}
+          >
+            {enviandoId === item.documento_id ? (
+              <ActivityIndicator size="small" color={colores.textoInverso} />
+            ) : (
+              <Text style={estilos.botonEnviarChatTexto}>Enviar por el chat</Text>
+            )}
+          </TouchableOpacity>
+        )}
       </View>
-      {esProfesional && (
+      {esProfesional && !modoChat && (
         <TouchableOpacity
           style={estilos.botonEtiqueta}
           onPress={() => setDocPorCategorizar(item)}
@@ -244,9 +373,38 @@ export default function DocumentosScreen({ route, navigation }) {
 
   return (
     <View style={estilos.contenedor}>
-      {nombrePaciente ? (
+      {/* CU53: modo selección para enviar un documento al chat */}
+      {modoChat && (
+        <View style={estilos.cintaChat}>
+          <Text style={estilos.cintaChatTexto}>
+            Elige un documento para enviar a {enviarAChat.nombreOtro || 'la conversación'}
+          </Text>
+        </View>
+      )}
+
+      {nombrePaciente && !modoChat ? (
         <Text style={estilos.subtitulo}>Paciente: {nombrePaciente}</Text>
       ) : null}
+
+      {/* CU28: ficha clínica completa en PDF: solo el paciente, fuera del modo chat. */}
+      {!esProfesional && !modoChat && (
+        <TouchableOpacity
+          style={[estilos.botonFicha, descargandoFicha && estilos.deshabilitado]}
+          onPress={descargarFicha}
+          disabled={descargandoFicha}
+          activeOpacity={interaccion.opacidadActiva}
+          accessibilityRole="button"
+        >
+          {descargandoFicha ? (
+            <ActivityIndicator size="small" color={colores.primario} />
+          ) : (
+            <Icono name="document-text-outline" size={20} color={colores.primario} />
+          )}
+          <Text style={estilos.botonFichaTexto}>
+            {descargandoFicha ? 'Preparando tu ficha…' : 'Descargar mi ficha clínica (PDF)'}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* CU34: filtro por categoría. Antes eran pastillas en una tira
           horizontal: con siete categorías había que desplazarse para ver las
@@ -293,8 +451,8 @@ export default function DocumentosScreen({ route, navigation }) {
         />
       )}
 
-      {/* CU33: carga (solo profesional) */}
-      {esProfesional && (
+      {/* CU33: carga (solo profesional y fuera del modo chat) */}
+      {esProfesional && !modoChat && (
         <View style={estilos.barraCarga}>
           <TouchableOpacity
             style={[estilos.botonCarga, subiendo && estilos.deshabilitado]}
@@ -365,6 +523,39 @@ const estilos = StyleSheet.create({
   contenedor: { flex: 1, backgroundColor: colores.fondo },
   centrado: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   subtitulo: { color: colores.textoSuave, paddingHorizontal: 16, paddingTop: 12, fontWeight: '600' },
+
+  // Modo selección para el chat.
+  cintaChat: {
+    backgroundColor: colores.primarioSuave,
+    paddingVertical: espacio.sm,
+    paddingHorizontal: espacio.base,
+    borderBottomWidth: 1,
+    borderBottomColor: colores.primarioBorde,
+  },
+  cintaChatTexto: { ...tipografia.metaFuerte, color: colores.primario },
+  botonEnviarChat: {
+    alignSelf: 'flex-start',
+    minWidth: 150,
+    alignItems: 'center',
+    marginTop: espacio.sm,
+    paddingVertical: espacio.xs + 2,
+    paddingHorizontal: espacio.md,
+    borderRadius: radio.completo,
+    backgroundColor: colores.primario,
+  },
+  botonEnviarChatTexto: { ...tipografia.metaFuerte, color: colores.textoInverso },
+
+  // Descarga de la ficha clínica en PDF (paciente).
+  botonFicha: {
+    ...piezas.botonSecundario,
+    flexDirection: 'row',
+    gap: espacio.sm,
+    marginHorizontal: espacio.base,
+    marginTop: espacio.md,
+    paddingVertical: espacio.md,
+    backgroundColor: colores.superficie,
+  },
+  botonFichaTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
 
   filtros: { paddingHorizontal: espacio.base, paddingTop: espacio.md },
   filtroEtiqueta: { ...piezas.etiqueta },

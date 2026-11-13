@@ -1,3 +1,9 @@
+/**
+ * Componente: Cliente Móvil — Vista "Verificación de identidad"
+ * Casos de uso: CU04, CU01.
+ *
+ * Pide el código OTP que activa la cuenta recién registrada.
+ */
 import React, { useState, useRef, useEffect } from "react";
 import {
   View,
@@ -74,6 +80,7 @@ export default function OTPScreen({ route, navigation }) {
   }
 
   // ── Verificar OTP ──────────────────────────────────────────────────────────
+  // CU04 — Verificando identidad mediante código OTP (activa la cuenta del CU01)
   async function verificar() {
     const codigo = codigoCompleto();
     if (codigo.length < LARGO_OTP) {
@@ -122,6 +129,7 @@ export default function OTPScreen({ route, navigation }) {
   }
 
   // ── Reenviar OTP ───────────────────────────────────────────────────────────
+  // CU04 — Verificando identidad mediante código OTP
   async function reenviarCodigo() {
     if (segundos > 0) return;
 

@@ -1,10 +1,16 @@
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU10, CU11, CU14, CU28, CU58.
+ *
+ * Rutas del profesional: su perfil, foto y horario, su nómina de pacientes,
+ * el historial del paciente y el perfil público que ve el paciente.
+ */
 const express = require('express');
 const router = express.Router();
 
 const profesionalController = require('../controllers/profesionalController');
 const evaluacionController = require('../controllers/evaluacionController');
-const { verifyToken } = require('../middlewares/authMiddleware');
-const { authorizeRoles } = require('../middlewares/roleMiddleware');
+const C_Seguridad_JWT_BCrypt = require('../componentes/C_Seguridad_JWT_BCrypt');
 
 // Estas rutas exponen datos clínicos: exigen sesión y rol. Antes estaban
 // abiertas y la identidad del profesional viajaba en la URL, así que bastaba
@@ -24,50 +30,53 @@ function manejarErrorFoto(err, req, res, next) {
   next();
 }
 
+// CU10 — Administrando catálogo de perfil profesional (perfil, horario y foto)
 router.get('/mi-perfil',
-  verifyToken, authorizeRoles(['Profesional']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional']),
   profesionalController.obtenerMiPerfil);
 router.put('/mi-perfil',
-  verifyToken, authorizeRoles(['Profesional']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional']),
   profesionalController.actualizarMiPerfil);
 // Jornada semanal: el profesional gestiona sus bloques horarios.
 router.get('/mi-horario',
-  verifyToken, authorizeRoles(['Profesional']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional']),
   profesionalController.obtenerMiHorario);
 router.put('/mi-horario',
-  verifyToken, authorizeRoles(['Profesional']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional']),
   profesionalController.guardarMiHorario);
 router.post('/mi-perfil/foto',
-  verifyToken, authorizeRoles(['Profesional']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional']),
   cargaFoto.single('foto'), manejarErrorFoto,
   profesionalController.subirFotoPerfil);
 
+// CU11 — Visualizando panel interno de gestión profesional (nómina de pacientes)
 router.get(
   '/usuario/:usuarioId/pacientes',
-  verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional', 'Administrador']),
   profesionalController.listarPacientesPorUsuarioProfesional
 );
 
 router.get(
   '/:profesionalId/pacientes',
-  verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional', 'Administrador']),
   profesionalController.listarPacientesAsignados
 );
 
+// CU28 — Consolidando historial en ficha clínica electrónica
 router.get(
   '/pacientes/:pacienteId/historial',
-  verifyToken, authorizeRoles(['Profesional', 'Administrador']),
+  C_Seguridad_JWT_BCrypt.verifyToken, C_Seguridad_JWT_BCrypt.authorizeRoles(['Profesional', 'Administrador']),
   profesionalController.obtenerHistorialPaciente
 );
 
 // CU10/CU14 — Perfil público de un profesional, de solo lectura.
 router.get('/:profesional_id/perfil-publico',
-  verifyToken,
+  C_Seguridad_JWT_BCrypt.verifyToken,
   profesionalController.obtenerPerfilPublico);
 
 // CU58 — Calificación y testimonios publicados de un profesional.
 router.get('/:profesional_id/resenas',
-  verifyToken,
+  C_Seguridad_JWT_BCrypt.verifyToken,
   evaluacionController.resenasPublicas);
 
 module.exports = router;

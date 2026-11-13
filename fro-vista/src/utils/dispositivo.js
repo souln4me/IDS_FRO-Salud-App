@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil
+ * Casos de uso: CU08, CU05.
+ */
 // Ruta: fro-vista/src/utils/dispositivo.js
 //
 // Identificador estable de esta instalación de la app (CU08). Sin él, cada
@@ -13,7 +17,10 @@ const CLAVE = 'dispositivo_id';
 
 let enMemoria = null;
 
-/** Devuelve (creándolo la primera vez) el identificador de este dispositivo. */
+/**
+ * CU08 — Gestionando sesiones y tokens de acceso
+ * Devuelve (creándolo la primera vez) el identificador de este dispositivo.
+ */
 export async function obtenerDispositivoId() {
   if (enMemoria) return enMemoria;
 
@@ -36,7 +43,10 @@ export async function obtenerDispositivoId() {
   }
 }
 
-/** Nombre legible que el usuario ve en "Sesiones activas". */
+/**
+ * CU08 — Gestionando sesiones y tokens de acceso
+ * Nombre legible que el usuario ve en "Sesiones activas".
+ */
 export function nombreDispositivo() {
   return Platform.OS === 'ios' ? 'iPhone (app móvil)' : 'Android (app móvil)';
 }

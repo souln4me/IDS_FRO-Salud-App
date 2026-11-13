@@ -1,10 +1,17 @@
-const pool = require('../../config/database');
-const { rechazarSiCerrado, estaCerrado, rechazarSiAjeno } = require('../../services/clinico/episodioService');
+/**
+ * Componente: C_API_REST
+ * Casos de uso: CU32.
+ *
+ * Metas y objetivos terapéuticos de un episodio clínico: listarlos y definir nuevos.
+ */
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Motor_Clinico = require('../../componentes/C_Motor_Clinico');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CU32 - Paso 1.1: Objetivos Terapéuticos
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU32 — Definiendo metas y objetivos terapéuticos
 // GET /api/clinica/episodio/:episodio_id/objetivos
 // Recupera el historial de metas vinculadas a un episodio clínico.
 exports.obtenerObjetivos = async (req, res) => {
@@ -18,7 +25,7 @@ exports.obtenerObjetivos = async (req, res) => {
   }
 
   try {
-    const [objetivos] = await pool.query(
+    const [objetivos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT objetivo_terapeutico_id, descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id
          FROM Objetivo_Terapeutico
         WHERE episodio_clinico_id = ?`,
@@ -37,6 +44,7 @@ exports.obtenerObjetivos = async (req, res) => {
   }
 };
 
+// CU32 — Definiendo metas y objetivos terapéuticos
 // POST /api/clinica/episodio/:episodio_id/objetivos
 // Define una nueva meta clínica cuantitativa para un episodio.
 exports.crearObjetivo = async (req, res) => {
@@ -75,13 +83,13 @@ exports.crearObjetivo = async (req, res) => {
 
   try {
     // CU78 Exc.3 (D12): sin metas nuevas sobre un episodio cerrado.
-    if (await rechazarSiCerrado(pool, episodio_clinico_id, res)) return;
+    if (await C_Motor_Clinico.rechazarSiCerrado(C_Capa_de_Acceso_a_Datos, episodio_clinico_id, res)) return;
 
     // CU28: el episodio de otro profesional se consulta, no se escribe. La app
     // ya lo mostraba en modo lectura, pero el servidor aceptaba la meta igual.
-    if (await rechazarSiAjeno(pool, episodio_clinico_id, req, res)) return;
+    if (await C_Motor_Clinico.rechazarSiAjeno(C_Capa_de_Acceso_a_Datos, episodio_clinico_id, req, res)) return;
 
-    const [result] = await pool.query(
+    const [result] = await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Objetivo_Terapeutico (descripcion, meta_valor, valor_actual, unidad, episodio_clinico_id)
        VALUES (?, ?, ?, ?, ?)`,
       // valor_actual se inicializa en 0 (aún no hay avance)
