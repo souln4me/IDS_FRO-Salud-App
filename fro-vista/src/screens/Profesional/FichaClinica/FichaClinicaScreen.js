@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Ficha clínica"
+ * Casos de uso: CU28, CU78, CU37, CU38, CU53, CU65.
+ */
 // Ruta: fro-vista/src/screens/Profesional/FichaClinica/FichaClinicaScreen.js
 //
 // Ficha clínica del paciente. Reúne en pestañas el trabajo clínico para que el
@@ -32,6 +36,8 @@ import { colores, espacio, radio, tipografia, interaccion } from '../../../theme
 import { formatearFecha } from '../../../utils/fechas';
 import BarraAtencionEnCurso from '../../../components/BarraAtencionEnCurso';
 
+// CU28 — pestañas de la ficha: historial (CU28), anamnesis (CU29), episodios
+// (CU78), sesión clínica (CU40) y pautas (CU47).
 const TABS = [
   { key: 'historial', titulo: 'Historial',      icono: '📋', Componente: HistorialPacienteScreen },
   { key: 'anamnesis', titulo: 'Anamnesis',      icono: '🩺', Componente: AnamnesisScreen },
@@ -75,6 +81,7 @@ export default function FichaClinicaScreen({ route, navigation }) {
 
   // El episodio recién creado pasa a ser el activo: el aviso decía "ya quedó
   // seleccionado arriba" y no era cierto, así que había que buscarlo a mano.
+  // CU28, CU78 — cargar los episodios del paciente desde su historial
   const cargarEpisodios = useCallback(async (dejarActivo) => {
     if (!pacienteId) return;
     setCargandoEpisodios(true);
@@ -115,6 +122,7 @@ export default function FichaClinicaScreen({ route, navigation }) {
   const [confirmacion, setConfirmacion] = useState(null);
   const [aviso, setAviso] = useState(null);
 
+  // CU78, CU37 — cerrar el episodio clínico activo
   const cerrarEpisodio = async (episodio) => {
     setCerrando(true);
     try {
@@ -183,6 +191,7 @@ export default function FichaClinicaScreen({ route, navigation }) {
 
   return (
     <View style={styles.contenedor}>
+      {/* CU38: aviso de la atención que el profesional tiene en curso */}
       <BarraAtencionEnCurso
         navigation={navigation}
         recargarEn={tabActiva}
@@ -260,13 +269,13 @@ export default function FichaClinicaScreen({ route, navigation }) {
                     {episodioElegido.estado || 'Sin estado'} · desde{' '}
                     {formatearFecha(episodioElegido.fecha_inicio)}
                   </Text>
-                  {/* CU53: el chat cuelga del episodio, así que se abre desde
-                      el episodio que está activo en la ficha. */}
+                  {/* CU53: hay un solo chat por paciente–profesional; la
+                      pantalla del chat averigua la pareja con el pacienteId. */}
                   <TouchableOpacity
                     activeOpacity={interaccion.opacidadActiva}
                     onPress={() =>
                       navigation.navigate('ChatClinico', {
-                        episodioId: episodioElegido.episodio_clinico_id,
+                        pacienteId,
                         nombreOtro: nombrePaciente,
                       })
                     }
@@ -278,6 +287,25 @@ export default function FichaClinicaScreen({ route, navigation }) {
                       booleano, el 0 se cuela como texto suelto dentro de la vista
                       y React Native corta la pantalla con "Text strings must be
                       rendered within a <Text> component". */}
+                  {/* CU65 (Exc. 1): en un episodio cerrado el control no se muestra. */}
+                  {Boolean(episodioElegido.es_propio) &&
+                    String(episodioElegido.estado || '').toUpperCase() !== 'CERRADO' && (
+                      <TouchableOpacity
+                        activeOpacity={interaccion.opacidadActiva}
+                        onPress={() =>
+                          navigation.navigate('DerivacionInterna', {
+                            episodioId: episodioElegido.episodio_clinico_id,
+                            pacienteId,
+                            nombrePaciente,
+                            motivoEpisodio: episodioElegido.motivo_consulta,
+                          })
+                        }
+                      >
+                        <Text style={styles.enlaceCrear}>↗ Derivar</Text>
+                      </TouchableOpacity>
+                    )}
+
+                  {/* CU78, CU37: cerrar el episodio activo */}
                   {Boolean(episodioElegido.es_propio) &&
                     String(episodioElegido.estado || '').toUpperCase() !== 'CERRADO' && (
                       <TouchableOpacity

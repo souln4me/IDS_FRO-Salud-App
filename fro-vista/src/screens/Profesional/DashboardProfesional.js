@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Panel del profesional"
+ * Casos de uso: CU11, CU50, CU65, CU38.
+ */
 // Ruta: fro-vista/src/screens/Profesional/DashboardProfesional.js
 //
 // Panel principal del profesional. La lista de pacientes asignados es el núcleo
@@ -18,9 +22,10 @@ import {
 } from 'react-native';
 
 import { AuthContext } from '../../context/AuthContext';
-import apiClient, { getAlertasClinicas, revisarAlertaClinica } from '../../api/client';
+import apiClient, { getAlertasClinicas, revisarAlertaClinica, getDerivacionesRecibidas } from '../../api/client';
 import { colores, espacio, radio, tipografia, piezas, interaccion } from '../../theme';
 import BarraAtencionEnCurso from '../../components/BarraAtencionEnCurso';
+import Avatar from '../../components/Avatar';
 
 export default function DashboardProfesional({ navigation }) {
   const { userData } = useContext(AuthContext);
@@ -32,7 +37,9 @@ export default function DashboardProfesional({ navigation }) {
   const [error, setError] = useState('');
   // CU50: banderas rojas de los pacientes a cargo, lo primero que debe verse.
   const [alertas, setAlertas] = useState([]);
+  const [derivacionesPendientes, setDerivacionesPendientes] = useState(0);
 
+  // CU11 — Visualizando panel interno de gestión profesional
   const cargarPacientes = async (isRefresh = false) => {
     try {
       if (isRefresh) {
@@ -68,12 +75,20 @@ export default function DashboardProfesional({ navigation }) {
     }
   };
 
+  // CU50, CU65 — cargar banderas rojas y derivaciones por responder
   const cargarAlertas = async () => {
     try {
       const { alertas: recibidas } = await getAlertasClinicas();
       setAlertas(recibidas || []);
     } catch {
       setAlertas([]);
+    }
+    // CU65: derivaciones que otros profesionales te enviaron y esperan respuesta.
+    try {
+      const { pendientes } = await getDerivacionesRecibidas();
+      setDerivacionesPendientes(pendientes || 0);
+    } catch {
+      setDerivacionesPendientes(0);
     }
   };
 
@@ -88,6 +103,7 @@ export default function DashboardProfesional({ navigation }) {
     return quitar;
   }, [navigation]);
 
+  // CU50 — marcar una alerta clínica como revisada
   const revisar = async (alerta) => {
     setAlertas((previas) => previas.filter((a) => a.alerta_clinica_id !== alerta.alerta_clinica_id));
     try {
@@ -97,6 +113,7 @@ export default function DashboardProfesional({ navigation }) {
     }
   };
 
+  // CU28: abre la ficha clínica del paciente
   const abrirFicha = (paciente) => {
     navigation.navigate('FichaClinica', {
       pacienteId: paciente.paciente_id,
@@ -106,7 +123,13 @@ export default function DashboardProfesional({ navigation }) {
 
   const renderPaciente = ({ item }) => (
     <TouchableOpacity style={styles.card} onPress={() => abrirFicha(item)}>
-      <Text style={styles.nombre}>{item.nombre_completo}</Text>
+      <View style={styles.filaNombre}>
+        <Avatar foto={item.foto_url} nombre={item.nombre_completo} tamano={44} />
+        <Text style={[styles.nombre, styles.nombreConFoto]}>{item.nombre_completo}</Text>
+      </View>
+      {Boolean(item.por_derivacion) && (
+        <Text style={styles.insigniaDerivado}>Derivación por responder · solo consulta</Text>
+      )}
       <Text style={styles.dato}>RUT: {item.rut}</Text>
       <Text style={styles.dato}>Sexo clínico: {item.sexo_clinico || 'No informado'}</Text>
       <Text style={styles.dato}>Total atenciones: {item.total_atenciones}</Text>
@@ -157,6 +180,20 @@ export default function DashboardProfesional({ navigation }) {
         </View>
       )}
 
+      {/* CU65: acceso a las derivaciones internas recibidas */}
+      <TouchableOpacity
+        style={[styles.derivaciones, derivacionesPendientes > 0 && styles.derivacionesPendientes]}
+        onPress={() => navigation.navigate('DerivacionesRecibidas')}
+        activeOpacity={interaccion.opacidadActiva}
+      >
+        <Text style={styles.derivacionesTexto}>
+          {derivacionesPendientes > 0
+            ? `📨 ${derivacionesPendientes} derivación(es) por responder`
+            : '📨 Derivaciones recibidas'}
+        </Text>
+        <Text style={styles.alertaEnlace}>Ver →</Text>
+      </TouchableOpacity>
+
       <Text style={styles.subtitle}>Pacientes asignados</Text>
 
       <View style={styles.filaBuscador}>
@@ -197,7 +234,7 @@ export default function DashboardProfesional({ navigation }) {
 
   return (
     <View style={styles.pantalla}>
-      {/* Opción C: si hay una atención abierta, se ve y se retoma desde aquí. */}
+      {/* CU38 — Opción C: si hay una atención abierta, se ve y se retoma desde aquí. */}
       <BarraAtencionEnCurso navigation={navigation} />
 
       <FlatList
@@ -252,6 +289,8 @@ const styles = StyleSheet.create({
 
   card: { ...piezas.tarjeta, marginBottom: espacio.md },
   nombre: { ...tipografia.subtitulo, color: colores.textoTitulo, marginBottom: espacio.xs },
+  filaNombre: { flexDirection: 'row', alignItems: 'center', gap: espacio.md, marginBottom: espacio.xs },
+  nombreConFoto: { flex: 1, marginBottom: 0 },
   dato: { ...tipografia.meta, color: colores.textoSuave },
   // CU50 — el bloque de banderas rojas.
   panelAlertas: { marginBottom: espacio.base },
@@ -273,6 +312,28 @@ const styles = StyleSheet.create({
   // Botón delineado: el texto va en el azul de marca, no en blanco (quedaba invisible).
   boton: { ...piezas.botonSecundario, marginTop: espacio.md, paddingVertical: espacio.md },
   botonSecundarioTexto: { ...tipografia.cuerpoFuerte, color: colores.primario },
+
+  // CU65
+  derivaciones: {
+    ...piezas.tarjeta,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: espacio.base,
+    paddingVertical: espacio.md,
+  },
+  derivacionesPendientes: { borderColor: colores.primario, backgroundColor: colores.primarioSuave },
+  derivacionesTexto: { ...tipografia.cuerpoFuerte, color: colores.textoTitulo, flex: 1 },
+  insigniaDerivado: {
+    ...tipografia.micro,
+    color: colores.info,
+    alignSelf: 'flex-start',
+    backgroundColor: colores.infoSuave,
+    borderRadius: radio.completo,
+    paddingHorizontal: espacio.sm,
+    paddingVertical: 2,
+    marginBottom: espacio.xs,
+  },
 
   pantalla: { flex: 1, backgroundColor: colores.fondo },
 });
