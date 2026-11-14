@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Términos restringidos"
+ * Casos de uso: CU57, CU62.
+ */
 // Ruta: fro-vista/src/screens/Admin/PalabrasRestringidasScreen.js
 //
 // CU57 — Diccionario de términos restringidos. Es la precondición del caso de
@@ -24,7 +28,8 @@ import DialogoConfirmacion from '../../components/DialogoConfirmacion';
 import ErrorRetry from '../../components/ErrorRetry';
 import { colores, espacio, piezas, radio, tipografia, interaccion } from '../../theme';
 
-const CATEGORIAS = ['GENERAL', 'OFENSA', 'DESCALIFICACION', 'DATOS_SENSIBLES'];
+// CU62: CRITICO no bloquea el texto; lo escala a la bandeja de eventos críticos.
+const CATEGORIAS = ['GENERAL', 'OFENSA', 'DESCALIFICACION', 'DATOS_SENSIBLES', 'CRITICO'];
 
 export default function PalabrasRestringidasScreen() {
   const [palabras, setPalabras] = useState([]);
@@ -38,6 +43,7 @@ export default function PalabrasRestringidasScreen() {
   const [aviso, setAviso] = useState(null);
   const [porEliminar, setPorEliminar] = useState(null);
 
+  // CU57 — Filtrando automáticamente contenido restringido: cargar el diccionario
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -57,6 +63,7 @@ export default function PalabrasRestringidasScreen() {
     cargar();
   }, [cargar]);
 
+  // CU57 — agregar un término al diccionario
   const agregar = async () => {
     const limpio = termino.trim();
     if (limpio.length < 2) {
@@ -84,6 +91,7 @@ export default function PalabrasRestringidasScreen() {
     }
   };
 
+  // CU57 — activar o desactivar un término sin borrarlo
   const alternar = async (palabra, activa) => {
     setPalabras((previas) =>
       previas.map((p) =>
@@ -97,6 +105,7 @@ export default function PalabrasRestringidasScreen() {
     }
   };
 
+  // CU57 — quitar un término del diccionario
   const eliminar = async (palabra) => {
     setPorEliminar(null);
     try {
@@ -164,6 +173,15 @@ export default function PalabrasRestringidasScreen() {
             </TouchableOpacity>
           ))}
         </View>
+
+        {/* CU62: explicación de los términos críticos que se escalan */}
+        {categoria === 'CRITICO' && (
+          <Text style={estilos.ayudaCritico}>
+            Los términos críticos no bloquean el texto: se guarda igual y el caso se escala a la bandeja de
+            Eventos críticos, avisando a los administradores con sesión activa. Se revisan los reportes de
+            síntomas, las reseñas y los tickets; el chat no, porque es privado entre paciente y profesional.
+          </Text>
+        )}
 
         <TouchableOpacity
           style={[estilos.boton, guardando && estilos.deshabilitado]}
@@ -237,6 +255,7 @@ const estilos = StyleSheet.create({
   etiqueta: { ...piezas.etiqueta },
   campo: { ...piezas.campo },
   ayuda: { ...tipografia.meta, color: colores.textoTenue, marginTop: espacio.md },
+  ayudaCritico: { ...tipografia.meta, color: colores.error, marginTop: espacio.sm },
 
   filaCategorias: { flexDirection: 'row', flexWrap: 'wrap', gap: espacio.sm, marginTop: espacio.md },
   categoria: {

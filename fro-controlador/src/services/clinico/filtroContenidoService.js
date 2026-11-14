@@ -1,4 +1,7 @@
 /**
+ * Componente: C_Filtro_Contenido (puerta de entrada: src/componentes/C_Filtro_Contenido.js)
+ * Casos de uso: CU57; lo usan CU53, CU55 y CU62.
+ *
  * CU57 — Filtro de contenido restringido.
  *
  * Intercepta cada texto antes de que se escriba en la base y lo contrasta
@@ -10,7 +13,7 @@
  * del bloque de calidad (CU55/CU56), que usan el mismo diccionario.
  */
 
-const pool = require('../../config/database');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
 
 // El diccionario cambia poco y se consulta en cada mensaje: se cachea un rato
 // para no pegarle a la base en cada tecla enviada.
@@ -18,6 +21,7 @@ const VIDA_CACHE_MS = 60 * 1000;
 let cache = { terminos: [], momento: 0 };
 
 /**
+ * CU57 — Filtrando automáticamente contenido restringido
  * Normaliza para comparar: minúsculas, sin acentos y sin repeticiones de
  * letras ("idiiiiota" no evade el filtro).
  */
@@ -29,13 +33,14 @@ function normalizar(texto) {
     .replace(/(.)\1{2,}/g, '$1');
 }
 
+// CU57 — Filtrando automáticamente contenido restringido
 /** Lee el diccionario activo, con caché corta. */
 async function diccionario(forzar = false) {
   if (!forzar && Date.now() - cache.momento < VIDA_CACHE_MS) {
     return cache.terminos;
   }
   try {
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT termino, categoria FROM Palabra_Restringida WHERE activa = TRUE`
     );
     cache = {
@@ -55,12 +60,14 @@ async function diccionario(forzar = false) {
   return cache.terminos;
 }
 
+// CU57 — Filtrando automáticamente contenido restringido
 /** Invalida la caché tras una edición del administrador. */
 function refrescar() {
   cache = { terminos: [], momento: 0 };
 }
 
 /**
+ * CU57, CU53, CU55 — revisa el texto del chat o de la reseña antes de guardarlo
  * Revisa un texto contra el diccionario.
  *
  * @returns {Promise<{permitido: boolean, motivo?: string, coincidencias: string[]}>}
@@ -79,9 +86,32 @@ async function revisar(texto) {
     };
   }
 
-  const normalizado = normalizar(original);
+  const { bloqueantes, criticos } = await coincidenciasDe(original);
+
+  // Excepción 2: sin coincidencias, el texto se autoriza y se inserta. Los
+  // términos CRITICO (CU62) no bloquean: se escalan aparte.
+  if (bloqueantes.length === 0) {
+    return { permitido: true, coincidencias: [], criticos };
+  }
+
+  return {
+    permitido: false,
+    motivo: 'CONTENIDO_RESTRINGIDO',
+    mensaje:
+      'Tu mensaje contiene términos que no están permitidos en el canal clínico. ' +
+      'Reescríbelo y vuelve a enviarlo.',
+    coincidencias: bloqueantes,
+    criticos,
+  };
+}
+
+// CU57, CU62 — separa términos que bloquean de los críticos
+/** Términos del diccionario presentes en el texto, separados por su papel. */
+async function coincidenciasDe(texto) {
+  const normalizado = normalizar(texto);
   const terminos = await diccionario();
-  const coincidencias = [];
+  const bloqueantes = [];
+  const criticos = [];
 
   for (const entrada of terminos) {
     if (!entrada.normalizado) continue;
@@ -91,23 +121,17 @@ async function revisar(texto) {
       'u'
     );
     if (patron.test(normalizado)) {
-      coincidencias.push(entrada.termino);
+      (entrada.categoria === 'CRITICO' ? criticos : bloqueantes).push(entrada.termino);
     }
   }
-
-  // Excepción 2: sin coincidencias, el texto se autoriza y se inserta.
-  if (coincidencias.length === 0) {
-    return { permitido: true, coincidencias: [] };
-  }
-
-  return {
-    permitido: false,
-    motivo: 'CONTENIDO_RESTRINGIDO',
-    mensaje:
-      'Tu mensaje contiene términos que no están permitidos en el canal clínico. ' +
-      'Reescríbelo y vuelve a enviarlo.',
-    coincidencias,
-  };
+  return { bloqueantes, criticos };
 }
 
-module.exports = { revisar, diccionario, refrescar, normalizar };
+// CU62 — Escalando Automáticamente Eventos Críticos a Supervisión
+/** CU62: solo los términos críticos (vulnerabilidad clínica u operativa). */
+async function detectarCriticos(texto) {
+  if (!String(texto ?? '').trim()) return [];
+  return (await coincidenciasDe(String(texto))).criticos;
+}
+
+module.exports = { revisar, detectarCriticos, diccionario, refrescar, normalizar };

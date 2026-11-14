@@ -1,13 +1,17 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU62, CU63, CU64.
+ *
  * CU64 — Dashboard de monitoreo de KPIs.
  * CU63 — Generación y exportación de reportes operativos.
+ * CU62 — Bandeja de eventos críticos escalados a supervisión.
  *
  * Los dos leen lo mismo —la operación completa— pero con propósitos distintos:
  * el panel resume para decidir, el informe detalla para auditar y archivar.
  */
 
-const pool = require('./../config/database');
-const { leerParametroEntero } = require('../services/agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Generador_Informes = require('../componentes/C_Generador_Informes');
 
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -17,11 +21,13 @@ const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 let cacheKPIs = { datos: null, momento: 0 };
 const VIDA_CACHE_MS = 2 * 60 * 1000;
 
+// Apoyo común: valida fechas AAAA-MM-DD, usado por CU63 y CU64
 function fechaValida(valor) {
   return PATRON_FECHA.test(String(valor || '')) ? valor : null;
 }
 
 /**
+ * CU64 — Visualizando dashboard de monitoreo de KPIs
  * GET /api/gestion/kpis?desde=&hasta=   (Administrador)
  */
 exports.kpis = async (req, res) => {
@@ -36,7 +42,7 @@ exports.kpis = async (req, res) => {
   }
 
   try {
-    const [[citas]] = await pool.query(
+    const [[citas]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           COUNT(*) AS total,
           SUM(estado = 'REALIZADA') AS realizadas,
@@ -49,7 +55,7 @@ exports.kpis = async (req, res) => {
       [desde, desde, hasta, hasta]
     );
 
-    const [[pacientes]] = await pool.query(
+    const [[pacientes]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           (SELECT COUNT(*) FROM Paciente) AS registrados,
           (SELECT COUNT(DISTINCT c.paciente_id) FROM Cita c
@@ -57,22 +63,25 @@ exports.kpis = async (req, res) => {
               AND c.fecha_hora_inicio >= DATE_SUB(NOW(), INTERVAL 90 DAY)) AS activos`
     );
 
-    const [[satisfaccion]] = await pool.query(
-      `SELECT COUNT(*) AS evaluaciones, COALESCE(AVG(puntuacion), 0) AS promedio
+    const [[satisfaccion]] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT COUNT(e.puntuacion) AS evaluaciones, COALESCE(AVG(e.puntuacion), 0) AS promedio,
+              -- Correcciones Inc 4: respuestas por sesión (¿quedó satisfecho?).
+              COUNT(e.satisfecho) AS respuestas_sesion,
+              COALESCE(SUM(e.satisfecho = TRUE), 0) AS sesiones_satisfechas
          FROM Evaluacion_Satisfaccion e
-         JOIN Cita c ON c.cita_id = e.cita_id
-        WHERE (? IS NULL OR DATE(c.fecha_hora_inicio) >= ?)
-          AND (? IS NULL OR DATE(c.fecha_hora_inicio) <= ?)`,
+         LEFT JOIN Cita c ON c.cita_id = e.cita_id
+        WHERE (? IS NULL OR DATE(COALESCE(c.fecha_hora_inicio, e.momento_creacion)) >= ?)
+          AND (? IS NULL OR DATE(COALESCE(c.fecha_hora_inicio, e.momento_creacion)) <= ?)`,
       [desde, desde, hasta, hasta]
     );
 
-    const [[adherencia]] = await pool.query(
+    const [[adherencia]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COALESCE(AVG(porcentaje), 0) AS promedio, COUNT(DISTINCT paciente_id) AS pacientes
          FROM Indicador_Adherencia
         WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)`
     );
 
-    const [[recaudacion]] = await pool.query(
+    const [[recaudacion]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           -- Una devolución resta: si no, la recaudación del panel quedaría
           -- inflada con dinero que volvió al paciente (RF74).
@@ -85,18 +94,19 @@ exports.kpis = async (req, res) => {
       [desde, desde, hasta, hasta]
     );
 
-    const [[operacion]] = await pool.query(
+    const [[operacion]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           (SELECT COUNT(*) FROM Ticket_Soporte WHERE estado IN ('ABIERTO','EN_PROCESO')) AS tickets_abiertos,
           (SELECT COUNT(*) FROM Alerta_Clinica WHERE estado = 'ABIERTA') AS alertas_abiertas,
           (SELECT COUNT(*) FROM Evaluacion_Satisfaccion
             WHERE estado_moderacion = 'PENDIENTE' AND resena IS NOT NULL) AS testimonios_pendientes,
+          (SELECT COUNT(*) FROM Evento_Critico WHERE estado = 'PENDIENTE') AS eventos_criticos_pendientes,
           (SELECT COUNT(*) FROM Profesional p JOIN Usuario u ON u.usuario_id = p.usuario_id
             WHERE u.cuenta_activo = TRUE) AS profesionales_activos`
     );
 
     // Serie diaria de los últimos 30 días, para el gráfico del panel.
-    const [serie] = await pool.query(
+    const [serie] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT DATE(fecha_hora_inicio) AS fecha,
               COUNT(*) AS total,
               SUM(estado = 'REALIZADA') AS realizadas
@@ -129,6 +139,8 @@ exports.kpis = async (req, res) => {
       satisfaccion: {
         promedio: Number(Number(satisfaccion?.promedio || 0).toFixed(2)),
         evaluaciones: Number(satisfaccion?.evaluaciones || 0),
+        respuestas_sesion: Number(satisfaccion?.respuestas_sesion || 0),
+        sesiones_satisfechas: Number(satisfaccion?.sesiones_satisfechas || 0),
       },
       adherencia: {
         promedio: Math.round(Number(adherencia?.promedio || 0)),
@@ -142,6 +154,7 @@ exports.kpis = async (req, res) => {
         tickets_abiertos: Number(operacion?.tickets_abiertos || 0),
         alertas_abiertas: Number(operacion?.alertas_abiertas || 0),
         testimonios_pendientes: Number(operacion?.testimonios_pendientes || 0),
+        eventos_criticos_pendientes: Number(operacion?.eventos_criticos_pendientes || 0),
         profesionales_activos: Number(operacion?.profesionales_activos || 0),
       },
       serie_citas: serie.map((f) => ({
@@ -177,7 +190,7 @@ exports.kpis = async (req, res) => {
 //  CU63 — Reportes operativos exportables
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Definición de cada informe: consulta, columnas y nombre de archivo. */
+/** CU63 — definición de cada informe: consulta, columnas y nombre de archivo. */
 const INFORMES = {
   ASISTENCIA: {
     titulo: 'Informe de asistencia',
@@ -254,7 +267,7 @@ const INFORMES = {
   },
 };
 
-/** GET /api/gestion/informes — qué informes existen y en qué formatos. */
+/** CU63 — GET /api/gestion/informes — qué informes existen y en qué formatos. */
 exports.tiposDeInforme = (req, res) => {
   res.status(200).json({
     informes: Object.entries(INFORMES).map(([clave, def]) => ({
@@ -266,97 +279,8 @@ exports.tiposDeInforme = (req, res) => {
   });
 };
 
-function aCSV(columnas, filas) {
-  const escapar = (valor) => {
-    const texto = String(valor ?? '');
-    return /[",\n;]/.test(texto) ? `"${texto.replace(/"/g, '""')}"` : texto;
-  };
-  const lineas = [columnas.map((c) => escapar(c.titulo)).join(';')];
-  for (const fila of filas) {
-    lineas.push(columnas.map((c) => escapar(fila[c.clave])).join(';'));
-  }
-  // BOM para que Excel abra los acentos bien al doble clic.
-  return '﻿' + lineas.join('\n');
-}
-
-async function aXLSX(titulo, columnas, filas, subtitulo) {
-  // Carga perezosa: la librería es pesada y solo hace falta al exportar.
-  const ExcelJS = require('exceljs');
-  const libro = new ExcelJS.Workbook();
-  libro.creator = 'Punto Paz Salud';
-  libro.created = new Date();
-
-  const hoja = libro.addWorksheet(titulo.slice(0, 30));
-  hoja.addRow([titulo]).font = { bold: true, size: 14 };
-  if (subtitulo) hoja.addRow([subtitulo]);
-  hoja.addRow([]);
-
-  const cabecera = hoja.addRow(columnas.map((c) => c.titulo));
-  cabecera.font = { bold: true, color: { argb: 'FFFFFFFF' } };
-  cabecera.eachCell((celda) => {
-    celda.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF003B4D' } };
-  });
-
-  columnas.forEach((c, i) => {
-    hoja.getColumn(i + 1).width = c.ancho || 18;
-  });
-
-  for (const fila of filas) {
-    hoja.addRow(columnas.map((c) => fila[c.clave] ?? ''));
-  }
-
-  return Buffer.from(await libro.xlsx.writeBuffer());
-}
-
-function aPDF(titulo, columnas, filas, subtitulo) {
-  const PDFDocument = require('pdfkit');
-  return new Promise((resolve, reject) => {
-    const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 36 });
-    const trozos = [];
-    doc.on('data', (t) => trozos.push(t));
-    doc.on('end', () => resolve(Buffer.concat(trozos)));
-    doc.on('error', reject);
-
-    doc.fillColor('#003B4D').fontSize(16).text('PUNTO PAZ SALUD', { characterSpacing: 3 });
-    doc.fillColor('#8B7140').fontSize(9).text('SALUD', { characterSpacing: 4 });
-    doc.moveDown(0.6);
-    doc.fillColor('#23201C').fontSize(14).text(titulo);
-    if (subtitulo) doc.fillColor('#5D564D').fontSize(9).text(subtitulo);
-    doc.moveDown(0.8);
-
-    const anchoUtil = doc.page.width - doc.options.margin * 2;
-    const total = columnas.reduce((suma, c) => suma + (c.ancho || 18), 0);
-    const anchos = columnas.map((c) => ((c.ancho || 18) / total) * anchoUtil);
-
-    const escribirFila = (valores, negrita) => {
-      const y = doc.y;
-      let x = doc.options.margin;
-      doc.fontSize(8).fillColor(negrita ? '#FFFFFF' : '#23201C');
-      if (negrita) {
-        doc.rect(doc.options.margin, y - 2, anchoUtil, 14).fill('#003B4D');
-        doc.fillColor('#FFFFFF');
-      }
-      valores.forEach((valor, i) => {
-        doc.text(String(valor ?? ''), x + 2, y + 1, { width: anchos[i] - 4, ellipsis: true });
-        x += anchos[i];
-      });
-      doc.y = y + 14;
-    };
-
-    escribirFila(columnas.map((c) => c.titulo), true);
-    for (const fila of filas) {
-      if (doc.y > doc.page.height - 50) {
-        doc.addPage();
-        escribirFila(columnas.map((c) => c.titulo), true);
-      }
-      escribirFila(columnas.map((c) => fila[c.clave]));
-    }
-
-    doc.end();
-  });
-}
-
 /**
+ * CU63 — Generando y exportando reportes operativos
  * GET /api/gestion/informes/:tipo?desde=&hasta=&formato=XLSX&tomo=1
  *
  * Devuelve el archivo listo para descargar.
@@ -382,7 +306,7 @@ exports.exportarInforme = async (req, res) => {
   }
 
   try {
-    const [filas] = await pool.query(definicion.consulta, [desde, desde, hasta, hasta]);
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(definicion.consulta, [desde, desde, hasta, hasta]);
 
     // Excepción 2: conjunto vacío. No se genera un archivo con solo encabezados.
     if (filas.length === 0) {
@@ -394,7 +318,7 @@ exports.exportarInforme = async (req, res) => {
 
     // Excepción 4: con muchas filas el informe se parte en tomos, en vez de
     // intentar compilar un archivo que no cabe en memoria.
-    const porTomo = await leerParametroEntero(pool, 'MAX_FILAS_POR_TOMO_INFORME', 2000);
+    const porTomo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'MAX_FILAS_POR_TOMO_INFORME', 2000);
     const tomos = Math.ceil(filas.length / porTomo);
     const parte = filas.slice((tomo - 1) * porTomo, tomo * porTomo);
 
@@ -422,12 +346,12 @@ exports.exportarInforme = async (req, res) => {
     if (formato === 'CSV') {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
-      return res.status(200).send(aCSV(definicion.columnas, parte));
+      return res.status(200).send(C_Generador_Informes.aCSV(definicion.columnas, parte));
     }
 
     if (formato === 'PDF') {
       try {
-        const pdf = await aPDF(definicion.titulo, definicion.columnas, parte, subtitulo);
+        const pdf = await C_Generador_Informes.aPDF(definicion.titulo, definicion.columnas, parte, subtitulo);
         res.setHeader('Content-Type', 'application/pdf');
         res.setHeader('Content-Disposition', `attachment; filename="${base}.pdf"`);
         return res.status(200).send(pdf);
@@ -445,7 +369,7 @@ exports.exportarInforme = async (req, res) => {
     }
 
     try {
-      const xlsx = await aXLSX(definicion.titulo, definicion.columnas, parte, subtitulo);
+      const xlsx = await C_Generador_Informes.aXLSX(definicion.titulo, definicion.columnas, parte, subtitulo);
       res.setHeader(
         'Content-Type',
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -456,7 +380,7 @@ exports.exportarInforme = async (req, res) => {
       console.error('[informe XLSX]', errorXlsx.message);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${base}.csv"`);
-      return res.status(200).send(aCSV(definicion.columnas, parte));
+      return res.status(200).send(C_Generador_Informes.aCSV(definicion.columnas, parte));
     }
   } catch (error) {
     console.error('[exportarInforme CU63]', error);
@@ -468,12 +392,13 @@ exports.exportarInforme = async (req, res) => {
 };
 
 /**
+ * CU63, CU13 — la descarga queda en la bitácora
  * Deja constancia de la extracción. Es la poscondición del CU63: leer
  * información sensible en bloque tiene que quedar registrado.
  */
 exports.auditarDescarga = async (req, res, next) => {
   try {
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Bitacora_Auditoria
           (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
        VALUES ('EXPORTACION_INFORME', 'Reporte', ?, ?, ?)`,
@@ -493,4 +418,77 @@ exports.auditarDescarga = async (req, res, next) => {
     console.error('[auditarDescarga CU63]', error.message);
   }
   next();
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CU62 — Bandeja de eventos críticos escalados a supervisión (Incremento 4)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** CU62 — GET /api/gestion/eventos-criticos?estado=PENDIENTE|ACUSADO|TODOS */
+exports.listarEventosCriticos = async (req, res) => {
+  const estado = String(req.query?.estado || 'PENDIENTE').toUpperCase();
+  const filtro = estado === 'TODOS' ? '' : 'WHERE e.estado = ?';
+  try {
+    const [eventos] = await C_Capa_de_Acceso_a_Datos.query(
+      `SELECT e.evento_critico_id, e.origen, e.entidad, e.entidad_id, e.termino, e.terminos, e.extracto,
+              e.estado, e.momento_creacion, e.momento_acuse, e.paciente_id,
+              CONCAT_WS(' ', uo.nombres, uo.apellido_paterno) AS usuario_origen,
+              ro.nombre_rol AS rol_origen,
+              CONCAT_WS(' ', up.nombres, up.apellido_paterno) AS paciente,
+              CONCAT_WS(' ', ua.nombres, ua.apellido_paterno) AS acusado_por
+         FROM Evento_Critico e
+         LEFT JOIN Usuario uo ON uo.usuario_id = e.usuario_origen_id
+         LEFT JOIN Rol ro ON ro.rol_id = uo.rol_id
+         LEFT JOIN Paciente pa ON pa.paciente_id = e.paciente_id
+         LEFT JOIN Usuario up ON up.usuario_id = pa.usuario_id
+         LEFT JOIN Usuario ua ON ua.usuario_id = e.acusado_por
+         ${filtro}
+        ORDER BY (e.estado = 'PENDIENTE') DESC, e.momento_creacion DESC
+        LIMIT 100`,
+      estado === 'TODOS' ? [] : [estado]
+    );
+    const [[conteo]] = await C_Capa_de_Acceso_a_Datos.query(`SELECT COUNT(*) AS pendientes FROM Evento_Critico WHERE estado = 'PENDIENTE'`);
+    return res.status(200).json({
+      eventos: eventos.map((e) => ({
+        ...e,
+        terminos: typeof e.terminos === 'string' ? JSON.parse(e.terminos || '[]') : e.terminos || [],
+      })),
+      pendientes: Number(conteo?.pendientes || 0),
+    });
+  } catch (error) {
+    console.error('[listarEventosCriticos CU62]', error);
+    return res.status(500).json({ error: 'No se pudo cargar la bandeja de eventos críticos.' });
+  }
+};
+
+/** CU62 — acuse de recibo del evento crítico. POST /api/gestion/eventos-criticos/:id/acuse */
+exports.acusarEventoCritico = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [resultado] = await C_Capa_de_Acceso_a_Datos.query(
+      `UPDATE Evento_Critico
+          SET estado = 'ACUSADO', acusado_por = ?, momento_acuse = NOW()
+        WHERE evento_critico_id = ? AND estado = 'PENDIENTE'`,
+      [req.user.usuario_id, id]
+    );
+    if (resultado.affectedRows === 0) {
+      const [[existe]] = await C_Capa_de_Acceso_a_Datos.query(
+        `SELECT estado, acusado_por FROM Evento_Critico WHERE evento_critico_id = ? LIMIT 1`, [id]
+      );
+      if (!existe) return res.status(404).json({ error: 'EVENTO_NO_ENCONTRADO', mensaje: 'El evento no existe.' });
+      return res.status(409).json({ error: 'YA_ACUSADO', mensaje: 'Otro administrador ya acusó recibo de este evento.' });
+    }
+    // Poscondición: el acuse queda como atributo inmutable del registro.
+    // CU13: el acuse queda en la bitácora.
+    await C_Capa_de_Acceso_a_Datos.query(
+      `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
+       VALUES ('EVENTO_CRITICO_ACUSADO', 'Evento_Critico', ?, ?, ?)`,
+      [req.ip || null, JSON.stringify({ evento_critico_id: Number(id) }), req.user.usuario_id]
+    ).catch(() => {});
+    return res.status(200).json({ mensaje: 'Acuse de recibo registrado.', evento_critico_id: Number(id) });
+  } catch (error) {
+    console.error('[acusarEventoCritico CU62]', error);
+    return res.status(500).json({ error: 'NO_SE_PUDO_ACUSAR', mensaje: 'No se pudo registrar el acuse. Se reintentará.' });
+  }
 };

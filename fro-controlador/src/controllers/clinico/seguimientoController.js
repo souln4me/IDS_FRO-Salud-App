@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU25, CU26, CU50, CU44, CU45, CU62.
+ *
  * Bloque de triaje inteligente y seguimiento del Incremento 3.
  *
  *   CU25 — el profesional lee el reporte pre-clínico antes de la sesión.
@@ -7,60 +10,33 @@
  *          rojas cuando detecta deterioro.
  */
 
-const pool = require('../../config/database');
-const {
-  analizarTriaje,
-  resolverDerivacion,
-  generarReporte,
-} = require('../../services/clinico/preclinicoService');
-const {
-  evaluarDeterioro,
-  crearAlerta,
-  umbralesVigentes,
-} = require('../../services/clinico/alertaClinicaService');
-const { leerParametroEntero } = require('../../services/agenda/agendaService');
-const {
-  calcularAdherencia,
-  actualizarIndicador,
-  serieAdherencia,
-} = require('../../services/clinico/adherenciaService');
+const C_Capa_de_Acceso_a_Datos = require('../../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Control_Acceso_Clinico = require('../../componentes/C_Control_Acceso_Clinico');
+const C_Escalador_Eventos_Criticos = require('../../componentes/C_Escalador_Eventos_Criticos');
+const C_Motor_Clinico = require('../../componentes/C_Motor_Clinico');
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Ayudas comunes
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Apoyo común: paciente asociado a la cuenta en sesión
 async function pacienteDeUsuario(usuarioId) {
-  const [[fila]] = await pool.query(
+  const [[fila]] = await C_Capa_de_Acceso_a_Datos.query(
     `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
     [usuarioId]
   );
   return fila?.paciente_id || null;
 }
 
-/** Mismo criterio de acceso clínico que el repositorio de documentos (CU35). */
+/** Criterio único de acceso clínico (incluye derivaciones internas, CU65). */
 async function profesionalTratante(usuarioId, pacienteId) {
-  const [filas] = await pool.query(
-    `SELECT 1 FROM Paciente p
-      WHERE p.paciente_id = ? AND (
-        p.paciente_id IN (
-          SELECT ec.paciente_id FROM Episodio_Clinico ec
-           JOIN Profesional pr ON pr.profesional_id = ec.profesional_id
-           WHERE pr.usuario_id = ?
-        )
-        OR p.paciente_id IN (
-          SELECT c.paciente_id FROM Cita c
-           JOIN Profesional pr ON pr.profesional_id = c.profesional_id
-           WHERE pr.usuario_id = ? AND c.estado NOT LIKE 'CANCELADA%'
-        )
-      ) LIMIT 1`,
-    [pacienteId, usuarioId, usuarioId]
-  );
-  return filas.length > 0;
+  return C_Control_Acceso_Clinico.profesionalTratante(C_Capa_de_Acceso_a_Datos, usuarioId, pacienteId);
 }
 
+// Apoyo común: registro en la bitácora de auditoría
 async function auditar(req, accion, entidad, datos) {
   try {
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Bitacora_Auditoria
           (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
        VALUES (?, ?, ?, ?, ?)`,
@@ -88,6 +64,7 @@ function normalizarJSON(valor, respaldo) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU25 — Sintetizando reporte de hallazgos pre-clínicos
  * GET /api/clinica/pacientes/:pacienteId/reporte-preclinico   (Profesional)
  *
  * Devuelve el reporte guardado. Si el paciente completó su triaje antes de que
@@ -110,7 +87,7 @@ exports.reportePreclinico = async (req, res) => {
       });
     }
 
-    const [[triaje]] = await pool.query(
+    const [[triaje]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT triaje_id, respuestas, momento_completado
          FROM Triaje
         WHERE paciente_id = ? AND estado = 'COMPLETADO'
@@ -127,7 +104,7 @@ exports.reportePreclinico = async (req, res) => {
       });
     }
 
-    let [[reporte]] = await pool.query(
+    let [[reporte]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT r.reporte_preclinico_id, r.resumen, r.banderas, r.etiquetas, r.suficiente,
               r.momento_creacion, e.nombre AS especialidad_sugerida
          FROM Reporte_Preclinico r
@@ -138,12 +115,12 @@ exports.reportePreclinico = async (req, res) => {
 
     // Triaje anterior a esta funcionalidad: se sintetiza ahora y se guarda.
     if (!reporte) {
-      await generarReporte(pool, {
+      await C_Motor_Clinico.generarReporte(C_Capa_de_Acceso_a_Datos, {
         pacienteId: Number(pacienteId),
         triajeId: triaje.triaje_id,
         respuestas: normalizarJSON(triaje.respuestas, {}),
       });
-      [[reporte]] = await pool.query(
+      [[reporte]] = await C_Capa_de_Acceso_a_Datos.query(
         `SELECT r.reporte_preclinico_id, r.resumen, r.banderas, r.etiquetas, r.suficiente,
                 r.momento_creacion, e.nombre AS especialidad_sugerida
            FROM Reporte_Preclinico r
@@ -162,7 +139,7 @@ exports.reportePreclinico = async (req, res) => {
 
     const duracion = Date.now() - inicio;
     // Excepción 2 del CU25: la carga lenta queda anotada en la bitácora.
-    const tope = await leerParametroEntero(pool, 'LATENCIA_MAXIMA_REPORTE_MS', 2000);
+    const tope = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'LATENCIA_MAXIMA_REPORTE_MS', 2000);
     if (duracion > tope) {
       await auditar(req, 'LATENCIA_REPORTE_PRECLINICO', 'Reporte_Preclinico', {
         paciente_id: Number(pacienteId),
@@ -198,7 +175,7 @@ exports.reportePreclinico = async (req, res) => {
 //  CU26 — Sugerencia de derivación por especialidad
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** GET /api/clinica/mi-derivacion   (Paciente) */
+/** CU26 — Sugiriendo derivación por especialidad clínica. GET /api/clinica/mi-derivacion   (Paciente) */
 exports.miDerivacion = async (req, res) => {
   try {
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
@@ -206,7 +183,7 @@ exports.miDerivacion = async (req, res) => {
       return res.status(404).json({ error: 'No se encontró tu registro de paciente.' });
     }
 
-    const [[triaje]] = await pool.query(
+    const [[triaje]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT triaje_id, respuestas FROM Triaje
         WHERE paciente_id = ? AND estado = 'COMPLETADO'
         ORDER BY momento_completado DESC, triaje_id DESC LIMIT 1`,
@@ -220,9 +197,9 @@ exports.miDerivacion = async (req, res) => {
       });
     }
 
-    const minimo = await leerParametroEntero(pool, 'MINIMO_RESPUESTAS_PRECLINICO', 4);
-    const analisis = analizarTriaje(normalizarJSON(triaje.respuestas, {}), minimo);
-    const derivacion = await resolverDerivacion(pool, analisis, pacienteId);
+    const minimo = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'MINIMO_RESPUESTAS_PRECLINICO', 4);
+    const analisis = C_Motor_Clinico.analizarTriaje(normalizarJSON(triaje.respuestas, {}), minimo);
+    const derivacion = await C_Motor_Clinico.resolverDerivacion(C_Capa_de_Acceso_a_Datos, analisis, pacienteId);
 
     return res.status(200).json({
       hay_triaje: true,
@@ -244,6 +221,7 @@ exports.miDerivacion = async (req, res) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * CU50 — Generando y notificando alerta por deterioro clínico
  * POST /api/clinica/sintomas   (Paciente)
  * { nivel_dolor, limitacion_funcional, comentario, clave_envio }
  */
@@ -273,7 +251,7 @@ exports.registrarSintomas = async (req, res) => {
     });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     const [[paciente]] = await conexion.execute(
@@ -331,8 +309,8 @@ exports.registrarSintomas = async (req, res) => {
       [dolor, limitacion, comentario || null, claveEnvio, pacienteId, episodio?.episodio_clinico_id || null]
     );
 
-    const umbrales = await umbralesVigentes(conexion);
-    const evaluacion = evaluarDeterioro(
+    const umbrales = await C_Motor_Clinico.umbralesVigentes(conexion);
+    const evaluacion = C_Motor_Clinico.evaluarDeterioro(
       { nivel_dolor: dolor, limitacion_funcional: limitacion },
       anterior || null,
       umbrales
@@ -340,7 +318,7 @@ exports.registrarSintomas = async (req, res) => {
 
     let alertaId = null;
     if (evaluacion.critico) {
-      alertaId = await crearAlerta(conexion, {
+      alertaId = await C_Motor_Clinico.crearAlerta(conexion, {
         pacienteId,
         tipo: 'DETERIORO_SINTOMAS',
         severidad: evaluacion.severidad,
@@ -358,6 +336,14 @@ exports.registrarSintomas = async (req, res) => {
     }
 
     await conexion.commit();
+
+    // CU62: el comentario libre puede traer términos críticos → escalamiento.
+    if (comentario) {
+      C_Escalador_Eventos_Criticos.escalar(C_Capa_de_Acceso_a_Datos, {
+        texto: comentario, origen: 'SINTOMAS', entidad: 'Reporte_Sintoma', entidadId: creado.insertId,
+        usuarioOrigenId: req.user.usuario_id, pacienteId,
+      }).catch(() => {});
+    }
 
     return res.status(201).json({
       mensaje: evaluacion.critico
@@ -380,13 +366,13 @@ exports.registrarSintomas = async (req, res) => {
   }
 };
 
-/** GET /api/clinica/mis-sintomas   (Paciente) */
+/** CU50 — historial de reportes de síntomas del paciente. GET /api/clinica/mis-sintomas   (Paciente) */
 exports.misSintomas = async (req, res) => {
   try {
     const pacienteId = await pacienteDeUsuario(req.user.usuario_id);
     if (!pacienteId) return res.status(200).json({ reportes: [] });
 
-    const [reportes] = await pool.query(
+    const [reportes] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT reporte_sintoma_id, nivel_dolor, limitacion_funcional, comentario, momento_registro
          FROM Reporte_Sintoma
         WHERE paciente_id = ?
@@ -402,7 +388,7 @@ exports.misSintomas = async (req, res) => {
   }
 };
 
-/** GET /api/clinica/pacientes/:pacienteId/sintomas   (Profesional) */
+/** CU50 — reportes y alertas de un paciente, vista del profesional. GET /api/clinica/pacientes/:pacienteId/sintomas   (Profesional) */
 exports.sintomasDePaciente = async (req, res) => {
   const { pacienteId } = req.params;
   try {
@@ -413,7 +399,7 @@ exports.sintomasDePaciente = async (req, res) => {
       return res.status(403).json({ error: 'PACIENTE_NO_ASIGNADO' });
     }
 
-    const [reportes] = await pool.query(
+    const [reportes] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT reporte_sintoma_id, nivel_dolor, limitacion_funcional, comentario, momento_registro
          FROM Reporte_Sintoma
         WHERE paciente_id = ?
@@ -422,7 +408,7 @@ exports.sintomasDePaciente = async (req, res) => {
       [pacienteId]
     );
 
-    const [alertas] = await pool.query(
+    const [alertas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT alerta_clinica_id, tipo, severidad, motivo, estado, momento_creacion
          FROM Alerta_Clinica
         WHERE paciente_id = ?
@@ -437,10 +423,10 @@ exports.sintomasDePaciente = async (req, res) => {
   }
 };
 
-/** GET /api/clinica/alertas   (Profesional) — el panel de banderas rojas. */
+/** CU50 — GET /api/clinica/alertas   (Profesional) — el panel de banderas rojas. */
 exports.alertasAbiertas = async (req, res) => {
   try {
-    const [alertas] = await pool.query(
+    const [alertas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT a.alerta_clinica_id, a.tipo, a.severidad, a.motivo, a.datos,
               a.estado, a.momento_creacion, a.paciente_id,
               COALESCE(
@@ -477,10 +463,10 @@ exports.alertasAbiertas = async (req, res) => {
   }
 };
 
-/** POST /api/clinica/alertas/:id/revisar   (Profesional) */
+/** CU50 — marcar la alerta como revisada. POST /api/clinica/alertas/:id/revisar   (Profesional) */
 exports.revisarAlerta = async (req, res) => {
   try {
-    const [[alerta]] = await pool.query(
+    const [[alerta]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT alerta_clinica_id, paciente_id, estado FROM Alerta_Clinica
         WHERE alerta_clinica_id = ? LIMIT 1`,
       [req.params.id]
@@ -494,12 +480,12 @@ exports.revisarAlerta = async (req, res) => {
       return res.status(403).json({ error: 'PACIENTE_NO_ASIGNADO' });
     }
 
-    const [[profesional]] = await pool.query(
+    const [[profesional]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT profesional_id FROM Profesional WHERE usuario_id = ? LIMIT 1`,
       [req.user.usuario_id]
     );
 
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `UPDATE Alerta_Clinica
           SET estado = 'REVISADA', momento_revision = NOW(), profesional_id = ?
         WHERE alerta_clinica_id = ? AND estado = 'ABIERTA'`,
@@ -525,6 +511,7 @@ exports.revisarAlerta = async (req, res) => {
 const PATRON_FECHA = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * CU45, CU44 — panel de progreso del paciente (recalcula la adherencia)
  * GET /api/clinica/mi-progreso?desde=&hasta=   (Paciente)
  *
  * Todo lo que alimenta el panel del CU45 en una sola llamada: adherencia,
@@ -552,16 +539,16 @@ exports.miProgreso = async (req, res) => {
     // CU44: el índice se recalcula al entrar al panel. Si el teléfono se quedó
     // sin señal antes (Excepción 3 del CU44), el dato quedó en el servidor y
     // aparece ahora.
-    const adherencia = await actualizarIndicador(pool, pacienteId);
+    const adherencia = await C_Motor_Clinico.actualizarIndicador(C_Capa_de_Acceso_a_Datos, pacienteId);
 
     const [serie, rango] = await Promise.all([
-      serieAdherencia(pool, pacienteId, { desde, hasta }).catch(() => []),
+      C_Motor_Clinico.serieAdherencia(C_Capa_de_Acceso_a_Datos, pacienteId, { desde, hasta }).catch(() => []),
       desde || hasta
-        ? calcularAdherencia(pool, pacienteId, { desde, hasta }).catch(() => null)
+        ? C_Motor_Clinico.calcularAdherencia(C_Capa_de_Acceso_a_Datos, pacienteId, { desde, hasta }).catch(() => null)
         : Promise.resolve(null),
     ]);
 
-    const [sintomas] = await pool.query(
+    const [sintomas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT reporte_sintoma_id, nivel_dolor, limitacion_funcional, comentario, momento_registro
          FROM Reporte_Sintoma
         WHERE paciente_id = ?
@@ -571,7 +558,7 @@ exports.miProgreso = async (req, res) => {
       [pacienteId, desde, desde, hasta, hasta]
     );
 
-    const [[asistencia]] = await pool.query(
+    const [[asistencia]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           SUM(CASE WHEN estado = 'REALIZADA' THEN 1 ELSE 0 END)      AS realizadas,
           SUM(CASE WHEN estado = 'INASISTENCIA' THEN 1 ELSE 0 END)   AS inasistencias,
@@ -587,7 +574,7 @@ exports.miProgreso = async (req, res) => {
     );
 
     // Excepción 1 del CU45: sin historial se devuelve la vista introductoria.
-    const [[historico]] = await pool.query(
+    const [[historico]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COUNT(*) AS citas FROM Cita WHERE paciente_id = ?`,
       [pacienteId]
     );
@@ -621,6 +608,7 @@ exports.miProgreso = async (req, res) => {
 };
 
 /**
+ * CU44 — Actualizando indicadores de adherencia y síntomas
  * GET /api/clinica/pacientes/:pacienteId/adherencia   (Profesional)
  *
  * El mismo indicador, desde la ficha: el profesional necesita ver el
@@ -636,8 +624,8 @@ exports.adherenciaDePaciente = async (req, res) => {
       return res.status(403).json({ error: 'PACIENTE_NO_ASIGNADO' });
     }
 
-    const adherencia = await actualizarIndicador(pool, pacienteId);
-    const serie = await serieAdherencia(pool, pacienteId, {}).catch(() => []);
+    const adherencia = await C_Motor_Clinico.actualizarIndicador(C_Capa_de_Acceso_a_Datos, pacienteId);
+    const serie = await C_Motor_Clinico.serieAdherencia(C_Capa_de_Acceso_a_Datos, pacienteId, {}).catch(() => []);
 
     return res.status(200).json({ adherencia, serie_adherencia: serie });
   } catch (error) {

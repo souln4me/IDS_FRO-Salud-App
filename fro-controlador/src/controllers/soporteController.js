@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU60, CU61, CU62, CU52, CU13.
+ *
  * CU60 — Registro y seguimiento de solicitudes de soporte.
  * CU61 — Enrutamiento automático por categoría.
  *
@@ -7,10 +10,10 @@
  * bandeja de supervisión general y se avisa del desborde.
  */
 
-const pool = require('./../config/database');
-const { leerParametroEntero } = require('../services/agenda/agendaService');
-const { notificarUsuario } = require('../services/agenda/agendaService');
-const { subirBuffer, cloudinaryConfigurado } = require('../config/cloudinary');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_Escalador_Eventos_Criticos = require('../componentes/C_Escalador_Eventos_Criticos');
+const C_Despachador_Notificaciones = require('../componentes/C_Despachador_Notificaciones');
+const C_API_Adapter = require('../componentes/C_API_Adapter');
 
 // Áreas funcionales. Son las etiquetas taxonómicas del CU61: con ellas se
 // decide a qué operador va cada solicitud.
@@ -25,12 +28,16 @@ const CATEGORIAS = [
 
 const ESTADOS = ['ABIERTO', 'EN_PROCESO', 'RESUELTO', 'CERRADO'];
 
-/** GET /api/soporte/categorias */
+/**
+ * CU60 — Registrando y siguiendo solicitudes de soporte
+ * GET /api/soporte/categorias
+ */
 exports.categorias = (req, res) => {
   res.status(200).json({ categorias: CATEGORIAS });
 };
 
 /**
+ * CU61 — Enrutando automáticamente solicitudes por categoría
  * Busca el operador que cubre un área. Si hay varios, se reparte por carga:
  * el que tenga menos tickets abiertos.
  *
@@ -53,7 +60,10 @@ async function operadorParaCategoria(conexion, categoria) {
   return filas[0]?.usuario_id || null;
 }
 
-/** Avisa a los administradores cuando un área queda sin operador. */
+/**
+ * CU61, CU52 — avisar a los administradores del ticket sin operador
+ * Avisa a los administradores cuando un área queda sin operador.
+ */
 async function alertarDesborde(conexion, ticketId, categoria) {
   const [admins] = await conexion.query(
     `SELECT u.usuario_id FROM Usuario u
@@ -61,7 +71,7 @@ async function alertarDesborde(conexion, ticketId, categoria) {
      WHERE r.nombre_rol = 'Administrador' AND u.cuenta_activo = TRUE`
   );
   for (const admin of admins) {
-    await notificarUsuario(
+    await C_Despachador_Notificaciones.notificarUsuario(
       conexion,
       admin.usuario_id,
       'TICKET_SIN_OPERADOR',
@@ -72,6 +82,7 @@ async function alertarDesborde(conexion, ticketId, categoria) {
 }
 
 /**
+ * CU60 — Registrando y siguiendo solicitudes de soporte
  * POST /api/soporte/tickets   { categoria, descripcion }  [+ archivo "adjunto"]
  *
  * Excepción 3 del CU60: faltan campos obligatorios → validación estricta.
@@ -97,26 +108,26 @@ exports.crearTicket = async (req, res) => {
     });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     // Excepción 4: el adjunto se valida ANTES de escribir nada.
     let adjuntoUrl = null;
     if (req.file) {
-      const topeMb = await leerParametroEntero(conexion, 'MAX_ADJUNTO_TICKET_MB', 5);
+      const topeMb = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(conexion, 'MAX_ADJUNTO_TICKET_MB', 5);
       if (req.file.size > topeMb * 1024 * 1024) {
         return res.status(413).json({
           error: 'ADJUNTO_MUY_PESADO',
           mensaje: `La imagen supera los ${topeMb} MB. Comprímela o envíala sin adjunto.`,
         });
       }
-      if (!cloudinaryConfigurado()) {
+      if (!C_API_Adapter.cloudinaryConfigurado()) {
         return res.status(503).json({
           error: 'ADJUNTOS_NO_DISPONIBLES',
           mensaje: 'El repositorio de imágenes no está disponible. Envía el ticket sin adjunto.',
         });
       }
-      const subida = await subirBuffer(req.file.buffer, {
+      const subida = await C_API_Adapter.subirBuffer(req.file.buffer, {
         folder: 'punto-paz/soporte',
         resource_type: 'image',
       });
@@ -132,6 +143,12 @@ exports.crearTicket = async (req, res) => {
     );
     const ticketId = creado.insertId;
 
+    // CU62: una solicitud con términos críticos se escala a la supervisión.
+    C_Escalador_Eventos_Criticos.escalar(C_Capa_de_Acceso_a_Datos, {
+      texto: descripcion, origen: 'TICKET', entidad: 'Ticket_Soporte', entidadId: ticketId,
+      usuarioOrigenId: req.user.usuario_id,
+    }).catch(() => {});
+
     // CU61: el enrutamiento ocurre como consecuencia directa de la inserción.
     const operador = await operadorParaCategoria(conexion, categoria);
     if (operador) {
@@ -141,7 +158,8 @@ exports.crearTicket = async (req, res) => {
           WHERE ticket_soporte_id = ?`,
         [operador, ticketId]
       );
-      await notificarUsuario(
+      // CU52: aviso al operador asignado
+      await C_Despachador_Notificaciones.notificarUsuario(
         conexion,
         operador,
         'TICKET_ASIGNADO',
@@ -150,6 +168,7 @@ exports.crearTicket = async (req, res) => {
       ).catch(() => {});
     }
 
+    // CU13: queda en la bitácora de auditoría
     await conexion.execute(
       `INSERT INTO Bitacora_Auditoria
           (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
@@ -163,7 +182,8 @@ exports.crearTicket = async (req, res) => {
 
     await conexion.commit();
 
-    if (!operador) await alertarDesborde(pool, ticketId, categoria);
+    // CU61 Exc. 2: sin operador, queda en supervisión general
+    if (!operador) await alertarDesborde(C_Capa_de_Acceso_a_Datos, ticketId, categoria);
 
     return res.status(201).json({
       mensaje: `Tu solicitud quedó registrada con el número #${ticketId}.`,
@@ -183,10 +203,13 @@ exports.crearTicket = async (req, res) => {
   }
 };
 
-/** GET /api/soporte/mis-tickets — seguimiento del estado por su autor. */
+/**
+ * CU60 — Registrando y siguiendo solicitudes de soporte
+ * GET /api/soporte/mis-tickets — seguimiento del estado por su autor.
+ */
 exports.misTickets = async (req, res) => {
   try {
-    const [tickets] = await pool.query(
+    const [tickets] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT ticket_soporte_id, categoria, descripcion, estado, resolucion,
               momento_creacion, momento_resuelto, adjunto_url
          FROM Ticket_Soporte
@@ -203,6 +226,7 @@ exports.misTickets = async (req, res) => {
 };
 
 /**
+ * CU61 — Enrutando automáticamente solicitudes por categoría
  * GET /api/soporte/bandeja?estado=ABIERTO&solo_mios=1   (Administrador)
  *
  * La bandeja del operador. Sin filtro muestra también los sin asignar, que son
@@ -215,9 +239,9 @@ exports.bandeja = async (req, res) => {
   try {
     // El enrutamiento se reintenta al abrir la bandeja: si un área ganó
     // operador después, sus tickets dejan de estar huérfanos.
-    await reenrutarPendientes(pool);
+    await reenrutarPendientes(C_Capa_de_Acceso_a_Datos);
 
-    const [tickets] = await pool.query(
+    const [tickets] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT t.ticket_soporte_id, t.categoria, t.descripcion, t.estado, t.resolucion,
               t.momento_creacion, t.momento_enrutamiento, t.momento_resuelto,
               t.adjunto_url, t.asignado_a,
@@ -248,7 +272,7 @@ exports.bandeja = async (req, res) => {
       [estado, estado, soloMios ? 1 : 0, req.user.usuario_id]
     );
 
-    const [[resumen]] = await pool.query(
+    const [[resumen]] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT
           SUM(estado = 'ABIERTO') AS abiertos,
           SUM(estado = 'EN_PROCESO') AS en_proceso,
@@ -271,7 +295,10 @@ exports.bandeja = async (req, res) => {
   }
 };
 
-/** Reintenta el enrutamiento de los tickets que quedaron sin operador. */
+/**
+ * CU61 — Enrutando automáticamente solicitudes por categoría
+ * Reintenta el enrutamiento de los tickets que quedaron sin operador.
+ */
 async function reenrutarPendientes(conexion) {
   try {
     const [huerfanos] = await conexion.query(
@@ -290,7 +317,7 @@ async function reenrutarPendientes(conexion) {
         );
         // Igual que al enrutar en la creación: el operador se entera.
         if (resultado.affectedRows > 0) {
-          await notificarUsuario(
+          await C_Despachador_Notificaciones.notificarUsuario(
             conexion,
             operador,
             'TICKET_ASIGNADO',
@@ -306,6 +333,7 @@ async function reenrutarPendientes(conexion) {
 }
 
 /**
+ * CU61, CU60 — el operador gestiona y resuelve el ticket
  * PUT /api/soporte/tickets/:id   { estado, resolucion }   (Administrador)
  *
  * Excepción 3 del CU61: si otro operador tomó el ticket entre medio, la
@@ -327,7 +355,7 @@ exports.actualizarTicket = async (req, res) => {
     });
   }
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
 
   try {
     await conexion.beginTransaction();
@@ -363,6 +391,7 @@ exports.actualizarTicket = async (req, res) => {
       [nuevoEstado, resolucion, req.user.usuario_id, nuevoEstado, req.params.id]
     );
 
+    // CU13: queda en la bitácora de auditoría
     await conexion.execute(
       `INSERT INTO Bitacora_Auditoria
           (accion, entidad_afectada, ip_origen, datos_adicionales, usuario_id)
@@ -380,9 +409,10 @@ exports.actualizarTicket = async (req, res) => {
 
     await conexion.commit();
 
+    // CU52: aviso al solicitante
     if (['RESUELTO', 'CERRADO'].includes(nuevoEstado)) {
-      notificarUsuario(
-        pool,
+      C_Despachador_Notificaciones.notificarUsuario(
+        C_Capa_de_Acceso_a_Datos,
         ticket.usuario_id,
         'TICKET_RESUELTO',
         `Tu solicitud #${ticket.ticket_soporte_id} fue marcada como ${nuevoEstado.toLowerCase()}. ${resolucion}`,
@@ -400,10 +430,13 @@ exports.actualizarTicket = async (req, res) => {
   }
 };
 
-/** GET /api/soporte/areas — áreas que cubre cada operador (Administrador). */
+/**
+ * CU61 — Enrutando automáticamente solicitudes por categoría
+ * GET /api/soporte/areas — áreas que cubre cada operador (Administrador).
+ */
 exports.misAreas = async (req, res) => {
   try {
-    const [filas] = await pool.query(
+    const [filas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT categoria FROM Area_Soporte_Operador WHERE usuario_id = ?`,
       [req.user.usuario_id]
     );
@@ -417,7 +450,10 @@ exports.misAreas = async (req, res) => {
   }
 };
 
-/** PUT /api/soporte/areas   { areas: [...] }   (Administrador) */
+/**
+ * CU61 — Enrutando automáticamente solicitudes por categoría
+ * PUT /api/soporte/areas   { areas: [...] }   (Administrador)
+ */
 exports.guardarAreas = async (req, res) => {
   const areas = Array.isArray(req.body?.areas)
     ? req.body.areas
@@ -425,7 +461,7 @@ exports.guardarAreas = async (req, res) => {
         .filter((a) => CATEGORIAS.some((c) => c.clave === a))
     : [];
 
-  const conexion = await pool.getConnection();
+  const conexion = await C_Capa_de_Acceso_a_Datos.getConnection();
   try {
     await conexion.beginTransaction();
     await conexion.execute(`DELETE FROM Area_Soporte_Operador WHERE usuario_id = ?`, [
@@ -440,7 +476,7 @@ exports.guardarAreas = async (req, res) => {
     await conexion.commit();
 
     // Con un área nueva cubierta, los tickets huérfanos encuentran dueño.
-    await reenrutarPendientes(pool);
+    await reenrutarPendientes(C_Capa_de_Acceso_a_Datos);
 
     return res.status(200).json({
       mensaje: areas.length
