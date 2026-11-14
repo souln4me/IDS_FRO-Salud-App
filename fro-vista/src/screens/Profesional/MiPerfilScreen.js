@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Mi perfil" (profesional)
+ * Casos de uso: CU10, CU14, CU58, CU72, CU75, CU07, CU08, CU60.
+ */
 // Ruta: fro-vista/src/screens/Profesional/MiPerfilScreen.js
 //
 // CU10 — Administrando catálogo de perfil profesional (decisión D1).
@@ -22,7 +26,7 @@ import apiClient, { getComunas } from '../../api/client';
 import VistaConTeclado from '../../components/VistaConTeclado';
 import ErrorRetry from '../../components/ErrorRetry';
 import DialogoAviso from '../../components/DialogoAviso';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import Icono from '../../components/Icono';
 import { PieDePerfil } from '../Comun/SeguridadScreen';
 import { colores, espacio, radio, sombra, tipografia, piezas, interaccion } from '../../theme';
 
@@ -51,6 +55,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
   const [comunas, setComunas] = useState([]);
   const [comunasElegidas, setComunasElegidas] = useState([]);
 
+  // CU10, CU14 — cargar el perfil y el catálogo de comunas
   const cargar = async () => {
     setError('');
     try {
@@ -79,6 +84,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
   const limiteResena = perfil?.limites?.resena || 1000;
   const limiteAreas = perfil?.limites?.areas || 255;
 
+  // CU10 — Administrando catálogo de perfil profesional
   const guardar = async () => {
     // CU10 Exc.4 y Exc.5: largo de la reseña y modalidad obligatoria.
     const errores = {};
@@ -106,6 +112,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
     }
   };
 
+  // CU10 — subir la fotografía de perfil
   const elegirFoto = async () => {
     const permiso = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permiso.granted) {
@@ -172,6 +179,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
         <Text style={[estilos.intro, estilos.introTexto]}>
           Así te ven los pacientes al buscar una hora. Los cambios se publican de inmediato.
         </Text>
+        {/* CU75: acceso a Mis liquidaciones */}
         {comoPestana && (
           <TouchableOpacity
             style={estilos.botonLiquidaciones}
@@ -179,8 +187,22 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
             activeOpacity={interaccion.opacidadActiva}
             accessibilityRole="button"
           >
-            <Ionicons name="wallet-outline" size={18} color={colores.primario} />
+            <Icono name="wallet-outline" size={18} color={colores.primario} />
             <Text style={estilos.botonLiquidacionesTexto}>Mis liquidaciones</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+      {/* CU72: si el financiador no responde, los bonos se ingresan a mano. */}
+      <View style={estilos.filaIntro}>
+        {comoPestana && (
+          <TouchableOpacity
+            style={[estilos.botonLiquidaciones, estilos.botonContingencia]}
+            onPress={() => navigation.navigate('ContingenciaBonos')}
+            activeOpacity={interaccion.opacidadActiva}
+            accessibilityRole="button"
+          >
+            <Icono name="card-outline" size={18} color={colores.primario} />
+            <Text style={estilos.botonLiquidacionesTexto}>Bonos por contingencia</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -282,7 +304,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
             Cada bloque de tu jornada puede tener su propia modalidad; esta es la que se muestra como general.
           </Text>
 
-          {/* Comunas de atención a domicilio */}
+          {/* CU14 — Comunas de atención a domicilio */}
           <Text style={estilos.etiqueta}>Comunas donde atiendes a domicilio</Text>
           {comunas.length === 0 ? (
             <Text style={estilos.ayuda}>No se pudo cargar el listado de comunas.</Text>
@@ -341,6 +363,7 @@ export default function MiPerfilScreen({ navigation, comoPestana = false }) {
         </>
       )}
 
+      {/* CU07, CU08, CU60: seguridad de la cuenta, soporte y cierre de sesión */}
       {comoPestana && <PieDePerfil navigation={navigation} tituloSeguridad="Seguridad de la cuenta" />}
 
       <DialogoAviso
@@ -374,6 +397,7 @@ const estilos = StyleSheet.create({
     ...sombra.suave,
   },
   botonLiquidacionesTexto: { ...tipografia.metaFuerte, color: colores.primario },
+  botonContingencia: { marginLeft: 'auto', marginBottom: espacio.base },
   estadoEnLinea: { paddingVertical: espacio.xxl, alignItems: 'center' },
 
   bloqueFoto: { ...piezas.tarjeta, flexDirection: 'row', alignItems: 'center', marginBottom: espacio.lg },

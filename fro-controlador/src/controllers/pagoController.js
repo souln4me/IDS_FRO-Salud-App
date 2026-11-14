@@ -1,4 +1,7 @@
 /**
+ * Componente: C_API_REST
+ * Casos de uso: CU66, CU67, CU68, CU69, CU71.
+ *
  * Bonos y copagos (Incremento 2, bloque 5).
  * CU66: registro y validación de bonos contra el financiador (vía adaptador).
  * CU67: cálculo del copago y liquidación en pasarela de pago simulada.
@@ -7,23 +10,22 @@
  * CU71: cuadratura de sesiones ejecutadas versus coberturas autorizadas.
  */
 
-const pool = require('../config/database');
-const { ejecutarTransaccion } = require('../services/external/providerAdapter');
-const { leerParametroEntero } = require('../services/agenda/agendaService');
+const C_Capa_de_Acceso_a_Datos = require('../componentes/C_Capa_de_Acceso_a_Datos');
+const C_API_Adapter = require('../componentes/C_API_Adapter');
 
 const REGEX_FOLIO = /^BON-\d{6}$/;
 const METODOS_PAGO = ['TARJETA_OK', 'TARJETA_RECHAZADA', 'TARJETA_LENTA'];
 // RF73: planes de 10, 15 y 20 sesiones, como pide el documento.
 const SESIONES_PAQUETE = [10, 15, 20];
 
-/** Arancel vigente de una prestación (editable por el administrador). */
+/** Apoyo común: arancel vigente de una prestación (editable por el administrador). */
 async function arancelVigente() {
-  return leerParametroEntero(pool, 'ARANCEL_ESPECIALIDAD', 40000);
+  return C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'ARANCEL_ESPECIALIDAD', 40000);
 }
 
-/** Cita del paciente autenticado (o null). */
+/** CU66, CU67 — cita del paciente autenticado (o null). */
 async function citaDelPaciente(citaId, usuarioId) {
-  const [filas] = await pool.query(
+  const [filas] = await C_Capa_de_Acceso_a_Datos.query(
     `SELECT c.cita_id, c.estado, c.fecha_hora_inicio, c.paciente_id
        FROM Cita c
        JOIN Paciente p ON p.paciente_id = c.paciente_id
@@ -61,6 +63,7 @@ async function ejecutarConReintentoDeEscritura(operacion) {
 //   - cualquier otro → validado con 60% de cobertura
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU68, CU69 — simulador del financiador externo
 exports.financiadorSimulado = async (req, res) => {
   // CU69 — Excepción 1: sin credencial de seguridad no hay conexión.
   if (!req.headers['x-api-key']) {
@@ -102,6 +105,7 @@ exports.financiadorSimulado = async (req, res) => {
 //  POST /api/pagos/citas/:id/bono   { folio, financiador_id }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU66 — Registrando y Validando Bonos de Cobertura
 exports.registrarBono = async (req, res) => {
   const { id } = req.params;
   const folio = String(req.body?.folio || '').trim().toUpperCase();
@@ -127,7 +131,7 @@ exports.registrarBono = async (req, res) => {
       });
     }
 
-    const [financiadores] = await pool.query(
+    const [financiadores] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT financiador_id, nombre_institucion, rut_institucion
          FROM Financiador WHERE financiador_id = ? AND convenio_activo = TRUE`,
       [financiadorId]
@@ -138,7 +142,7 @@ exports.registrarBono = async (req, res) => {
     const financiador = financiadores[0];
 
     // Un bono VALIDADO no se reemplaza; uno rechazado sí se puede reintentar.
-    const [previos] = await pool.query(
+    const [previos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT bono_id, estado_validacion FROM Bono WHERE cita_id = ? LIMIT 1`,
       [id]
     );
@@ -151,11 +155,11 @@ exports.registrarBono = async (req, res) => {
 
     const arancel = await arancelVigente();
 
-    // Viaje real por la capa adaptadora: validación de esquemas, reintentos
-    // y bitácora de transacciones externas (CU69) incluidos.
+    // CU68: viaje real por la capa adaptadora: validación de esquemas, reintentos
+    // (CU70) y bitácora de transacciones externas (CU69) incluidos.
     let resultado;
     try {
-      resultado = await ejecutarTransaccion({
+      resultado = await C_API_Adapter.ejecutarTransaccion({
         proveedor: 'FINANCIADOR',
         operacion: 'VALIDAR_BONO',
         usuarioId: req.user.usuario_id,
@@ -175,7 +179,7 @@ exports.registrarBono = async (req, res) => {
         error: errorAdapter.code || 'FINANCIADOR_NO_DISPONIBLE',
         mensaje:
           status === 503
-            ? 'El financiador no respondió tras varios intentos. Tu bono no se registró: inténtalo más tarde.'
+            ? 'El financiador no respondió tras varios intentos. Tu bono no se registró: inténtalo más tarde o pídele a tu profesional que lo ingrese en modo contingencia.'
             : 'La respuesta del financiador no pudo procesarse. Inténtalo más tarde.',
       });
     }
@@ -186,7 +190,7 @@ exports.registrarBono = async (req, res) => {
     // Excepción 4: escritura con reintento ante bloqueos de tabla.
     await ejecutarConReintentoDeEscritura(async () => {
       if (previos.length > 0) {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
           `UPDATE Bono
               SET folio = ?, monto_cobertura = ?, copago = ?, estado_validacion = ?,
                   payload_respuesta = ?, financiador_id = ?
@@ -202,7 +206,7 @@ exports.registrarBono = async (req, res) => {
           ]
         );
       } else {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
           `INSERT INTO Bono
               (folio, monto_cobertura, copago, estado_validacion, payload_respuesta, cita_id, financiador_id)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -255,15 +259,16 @@ exports.registrarBono = async (req, res) => {
 //  GET /api/pagos/resumen
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU67 — resumen de bonos, pagos y planes del paciente
 exports.resumenPagos = async (req, res) => {
   try {
     const arancel = await arancelVigente();
 
-    const [citas] = await pool.query(
+    const [citas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT c.cita_id, c.fecha_hora_inicio, c.estado,
               CONCAT(u.nombres, ' ', u.apellido_paterno) AS nombre_profesional,
               b.bono_id, b.folio, b.estado_validacion, b.monto_cobertura, b.copago,
-              f.nombre_institucion
+              COALESCE(f.nombre_institucion, b.financiador_manual) AS nombre_institucion
          FROM Cita c
          JOIN Paciente pac ON pac.paciente_id = c.paciente_id
          JOIN Profesional prof ON prof.profesional_id = c.profesional_id
@@ -278,7 +283,7 @@ exports.resumenPagos = async (req, res) => {
     const ids = citas.map((c) => c.cita_id);
     let transacciones = [];
     if (ids.length > 0) {
-      [transacciones] = await pool.query(
+      [transacciones] = await C_Capa_de_Acceso_a_Datos.query(
         `SELECT transaccion_id, cita_id, monto_total, tipo, estado, metodo_pago, momento_pago
            FROM Transaccion WHERE cita_id IN (?) ORDER BY transaccion_id DESC`,
         [ids]
@@ -291,7 +296,7 @@ exports.resumenPagos = async (req, res) => {
       porCita.set(transaccion.cita_id, lista);
     }
 
-    const [paquetes] = await pool.query(
+    const [paquetes] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT ps.paquete_sesiones_id, ps.sesiones_total, ps.sesiones_usadas, ps.estado,
               ps.precio_total, ps.momento_adquisicion
          FROM Paquete_Sesiones ps
@@ -301,13 +306,13 @@ exports.resumenPagos = async (req, res) => {
       [req.user.usuario_id]
     );
 
-    const [financiadores] = await pool.query(
+    const [financiadores] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT financiador_id, nombre_institucion FROM Financiador WHERE convenio_activo = TRUE`
     );
 
-    // RF74: la devolución queda asociada a una cita cancelada, que la lista de
+    // CU74 (RF74): la devolución queda asociada a una cita cancelada, que la lista de
     // arriba no muestra. Se entrega aparte para que el paciente la vea.
-    const [devoluciones] = await pool.query(
+    const [devoluciones] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT t.transaccion_id, t.cita_id, t.monto_total, t.metodo_pago, t.momento_pago,
               c.fecha_hora_inicio,
               CONCAT(u.nombres, ' ', u.apellido_paterno) AS nombre_profesional
@@ -329,8 +334,9 @@ exports.resumenPagos = async (req, res) => {
       citas: citas.map((cita) => {
         const pagos = porCita.get(cita.cita_id) || [];
         const pagada = pagos.some((t) => t.estado === 'PAGADA' && t.tipo !== 'DEVOLUCION');
+        // CU72: el bono provisorio de contingencia también fija el copago.
         const copagoExigible =
-          cita.estado_validacion === 'VALIDADO' ? cita.copago : arancel;
+          ['VALIDADO', 'PROVISORIO'].includes(cita.estado_validacion) ? cita.copago : arancel;
         return {
           ...cita,
           transacciones: pagos,
@@ -350,6 +356,7 @@ exports.resumenPagos = async (req, res) => {
 //  POST /api/pagos/citas/:id/pagar   { metodo_pago }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU67 — Registrando Transacciones y Copagos
 exports.pagarCopago = async (req, res) => {
   const { id } = req.params;
   const metodo = String(req.body?.metodo_pago || '').trim();
@@ -366,7 +373,7 @@ exports.pagarCopago = async (req, res) => {
 
     const arancel = await arancelVigente();
 
-    const [bonos] = await pool.query(
+    const [bonos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT estado_validacion, monto_cobertura, copago FROM Bono WHERE cita_id = ? LIMIT 1`,
       [id]
     );
@@ -376,7 +383,7 @@ exports.pagarCopago = async (req, res) => {
     // y queda una traza técnica para revisión.
     if (bono?.estado_validacion === 'VALIDADO' && bono.monto_cobertura > arancel) {
       try {
-        await pool.query(
+        await C_Capa_de_Acceso_a_Datos.query(
           `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, datos_adicionales, usuario_id)
            VALUES ('INCONSISTENCIA_COBERTURA', 'Bono', ?, ?)`,
           [
@@ -394,9 +401,9 @@ exports.pagarCopago = async (req, res) => {
       });
     }
 
-    const copago = bono?.estado_validacion === 'VALIDADO' ? bono.copago : arancel;
+    const copago = ['VALIDADO', 'PROVISORIO'].includes(bono?.estado_validacion) ? bono.copago : arancel;
 
-    const [pagosPrevios] = await pool.query(
+    const [pagosPrevios] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT transaccion_id, estado FROM Transaccion
         WHERE cita_id = ? ORDER BY transaccion_id DESC`,
       [id]
@@ -410,7 +417,7 @@ exports.pagarCopago = async (req, res) => {
     // perdido). El siguiente intento la concilia en vez de cobrar de nuevo.
     const enTransito = pagosPrevios.find((t) => t.estado === 'EN_TRANSITO');
     if (enTransito) {
-      await pool.query(
+      await C_Capa_de_Acceso_a_Datos.query(
         `UPDATE Transaccion SET estado = 'PAGADA' WHERE transaccion_id = ?`,
         [enTransito.transaccion_id]
       );
@@ -424,7 +431,7 @@ exports.pagarCopago = async (req, res) => {
     // Pasarela simulada, determinista por método elegido.
     if (metodo === 'TARJETA_RECHAZADA') {
       // Excepción 3: la entidad bancaria rechaza; el intento queda registrado.
-      await pool.query(
+      await C_Capa_de_Acceso_a_Datos.query(
         `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
          VALUES (?, 'COPAGO', 'RECHAZADA', ?, ?)`,
         [copago, metodo, id]
@@ -436,7 +443,7 @@ exports.pagarCopago = async (req, res) => {
     }
 
     const estadoFinal = metodo === 'TARJETA_LENTA' ? 'EN_TRANSITO' : 'PAGADA';
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Transaccion (monto_total, tipo, estado, metodo_pago, cita_id)
        VALUES (?, 'COPAGO', ?, ?, ?)`,
       [copago, estadoFinal, metodo, id]
@@ -467,6 +474,7 @@ exports.pagarCopago = async (req, res) => {
 //  POST /api/pagos/paquetes   { sesiones, metodo_pago }
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU67 — comprar un plan de sesiones
 exports.comprarPaquete = async (req, res) => {
   const sesiones = Number(req.body?.sesiones);
   const metodo = String(req.body?.metodo_pago || '').trim();
@@ -479,7 +487,7 @@ exports.comprarPaquete = async (req, res) => {
   }
 
   try {
-    const [pacientes] = await pool.query(
+    const [pacientes] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT paciente_id FROM Paciente WHERE usuario_id = ? LIMIT 1`,
       [req.user.usuario_id]
     );
@@ -488,7 +496,10 @@ exports.comprarPaquete = async (req, res) => {
     }
 
     const arancel = await arancelVigente();
-    const precio = Math.round(arancel * sesiones * 0.9); // 10% de descuento por plan
+    // CU59: el descuento del plan es el parámetro global, el mismo que usa
+    // finanzas al ofrecer y cobrar planes (antes estaba fijo en 10 %).
+    const descuento = await C_Capa_de_Acceso_a_Datos.leerParametroEntero(C_Capa_de_Acceso_a_Datos, 'DESCUENTO_PAQUETE_PORCENTAJE', 10);
+    const precio = Math.round(arancel * sesiones * (1 - descuento / 100));
 
     if (metodo === 'TARJETA_RECHAZADA') {
       return res.status(402).json({
@@ -497,14 +508,14 @@ exports.comprarPaquete = async (req, res) => {
       });
     }
 
-    await pool.query(
+    await C_Capa_de_Acceso_a_Datos.query(
       `INSERT INTO Paquete_Sesiones (sesiones_total, estado, precio_total, paciente_id)
        VALUES (?, 'ACTIVO', ?, ?)`,
       [sesiones, precio, pacientes[0].paciente_id]
     );
 
     try {
-      await pool.query(
+      await C_Capa_de_Acceso_a_Datos.query(
         `INSERT INTO Bitacora_Auditoria (accion, entidad_afectada, datos_adicionales, usuario_id)
          VALUES ('COMPRA_PAQUETE', 'Paquete_Sesiones', ?, ?)`,
         [JSON.stringify({ sesiones, precio, metodo }), req.user.usuario_id]
@@ -529,18 +540,19 @@ exports.comprarPaquete = async (req, res) => {
 //  GET /api/pagos/cuadratura/:paciente_id
 // ─────────────────────────────────────────────────────────────────────────────
 
+// CU71 — Sincronizando y Validando Sesiones Bonificables
 exports.cuadraturaCoberturas = async (req, res) => {
   const { paciente_id } = req.params;
 
   try {
-    const [autorizadas] = await pool.query(
+    const [autorizadas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COALESCE(SUM(sesiones_total), 0) AS total,
               COALESCE(SUM(sesiones_usadas), 0) AS usadas
          FROM Paquete_Sesiones WHERE paciente_id = ?`,
       [paciente_id]
     );
 
-    const [ejecutadas] = await pool.query(
+    const [ejecutadas] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT COUNT(*) AS realizadas
          FROM Cita c
          JOIN Profesional p ON p.profesional_id = c.profesional_id
@@ -548,7 +560,7 @@ exports.cuadraturaCoberturas = async (req, res) => {
       [paciente_id, req.user.usuario_id]
     );
 
-    const [bonos] = await pool.query(
+    const [bonos] = await C_Capa_de_Acceso_a_Datos.query(
       `SELECT c.cita_id, c.fecha_hora_inicio, c.estado AS estado_cita,
               b.folio, b.estado_validacion, b.monto_cobertura, b.copago
          FROM Cita c
@@ -574,6 +586,8 @@ exports.cuadraturaCoberturas = async (req, res) => {
       // Excepción 2: lo ejecutado excede lo autorizado.
       discrepancia_saldo: sesionesRealizadas > sesionesAutorizadas,
       realizadas_sin_bono: realizadasSinBono.map((fila) => fila.cita_id),
+      // CU72: bonos ingresados a mano durante una contingencia, aún sin validar.
+      bonos_provisorios: bonos.filter((fila) => fila.estado_validacion === 'PROVISORIO').map((fila) => fila.cita_id),
       citas: bonos,
     });
   } catch (error) {

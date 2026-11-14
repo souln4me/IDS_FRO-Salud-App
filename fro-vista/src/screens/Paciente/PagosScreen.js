@@ -1,3 +1,7 @@
+/**
+ * Componente: Cliente Móvil — Vista "Pagos y bonos"
+ * Casos de uso: CU66, CU67, CU72, CU74.
+ */
 // Ruta: fro-vista/src/screens/Paciente/PagosScreen.js
 //
 // CU66: registro y validación de bonos de cobertura por cita.
@@ -63,6 +67,7 @@ export default function PagosScreen() {
   const [metodoPlan, setMetodoPlan] = useState('TARJETA_OK');
   const [comprandoPlan, setComprandoPlan] = useState(false);
 
+  // CU67: resumen financiero del paciente (citas, bonos, planes y devoluciones)
   const cargar = useCallback(async (esRefresco = false) => {
     if (esRefresco) setRefrescando(true);
     else setCargando(true);
@@ -97,6 +102,7 @@ export default function PagosScreen() {
 
     setProcesandoId(cita.cita_id);
     try {
+      // CU68: el servidor valida el folio con el financiador externo
       const { data } = await apiClient.post(`/pagos/citas/${cita.cita_id}/bono`, {
         folio: folioLimpio,
         financiador_id: Number(financiadorId),
@@ -125,11 +131,11 @@ export default function PagosScreen() {
       const { data } = await apiClient.post(`/pagos/citas/${cita.cita_id}/pagar`, {
         metodo_pago: metodoPago,
       });
-      setAviso({ tono: 'alerta', titulo: data.estado === 'EN_TRANSITO' ? 'Pago en tránsito' : 'Pago realizado', mensaje: data.mensaje });
+      setAviso({ tono: data.estado === 'EN_TRANSITO' ? 'alerta' : 'ok', titulo: data.estado === 'EN_TRANSITO' ? 'Pago en tránsito' : 'Pago realizado', mensaje: data.mensaje });
       await cargar(true);
     } catch (err) {
       const respuesta = err.response?.data;
-      setAviso({ tono: 'ok', titulo: 'Pago no completado', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
+      setAviso({ tono: 'error', titulo: 'Pago no completado', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
       await cargar(true);
     } finally {
       setProcesandoId(null);
@@ -148,7 +154,7 @@ export default function PagosScreen() {
       await cargar(true);
     } catch (err) {
       const respuesta = err.response?.data;
-      setAviso({ tono: 'ok', titulo: 'Compra no completada', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
+      setAviso({ tono: 'error', titulo: 'Compra no completada', mensaje: respuesta?.mensaje || respuesta?.error || 'Intenta nuevamente.' });
     } finally {
       setComprandoPlan(false);
     }
@@ -168,6 +174,7 @@ export default function PagosScreen() {
   const renderCitaPago = (cita) => {
     const procesando = procesandoId === cita.cita_id;
     const bonoValidado = cita.estado_validacion === 'VALIDADO';
+    const bonoProvisorio = cita.estado_validacion === 'PROVISORIO';
     const enTransito = cita.transacciones?.some((t) => t.estado === 'EN_TRANSITO');
 
     return (
@@ -189,10 +196,12 @@ export default function PagosScreen() {
         {cita.folio ? (
           <Text style={estilos.detalle}>
             Bono {cita.folio} ({cita.nombre_institucion}):{' '}
-            <Text style={{ color: bonoValidado ? colores.exito : colores.error, fontWeight: '700' }}>
+            <Text style={{ color: bonoValidado ? colores.exito : bonoProvisorio ? colores.advertencia : colores.error, fontWeight: '700' }}>
               {etiquetaEstado(cita.estado_validacion)}
             </Text>
-            {bonoValidado ? ` · cobertura ${pesos(cita.monto_cobertura)}` : ''}
+            {bonoValidado || bonoProvisorio ? ` · cobertura ${pesos(cita.monto_cobertura)}` : ''}
+            {/* CU72: registrado a mano mientras el financiador no respondía. */}
+            {bonoProvisorio ? ' · ingresado por contingencia, se validará con el financiador' : ''}
           </Text>
         ) : (
           <Text style={estilos.detalle}>Sin bono registrado.</Text>
@@ -374,6 +383,7 @@ export default function PagosScreen() {
         ayuda="Citas pagadas ya realizadas, devoluciones y planes terminados"
       >
         {citasHistorial.map(renderCitaPago)}
+        {/* CU74: devoluciones por cancelación con anticipación */}
         {resumen?.devoluciones?.length > 0 ? (
           <>
             <Text style={estilos.subseccion}>Devoluciones</Text>
