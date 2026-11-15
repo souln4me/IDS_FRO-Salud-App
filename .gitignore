@@ -24,3 +24,6 @@ auditoria/
 
 # Client.js
 fro-vista/src/api/client.js
+
+# Compilación nativa de iOS (se genera con expo prebuild; no se sube)
+fro-vista/ios/

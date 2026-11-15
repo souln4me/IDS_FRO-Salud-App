@@ -29,7 +29,8 @@
       }
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "cl.puntopazsalud.app"
     },
     "web": {
       "favicon": "./assets/icono-app.png"
