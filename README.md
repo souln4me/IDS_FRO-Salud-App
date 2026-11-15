@@ -13,9 +13,11 @@ Antes de comenzar, asegúrese de tener instalados los siguientes programas en su
 
 - Node.js (Versión 18 o superior).
 
-- MySQL Server (Versión 8.0 o superior) y un cliente de gestión como MySQL Workbench o la extensión database client de visual studio.
+- MySQL Server (Versión 8.0 o superior) y un cliente de gestión como MySQL Workbench o la extensión database client de visual studio, y adicionalmente crear una cuenta.
 
 - Git y Github Desktop (Para clonar el repositorio).
+
+- Visual Studio Code (Recomendado)
 
 - Expo Go. [Expo.apk Drive Download](https://drive.google.com/file/d/1TRcHjcN04z99trjF9duqZB4O9h5sxXJX/view?usp=sharing)
 
