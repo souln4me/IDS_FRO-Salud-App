@@ -8,16 +8,18 @@ Esta guía detalla los pasos necesarios para instalar, configurar y ejecutar el 
 
 [Video guía de instalación del Sistema - Incremento 3](https://drive.google.com/file/d/1Te3ZVsdT2w2XvmSlFMz2knO7yfjF3HiU/view?usp=sharing)
 
+[Video guía de instalación del Sistema - Incremento 4](https://drive.google.com/file/d/16tFMxjpxgAWCOLJXbtwg8QveUGaNGaJq/view?usp=sharing)
+
 ## 1. Requisitos Previos (Herramientas necesarias)
 Antes de comenzar, asegúrese de tener instalados los siguientes programas en su computador:
 
-- Node.js (Versión 18 o superior).
+- Node.js (Versión 18 o superior). https://nodejs.org/es
 
-- MySQL Server (Versión 8.0 o superior) y un cliente de gestión como MySQL Workbench o la extensión database client de visual studio, y adicionalmente crear una cuenta.
+- MySQL Server (Versión 8.0 o superior) y un cliente de gestión como MySQL Workbench o la extensión database client de visual studio, y adicionalmente crear una cuenta. https://dev.mysql.com/downloads/installer/
 
-- Git y Github Desktop (Para clonar el repositorio).
+- Git y Github Desktop (Para clonar el repositorio). https://git-scm.com/install/ / https://desktop.github.com/
 
-- Visual Studio Code (Recomendado)
+- Visual Studio Code (Recomendado). https://code.visualstudio.com/download
 
 - Expo Go. [Expo.apk Drive Download](https://drive.google.com/file/d/1TRcHjcN04z99trjF9duqZB4O9h5sxXJX/view?usp=sharing)
 
